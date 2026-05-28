@@ -1,0 +1,105 @@
+import { WebSocketServer, WebSocket } from 'ws';
+import { Server } from 'http';
+import { getDb } from '../db/database';
+
+// userId → Set de conexiones activas.
+const connections = new Map<string, Set<WebSocket>>();
+
+export function setupWebSocket(server: Server): void {
+  const wss = new WebSocketServer({ server });
+
+  wss.on('connection', (ws) => {
+    let userId: string | null = null;
+
+    // El cliente envía su token al conectar.
+    ws.once('message', (data) => {
+      try {
+        const { token } = JSON.parse(data.toString()) as { token: string };
+        const db = getDb();
+        const session = db.prepare(`
+          SELECT user_id FROM device_sessions
+          WHERE token = ? AND expires_at > ?
+        `).get(token, Date.now()) as { user_id: string } | undefined;
+
+        if (!session) {
+          ws.close(4001, 'Unauthorized');
+          return;
+        }
+
+        userId = session.user_id;
+
+        if (!connections.has(userId)) {
+          connections.set(userId, new Set());
+        }
+        connections.get(userId)!.add(ws);
+
+        ws.send(JSON.stringify({ type: 'connected' }));
+      } catch {
+        ws.close(4002, 'Bad request');
+      }
+    });
+
+    const cleanup = (): void => {
+      if (userId) {
+        connections.get(userId)?.delete(ws);
+        if (connections.get(userId)?.size === 0) {
+          connections.delete(userId);
+        }
+      }
+      clearInterval(pingInterval);
+    };
+
+    ws.on('close', cleanup);
+
+    // Ping cada 30s para mantener viva la conexión.
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 30_000);
+  });
+}
+
+export function broadcastPush(
+  userId: string,
+  profileId: string,
+  origin: string,
+  payloadB64: string,
+): void {
+  const userConns = connections.get(userId);
+  if (!userConns) return;
+
+  const msg = JSON.stringify({
+    type: 'push:notification',
+    profile_id: profileId,
+    origin,
+    payload_b64: payloadB64,
+  });
+
+  for (const ws of userConns) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
+  }
+}
+
+export function notifyPeers(
+  userId: string,
+  excludeWs: WebSocket | null,
+  payload: { profile_id: string; server_seq: number }
+): void {
+  const userConns = connections.get(userId);
+  if (!userConns) return;
+
+  const msg = JSON.stringify({
+    type: 'sync:changes',
+    profile_id: payload.profile_id,
+    server_seq: payload.server_seq,
+  });
+
+  for (const ws of userConns) {
+    if (ws !== excludeWs && ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
+  }
+}

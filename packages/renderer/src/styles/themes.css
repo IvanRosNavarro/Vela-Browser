@@ -1,0 +1,80 @@
+/*
+  Valores por defecto (tema oscuro base).
+  ThemeManager sobreescribe estas variables vía inline styles en :root
+  tras montar. Este bloque sirve de fallback para el primer paint.
+*/
+:root {
+  --vela-bg: #0e0f12;
+  --vela-bg-elevated: #1c1f25;
+  --vela-fg: #e6e8ee;
+  --vela-fg-muted: #8c93a3;
+  --vela-border: rgba(255, 255, 255, 0.08);
+
+  --vela-sidebar-bg: #16181d;
+  --vela-sidebar-fg: #e6e8ee;
+  --vela-sidebar-active-bg: rgba(120, 140, 255, 0.16);
+  --vela-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+  --vela-titlebar-bg: #1a1a1a;
+  --vela-titlebar-fg: #e0e0e0;
+  --vela-titlebar-button-hover: rgba(255, 255, 255, 0.1);
+
+  --vela-addressbar-bg: #16181d;
+  --vela-addressbar-border: rgba(255, 255, 255, 0.10);
+  --vela-addressbar-fg: #e6e8ee;
+  --vela-addressbar-fg-muted: #8c93a3;
+  --vela-suggestion-bg: #1c1f25;
+  --vela-suggestion-bg-active: rgba(125, 140, 255, 0.18);
+
+  --vela-accent: #7d8cff;
+  --vela-accent-fg: #ffffff;
+  --vela-success: #6ad8a4;
+  --vela-warning: #f5c76a;
+  --vela-danger: #ff8a8a;
+
+  --vela-tab-active-bg: rgba(125, 140, 255, 0.18);
+  --vela-tab-active-fg: #ffffff;
+  --vela-tab-discarded-opacity: 0.5;
+  --vela-folder-marker-w: 3px;
+
+  --vela-font-family: system-ui, sans-serif;
+  --vela-font-size: 14px;
+  --vela-radius-sm: 4px;
+  --vela-radius-md: 8px;
+  --vela-radius-lg: 12px;
+
+  /* Glassmorphism — desactivado por defecto */
+  --sidebar-backdrop-filter: none;
+  --sidebar-background-opacity: 1;
+  --sidebar-background-color: var(--vela-sidebar-bg);
+
+  /* ── Backward-compat: aliases hacia los nombres canónicos ── */
+  --vela-bg-app: #0e0f12;
+  --vela-bg-sidebar: #16181d;
+  --vela-bg-sidebar-elev: #1c1f25;
+  --vela-bg-surface: #1c1f25;
+  --vela-bg-row-hover: rgba(255, 255, 255, 0.05);
+  --vela-bg-row-active: rgba(120, 140, 255, 0.16);
+  --vela-bg-folder-hover: rgba(255, 255, 255, 0.04);
+  --vela-fg-subtle: #5a6070;
+  --vela-border-strong: rgba(255, 255, 255, 0.16);
+  --vela-accent-soft: rgba(125, 140, 255, 0.18);
+  --vela-accent-strong: #9aa6ff;
+  --vela-folder-marker-default: #4b5266;
+  --vela-drop-line: #7d8cff;
+  --vela-drop-bg: rgba(125, 140, 255, 0.10);
+  --vela-indent-guide: rgba(255, 255, 255, 0.06);
+  --vela-inherit-line-alpha: 0.5;
+  --vela-row-h-normal: 32px;
+  --vela-row-h-compact: 40px;
+  --vela-indent-normal: 14px;
+  --vela-indent-compact: 8px;
+  --vela-sidebar-w-normal: 240px;
+  --vela-sidebar-w-compact: 56px;
+  --vela-titlebar-fg-muted: #888;
+  --vela-titlebar-accent: #6366f1;
+  --vela-titlebar-button-hover-bg: rgba(255, 255, 255, 0.1);
+  --vela-titlebar-button-active-bg: rgba(255, 255, 255, 0.2);
+  --vela-secure: #6ad8a4;
+  --vela-insecure: #ff8a8a;
+}

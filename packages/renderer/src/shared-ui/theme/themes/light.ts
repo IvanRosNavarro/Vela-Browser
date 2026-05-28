@@ -1,0 +1,83 @@
+import type { Theme } from '@vela/shared';
+
+export const lightTheme: Theme = {
+  id: 'light',
+  name: 'Vela Claro',
+  type: 'light',
+  builtin: true,
+  variables: {
+    // --- Canónicas nuevas ---
+    '--vela-bg': '#f4f5f8',
+    '--vela-bg-elevated': '#f5f6fa',
+    '--vela-fg': '#1b1d24',
+    '--vela-fg-muted': '#5a6070',
+    '--vela-border': 'rgba(0, 0, 0, 0.08)',
+
+    '--vela-sidebar-bg': '#ebedf2',
+    '--vela-sidebar-fg': '#1b1d24',
+    '--vela-sidebar-active-bg': 'rgba(70, 90, 220, 0.12)',
+    '--vela-sidebar-hover-bg': 'rgba(0, 0, 0, 0.04)',
+
+    '--vela-titlebar-bg': '#f0f1f5',
+    '--vela-titlebar-fg': '#1b1d24',
+    '--vela-titlebar-button-hover': 'rgba(0, 0, 0, 0.07)',
+
+    '--vela-addressbar-bg': '#ebedf2',
+    '--vela-addressbar-border': 'rgba(0, 0, 0, 0.10)',
+    '--vela-addressbar-fg': '#1b1d24',
+    '--vela-addressbar-fg-muted': '#5a6070',
+    '--vela-suggestion-bg': '#f5f6fa',
+    '--vela-suggestion-bg-active': 'rgba(70, 90, 220, 0.14)',
+
+    '--vela-accent': '#4a5ae0',
+    '--vela-accent-fg': '#ffffff',
+    '--vela-success': '#1f8a5c',
+    '--vela-warning': '#c47a00',
+    '--vela-danger': '#c14040',
+
+    '--vela-tab-active-bg': 'rgba(70, 90, 220, 0.14)',
+    '--vela-tab-active-fg': '#1b1d24',
+    '--vela-tab-discarded-opacity': '0.5',
+    '--vela-folder-marker-w': '3px',
+
+    '--vela-font-family': 'system-ui, sans-serif',
+    '--vela-font-size': '14px',
+    '--vela-radius-sm': '4px',
+    '--vela-radius-md': '8px',
+    '--vela-radius-lg': '12px',
+
+    '--sidebar-backdrop-filter': 'none',
+    '--sidebar-background-opacity': '1',
+    '--sidebar-background-color': 'var(--vela-sidebar-bg)',
+
+    // --- Backward-compat ---
+    '--vela-bg-app': '#f4f5f8',
+    '--vela-bg-sidebar': '#ebedf2',
+    '--vela-bg-sidebar-elev': '#f5f6fa',
+    '--vela-bg-surface': '#f5f6fa',
+    '--vela-bg-row-hover': 'rgba(0, 0, 0, 0.04)',
+    '--vela-bg-row-active': 'rgba(70, 90, 220, 0.12)',
+    '--vela-bg-folder-hover': 'rgba(0, 0, 0, 0.03)',
+    '--vela-fg-subtle': '#8c93a3',
+    '--vela-border-strong': 'rgba(0, 0, 0, 0.16)',
+    '--vela-accent-soft': 'rgba(74, 90, 224, 0.14)',
+    '--vela-accent-strong': '#3547d8',
+    '--vela-folder-marker-default': '#b4bbcd',
+    '--vela-drop-line': '#4a5ae0',
+    '--vela-drop-bg': 'rgba(70, 90, 220, 0.10)',
+    '--vela-indent-guide': 'rgba(0, 0, 0, 0.07)',
+    '--vela-inherit-line-alpha': '0.5',
+    '--vela-row-h-normal': '32px',
+    '--vela-row-h-compact': '40px',
+    '--vela-indent-normal': '14px',
+    '--vela-indent-compact': '8px',
+    '--vela-sidebar-w-normal': '240px',
+    '--vela-sidebar-w-compact': '56px',
+    '--vela-titlebar-fg-muted': '#5a6070',
+    '--vela-titlebar-accent': '#4a5ae0',
+    '--vela-titlebar-button-hover-bg': 'rgba(0, 0, 0, 0.07)',
+    '--vela-titlebar-button-active-bg': 'rgba(0, 0, 0, 0.14)',
+    '--vela-secure': '#1f8a5c',
+    '--vela-insecure': '#c14040',
+  },
+};

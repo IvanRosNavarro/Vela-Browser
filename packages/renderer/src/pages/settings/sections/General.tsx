@@ -1,0 +1,127 @@
+import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
+import type { useSettings } from '../lib/useSettings';
+import { SettingRow, SettingSection } from '../components/SettingRow';
+import { Toggle } from '../components/controls/Toggle';
+import { Select, type SelectOption } from '../components/controls/Select';
+
+declare const __APP_VERSION__: string;
+
+type StartupPage = 'blank' | 'previous' | 'custom';
+
+const STARTUP_PAGE_OPTIONS: SelectOption<StartupPage>[] = [
+  { value: 'previous', label: 'Pestaña anterior' },
+  { value: 'blank',    label: 'Página en blanco' },
+  { value: 'custom',   label: 'URL personalizada' },
+];
+
+interface Props {
+  settings: ReturnType<typeof useSettings>;
+}
+
+export function General({ settings }: Props) {
+  const { get, set } = settings;
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState('');
+
+  async function checkNow() {
+    setCheckingUpdate(true);
+    setUpdateMsg('');
+    try {
+      const res = await window.api.update.checkNow();
+      setUpdateMsg(res.ok ? 'Comprobación iniciada.' : 'Error al comprobar.');
+    } catch {
+      setUpdateMsg('Error al comprobar.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  const startupPage = get<StartupPage>('startup:page', 'previous');
+
+  return (
+    <>
+      <SettingSection title="Inicio">
+        <SettingRow
+          label="Restaurar pestañas al arrancar"
+          description="Reabre las últimas pestañas abiertas al iniciar Vela."
+        >
+          <Toggle
+            value={get<boolean>('startup:restore-tabs', true)}
+            onChange={(v) => void set('startup:restore-tabs', v)}
+          />
+        </SettingRow>
+        <SettingRow label="Página de inicio">
+          <Select<StartupPage>
+            value={startupPage}
+            options={STARTUP_PAGE_OPTIONS}
+            onChange={(v) => void set('startup:page', v)}
+          />
+        </SettingRow>
+        {startupPage === 'custom' && (
+          <SettingRow label="URL de inicio">
+            <input
+              type="url"
+              placeholder="https://example.com"
+              value={get<string>('startup:custom-url', '')}
+              onChange={(e) => void set('startup:custom-url', e.target.value)}
+              className="w-56 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-app)] px-2 py-1 text-sm text-[var(--vela-fg)] outline-none focus:border-[var(--vela-accent)]"
+            />
+          </SettingRow>
+        )}
+      </SettingSection>
+
+      <SettingSection title="Idioma">
+        <SettingRow label="Idioma de la interfaz">
+          <Select
+            value="es"
+            options={[{ value: 'es', label: 'Español' }]}
+            onChange={() => undefined}
+            disabled
+          />
+        </SettingRow>
+      </SettingSection>
+
+      <SettingSection title="Rendimiento">
+        <SettingRow
+          label="Uso de memoria de las pestañas"
+          description="Muestra el consumo de RAM de cada pestaña en tiempo real."
+        >
+          <button
+            onClick={() => void window.api.commands.execute('view.openResourcesMonitor')}
+            className="flex items-center gap-1 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+          >
+            Abrir
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </SettingRow>
+      </SettingSection>
+
+      <SettingSection title="Actualizaciones">
+        <SettingRow
+          label="Comprobar actualizaciones automáticamente"
+          description="Vela buscará nuevas versiones cada 4 horas."
+        >
+          <Toggle
+            value={get<boolean>('updates:auto-check', true)}
+            onChange={(v) => void set('updates:auto-check', v, 'global')}
+          />
+        </SettingRow>
+        <SettingRow label={`Versión actual: ${__APP_VERSION__}`}>
+          <div className="flex items-center gap-3">
+            {updateMsg && (
+              <span className="text-xs text-[var(--vela-fg-muted)]">{updateMsg}</span>
+            )}
+            <button
+              onClick={() => void checkNow()}
+              disabled={checkingUpdate}
+              className="rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checkingUpdate ? 'Comprobando…' : 'Comprobar ahora'}
+            </button>
+          </div>
+        </SettingRow>
+      </SettingSection>
+    </>
+  );
+}

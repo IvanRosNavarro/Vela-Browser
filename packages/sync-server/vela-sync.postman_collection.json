@@ -1,0 +1,447 @@
+{
+  "info": {
+    "name": "Vela Sync Server",
+    "_postman_id": "vela-sync-server-v1",
+    "description": "API del servidor de sincronización de Vela Browser.\n\nFlujo de autenticación:\n1. POST /auth/magic-link → recibes el email con el token\n2. GET /auth/verify?token=XXX → el servidor crea la sesión y redirige a vela://sync-callback?token=YYY\n3. Copia el `token` de la URL de callback y ponlo en la variable de colección `session_token`\n4. Ya puedes usar todos los endpoints de /sync",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://sync.vela-browser.com",
+      "type": "string"
+    },
+    {
+      "key": "session_token",
+      "value": "",
+      "type": "string",
+      "description": "Token de sesión obtenido tras verificar el magic link. Ponlo aquí tras completar el flujo de auth."
+    },
+    {
+      "key": "profile_id",
+      "value": "my-profile-uuid",
+      "type": "string"
+    },
+    {
+      "key": "workspace_id",
+      "value": "my-workspace-uuid",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{session_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"ok\",\n  \"version\": \"1.0.0\",\n  \"uptime\": 42.3\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth — Magic Link",
+      "item": [
+        {
+          "name": "1. Solicitar magic link",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/magic-link",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "magic-link"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tu@email.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Envía un email con el magic link al usuario. Rate limitado.\n\nEl email contiene una URL del tipo:\nhttps://sync.vela-browser.com/auth/verify?token=XXXX"
+          },
+          "response": [
+            {
+              "name": "Email enviado",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"message\": \"Email enviado. Revisa tu bandeja.\"\n}"
+            },
+            {
+              "name": "Email inválido",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"ok\": false,\n  \"error\": \"Email inválido\"\n}"
+            },
+            {
+              "name": "Rate limit",
+              "status": "Too Many Requests",
+              "code": 429,
+              "body": "{\n  \"ok\": false,\n  \"error\": \"Too many requests\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "2. Verificar token (desde email)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/auth/verify?token=PEGA_AQUI_EL_TOKEN_DEL_EMAIL",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "verify"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "PEGA_AQUI_EL_TOKEN_DEL_EMAIL",
+                  "description": "Token de 32 chars recibido en el email. Válido 15 minutos, uso único."
+                }
+              ]
+            },
+            "description": "Valida el magic link token.\n\nEn el navegador: redirige a `vela://sync-callback?token=SESSION_TOKEN`\nEn Postman: recibirás un 3xx. El session token está en la URL de la cabecera Location.\n\nCopia el valor del parámetro `token` de esa URL y ponlo en la variable `session_token` de la colección."
+          },
+          "response": [
+            {
+              "name": "Redirect a vela://",
+              "status": "Found",
+              "code": 302,
+              "header": [
+                {
+                  "key": "Location",
+                  "value": "vela://sync-callback?token=SESSION_TOKEN_AQUI"
+                }
+              ],
+              "body": ""
+            },
+            {
+              "name": "Token inválido o expirado",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"ok\": false,\n  \"error\": \"Token inválido o expirado\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sync — Profiles",
+      "item": [
+        {
+          "name": "GET /sync/profiles",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sync/profiles",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "profiles"]
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"profiles\": [\n    {\n      \"id\": \"uuid-del-perfil\",\n      \"name_ct\": \"<dato cifrado>\",\n      \"updated_at\": 1716000000000\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /sync/profiles",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/profiles",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "profiles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{profile_id}}\",\n  \"name_ct\": \"<nombre cifrado con clave del perfil>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sync — Entities",
+      "item": [
+        {
+          "name": "GET /sync/entities",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sync/entities?profile_id={{profile_id}}&since_seq=0",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "entities"],
+              "query": [
+                { "key": "profile_id", "value": "{{profile_id}}" },
+                { "key": "since_seq", "value": "0", "description": "Devuelve solo entidades con server_seq > este valor. Usar 0 para sync inicial." }
+              ]
+            },
+            "description": "Máximo 1000 entidades por petición. Paginar incrementando `since_seq` con el `current_seq` de la respuesta anterior."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"entities\": [\n    {\n      \"id\": \"uuid-entidad\",\n      \"entity_type\": \"tab\",\n      \"data_ct\": \"<datos cifrados>\",\n      \"updated_at\": 1716000000000,\n      \"deleted\": 0,\n      \"server_seq\": 42\n    }\n  ],\n  \"current_seq\": 42\n}"
+            }
+          ]
+        },
+        {
+          "name": "PUT /sync/entities",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/entities",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "entities"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"entities\": [\n    {\n      \"id\": \"uuid-entidad\",\n      \"entity_type\": \"tab\",\n      \"data_ct\": \"<datos cifrados>\",\n      \"updated_at\": 1716000000000,\n      \"deleted\": false\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Upsert de entidades. Resolución de conflictos: gana el `updated_at` más reciente (last-write-wins). Notifica a otros peers conectados por WebSocket."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"server_seq\": 43\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sync — Y.Docs",
+      "item": [
+        {
+          "name": "GET /sync/ydocs/:workspace_id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sync/ydocs/{{workspace_id}}?profile_id={{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "ydocs", "{{workspace_id}}"],
+              "query": [
+                { "key": "profile_id", "value": "{{profile_id}}" }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"doc_ct\": \"<Y.js state cifrado en base64>\",\n  \"server_seq\": 10,\n  \"updated_at\": 1716000000000\n}"
+            },
+            {
+              "name": "No encontrado",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"ok\": false,\n  \"error\": \"Not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "PUT /sync/ydocs/:workspace_id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/ydocs/{{workspace_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "ydocs", "{{workspace_id}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"doc_ct\": \"<Y.js state cifrado>\",\n  \"updated_at\": 1716000000000\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"server_seq\": 11\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sync — Vault",
+      "item": [
+        {
+          "name": "GET /sync/vault",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sync/vault?profile_id={{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "vault"],
+              "query": [
+                { "key": "profile_id", "value": "{{profile_id}}" }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"vault_ct\": \"<vault cifrado en base64>\",\n  \"server_seq\": 5,\n  \"updated_at\": 1716000000000\n}"
+            },
+            {
+              "name": "No encontrado",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"ok\": false,\n  \"error\": \"Not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "PUT /sync/vault",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/vault",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "vault"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_id\": \"{{profile_id}}\",\n  \"vault_ct\": \"<vault cifrado>\",\n  \"updated_at\": 1716000000000\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"server_seq\": 6\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sync — Devices / Session",
+      "item": [
+        {
+          "name": "GET /sync/devices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/sync/devices",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "devices"]
+            },
+            "description": "Lista todos los dispositivos activos del usuario (sesiones no expiradas)."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"devices\": [\n    {\n      \"token_suffix\": \"abcd1234\",\n      \"device_name\": \"Vela — Windows\",\n      \"created_at\": 1716000000000,\n      \"last_used_at\": 1716050000000\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "DELETE /sync/devices/:suffix",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/sync/devices/abcd1234",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "devices", "abcd1234"]
+            },
+            "description": "Revoca la sesión de un dispositivo concreto por su token_suffix (últimos 8 chars del token)."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "DELETE /sync/session (logout)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/sync/session",
+              "host": ["{{base_url}}"],
+              "path": ["sync", "session"]
+            },
+            "description": "Cierra sesión del dispositivo actual (revoca el token Bearer usado en esta petición)."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

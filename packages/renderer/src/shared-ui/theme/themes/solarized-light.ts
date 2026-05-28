@@ -1,0 +1,83 @@
+import type { Theme } from '@vela/shared';
+
+// Paleta Solarized Light: https://ethanschoonover.com/solarized/
+export const solarizedLightTheme: Theme = {
+  id: 'solarized-light',
+  name: 'Solarized Light',
+  type: 'light',
+  builtin: true,
+  variables: {
+    '--vela-bg': '#fdf6e3',
+    '--vela-bg-elevated': '#eee8d5',
+    '--vela-fg': '#657b83',
+    '--vela-fg-muted': '#839496',
+    '--vela-border': 'rgba(101, 123, 131, 0.15)',
+
+    '--vela-sidebar-bg': '#eee8d5',
+    '--vela-sidebar-fg': '#586e75',
+    '--vela-sidebar-active-bg': 'rgba(38, 139, 210, 0.15)',
+    '--vela-sidebar-hover-bg': 'rgba(101, 123, 131, 0.08)',
+
+    '--vela-titlebar-bg': '#e8e2cf',
+    '--vela-titlebar-fg': '#586e75',
+    '--vela-titlebar-button-hover': 'rgba(101, 123, 131, 0.12)',
+
+    '--vela-addressbar-bg': '#eee8d5',
+    '--vela-addressbar-border': 'rgba(101, 123, 131, 0.18)',
+    '--vela-addressbar-fg': '#657b83',
+    '--vela-addressbar-fg-muted': '#839496',
+    '--vela-suggestion-bg': '#fdf6e3',
+    '--vela-suggestion-bg-active': 'rgba(38, 139, 210, 0.15)',
+
+    '--vela-accent': '#268bd2',
+    '--vela-accent-fg': '#fdf6e3',
+    '--vela-success': '#859900',
+    '--vela-warning': '#b58900',
+    '--vela-danger': '#dc322f',
+
+    '--vela-tab-active-bg': 'rgba(38, 139, 210, 0.15)',
+    '--vela-tab-active-fg': '#586e75',
+    '--vela-tab-discarded-opacity': '0.5',
+    '--vela-folder-marker-w': '3px',
+
+    '--vela-font-family': 'system-ui, sans-serif',
+    '--vela-font-size': '14px',
+    '--vela-radius-sm': '4px',
+    '--vela-radius-md': '8px',
+    '--vela-radius-lg': '12px',
+
+    '--sidebar-backdrop-filter': 'blur(12px)',
+    '--sidebar-background-opacity': '0.85',
+    '--sidebar-background-color': '#eee8d5',
+
+    // Backward-compat
+    '--vela-bg-app': '#fdf6e3',
+    '--vela-bg-sidebar': '#eee8d5',
+    '--vela-bg-sidebar-elev': '#fdf6e3',
+    '--vela-bg-surface': '#fdf6e3',
+    '--vela-bg-row-hover': 'rgba(101, 123, 131, 0.08)',
+    '--vela-bg-row-active': 'rgba(38, 139, 210, 0.15)',
+    '--vela-bg-folder-hover': 'rgba(101, 123, 131, 0.05)',
+    '--vela-fg-subtle': '#93a1a1',
+    '--vela-border-strong': 'rgba(101, 123, 131, 0.25)',
+    '--vela-accent-soft': 'rgba(38, 139, 210, 0.12)',
+    '--vela-accent-strong': '#2aa198',
+    '--vela-folder-marker-default': '#93a1a1',
+    '--vela-drop-line': '#268bd2',
+    '--vela-drop-bg': 'rgba(38, 139, 210, 0.10)',
+    '--vela-indent-guide': 'rgba(101, 123, 131, 0.10)',
+    '--vela-inherit-line-alpha': '0.5',
+    '--vela-row-h-normal': '32px',
+    '--vela-row-h-compact': '40px',
+    '--vela-indent-normal': '14px',
+    '--vela-indent-compact': '8px',
+    '--vela-sidebar-w-normal': '240px',
+    '--vela-sidebar-w-compact': '56px',
+    '--vela-titlebar-fg-muted': '#839496',
+    '--vela-titlebar-accent': '#268bd2',
+    '--vela-titlebar-button-hover-bg': 'rgba(101, 123, 131, 0.12)',
+    '--vela-titlebar-button-active-bg': 'rgba(101, 123, 131, 0.22)',
+    '--vela-secure': '#859900',
+    '--vela-insecure': '#dc322f',
+  },
+};

@@ -1,0 +1,55 @@
+:root {
+  --vela-bg: #0f1117;
+  --vela-bg-surface: #141519;
+  --vela-bg-elevated: #1c1f26;
+  --vela-border: rgba(255,255,255,0.09);
+  --vela-fg: #e6e8ee;
+  --vela-fg-muted: #8c93a3;
+  --vela-accent: #5b8ef4;
+  --vela-accent-fg: #ffffff;
+  --vela-hover: rgba(255,255,255,0.05);
+  --vela-radius: 8px;
+  --vela-success: #4caf7d;
+  --vela-warning: #f0a500;
+  --vela-danger: #e05555;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: var(--vela-bg);
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--vela-fg);
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--vela-border);
+  border-radius: 3px;
+}

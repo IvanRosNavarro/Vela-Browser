@@ -1,0 +1,2 @@
+ALTER TABLE tree_nodes ADD COLUMN anchored INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tree_nodes ADD COLUMN anchored_url TEXT;
