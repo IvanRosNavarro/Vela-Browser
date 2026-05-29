@@ -56,6 +56,15 @@ function IcoHistory() {
     </svg>
   );
 }
+function IcoKey() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="M21 2l-9.6 9.6" />
+      <path d="M15.5 7.5l3 3L22 7l-3-3" />
+    </svg>
+  );
+}
 function IcoDownload() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -336,6 +345,10 @@ export function App() {
           <MenuItem onClick={() => { void window.api.window.openUrlInNewTab({ url: 'vela://favorites' }); window.close(); }}>
             <span style={iconWrap}><IcoStar /></span>
             Favoritos
+          </MenuItem>
+          <MenuItem onClick={() => { void window.api.vault.openManager({ windowId: parentWindowId }); window.close(); }}>
+            <span style={iconWrap}><IcoKey /></span>
+            Contraseñas
           </MenuItem>
           <MenuItem onClick={() => exec('internal.openDownloads')}>
             <span style={iconWrap}><IcoDownload /></span>
