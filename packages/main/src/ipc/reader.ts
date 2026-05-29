@@ -1,4 +1,4 @@
-import { ipcMain, net } from 'electron';
+import { app, ipcMain, net } from 'electron';
 import { IPC_CHANNELS, z, type IpcResponse } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
@@ -18,8 +18,7 @@ export function registerReaderHandlers(_ctx: IpcContext): void {
       try {
         const response = await net.fetch(parsed.data.url, {
           headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': app.userAgentFallback,
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'es,en;q=0.9',
           },

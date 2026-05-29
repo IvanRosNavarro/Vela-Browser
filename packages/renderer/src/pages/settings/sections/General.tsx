@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronRight, CheckCircle2 } from 'lucide-react';
 import type { useSettings } from '../lib/useSettings';
 import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
@@ -23,6 +23,25 @@ export function General({ settings }: Props) {
   const { get, set } = settings;
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
+  const [isDefault, setIsDefault] = useState<boolean | null>(null);
+  const [settingDefault, setSettingDefault] = useState(false);
+
+  useEffect(() => {
+    void window.api.defaultBrowser.getStatus().then((res) => {
+      if (res.ok) setIsDefault(res.data.isDefault);
+    });
+  }, []);
+
+  async function setAsDefault() {
+    setSettingDefault(true);
+    try {
+      await window.api.defaultBrowser.set();
+      const res = await window.api.defaultBrowser.getStatus();
+      if (res.ok) setIsDefault(res.data.isDefault);
+    } finally {
+      setSettingDefault(false);
+    }
+  }
 
   async function checkNow() {
     setCheckingUpdate(true);
@@ -69,6 +88,28 @@ export function General({ settings }: Props) {
             />
           </SettingRow>
         )}
+      </SettingSection>
+
+      <SettingSection title="Navegador predeterminado">
+        <SettingRow
+          label="Usar Vela como navegador predeterminado"
+          description="Los enlaces de otras aplicaciones se abrirán en Vela."
+        >
+          {isDefault ? (
+            <span className="flex items-center gap-1.5 text-sm text-[var(--vela-accent)]">
+              <CheckCircle2 className="h-4 w-4" />
+              Predeterminado
+            </span>
+          ) : (
+            <button
+              onClick={() => void setAsDefault()}
+              disabled={settingDefault || isDefault === null}
+              className="rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {settingDefault ? 'Estableciendo…' : 'Establecer como predeterminado'}
+            </button>
+          )}
+        </SettingRow>
       </SettingSection>
 
       <SettingSection title="Idioma">

@@ -402,6 +402,9 @@ export const IPC_CHANNELS = {
 
   FIND_BAR_OPEN: 'find-bar:open',
   FIND_BAR_CLOSE: 'find-bar:close',
+
+  DEFAULT_BROWSER_GET_STATUS: 'default-browser:get-status',
+  DEFAULT_BROWSER_SET: 'default-browser:set',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

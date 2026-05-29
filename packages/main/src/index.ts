@@ -52,6 +52,8 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/[\d.]+/, '');
+
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
 
 const isDev = !app.isPackaged;
@@ -353,8 +355,8 @@ app.whenReady().then(async () => {
           } catch { /* default */ }
           if (retention === 'forever') continue;
           const retentionMs: Record<string, number> = {
-            week:    7  * 24 * 60 * 60 * 1000,
-            month:   30 * 24 * 60 * 60 * 1000,
+            week: 7 * 24 * 60 * 60 * 1000,
+            month: 30 * 24 * 60 * 60 * 1000,
             '3months': 90 * 24 * 60 * 60 * 1000,
             '6months': 180 * 24 * 60 * 60 * 1000,
           };

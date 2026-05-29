@@ -84,6 +84,25 @@ export function registerRuntimeHandlers(ctx: IpcContext): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.DEFAULT_BROWSER_GET_STATUS,
+    async (): Promise<IpcResponse<{ isDefault: boolean }>> => {
+      const isDefault =
+        app.isDefaultProtocolClient('https') && app.isDefaultProtocolClient('http');
+      return { ok: true, data: { isDefault } };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.DEFAULT_BROWSER_SET,
+    async (event): Promise<IpcResponse<{ requested: boolean }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.DEFAULT_BROWSER_SET);
+      const httpOk = app.setAsDefaultProtocolClient('http');
+      const httpsOk = app.setAsDefaultProtocolClient('https');
+      return { ok: true, data: { requested: httpOk && httpsOk } };
+    },
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.SHELL_OPEN_EXTERNAL,
     async (event, payload): Promise<IpcResponse<void>> => {
       guardTrustedFrame(event, IPC_CHANNELS.SHELL_OPEN_EXTERNAL);
