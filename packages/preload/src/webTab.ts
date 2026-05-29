@@ -216,7 +216,7 @@ ipcRenderer.on('media:command', (_event, command: string) => {
   switch (command) {
     case 'play': {
       const el = findActiveMedia();
-      if (el && el.paused) void el.play().catch(() => {});
+      if (el && el.paused) void el.play().catch(() => { });
       break;
     }
     case 'pause': {
@@ -248,8 +248,6 @@ ipcRenderer.on('media:command', (_event, command: string) => {
 });
 
 // ─── Credential detection (password manager) ─────────────────────────────────
-// Detects login form submissions and reports credentials to main on navigation.
-// Uses beforeunload as the signal that the login was probably successful.
 
 let detectedCreds: {
   username: string;
@@ -258,6 +256,16 @@ let detectedCreds: {
 } | null = null;
 
 let credDiscardTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushDetectedCreds(): void {
+  if (!detectedCreds) return;
+  if (credDiscardTimer) {
+    clearTimeout(credDiscardTimer);
+    credDiscardTimer = null;
+  }
+  ipcRenderer.send('vault:credentials-detected', detectedCreds);
+  detectedCreds = null;
+}
 
 document.addEventListener(
   'submit',
@@ -268,9 +276,16 @@ document.addEventListener(
     const passwordField = form.querySelector('input[type="password"]') as HTMLInputElement | null;
     if (!passwordField?.value) return;
 
-    // Look for the user/email field (text/email input before the password field)
+    // Look for the user/email field: last text-like input before the password field.
+    // Exclude checkbox/radio (they have .value but are not user identifiers).
     const inputs = Array.from(form.querySelectorAll('input')).filter(
-      (i) => i.type !== 'hidden' && i.type !== 'password' && i.type !== 'submit' && i.type !== 'button',
+      (i) =>
+        i.type !== 'hidden' &&
+        i.type !== 'password' &&
+        i.type !== 'submit' &&
+        i.type !== 'button' &&
+        i.type !== 'checkbox' &&
+        i.type !== 'radio',
     );
     const usernameField = inputs[inputs.length - 1] as HTMLInputElement | undefined;
     if (!usernameField?.value) return;
@@ -281,27 +296,36 @@ document.addEventListener(
       loginUrl: window.location.href,
     };
 
-    // Heurística: si 4 segundos después del submit seguimos en la misma URL,
-    // es probable que haya un error de login — descartamos las credenciales.
+    // Heurística: si 10 segundos después del submit seguimos en la misma URL,
+    // es probable que haya un error → descartamos las credenciales.
     if (credDiscardTimer) clearTimeout(credDiscardTimer);
     credDiscardTimer = setTimeout(() => {
       detectedCreds = null;
       credDiscardTimer = null;
-    }, 4000);
+    }, 10000);
   },
   true,
 );
 
-window.addEventListener('beforeunload', () => {
-  if (!detectedCreds) return;
-  if (credDiscardTimer) {
-    clearTimeout(credDiscardTimer);
-    credDiscardTimer = null;
-  }
-  // Navigation away after submit = probable successful login
-  ipcRenderer.send('vault:credentials-detected', detectedCreds);
-  detectedCreds = null;
-});
+// Full-page navigation (traditional sites)
+window.addEventListener('beforeunload', flushDetectedCreds);
+
+// SPA client-side navigation: history.pushState doesn't fire beforeunload.
+// We inject into the main world so the patch runs in the page's own JS context
+// and relay the event back via a CustomEvent on the shared document.
+const PUSHSTATE_HOOK = `(function(){
+  if(window.__VELA_PUSHSTATE_HOOKED__)return;
+  window.__VELA_PUSHSTATE_HOOKED__=true;
+  var orig=history.pushState.bind(history);
+  history.pushState=function(){
+    document.dispatchEvent(new CustomEvent('__vela_pushstate__'));
+    return orig.apply(history,arguments);
+  };
+})()`;
+
+void webFrame.executeJavaScript(PUSHSTATE_HOOK).catch(() => { });
+
+document.addEventListener('__vela_pushstate__', flushDetectedCreds);
 
 // ─── WCV Mouse Gestures ───────────────────────────────────────────────────────
 // Relays right-button drag events to GestureRecognizer in main (no visual trail).
@@ -495,7 +519,7 @@ const PUSH_PROXY_HOOK = `(function(){
   };
 })()`;
 
-void webFrame.executeJavaScript(PUSH_PROXY_HOOK).catch(() => {});
+void webFrame.executeJavaScript(PUSH_PROXY_HOOK).catch(() => { });
 
 // ─── Analytics Debugger — dataLayer + GA4 POST body monitoring ───────────────
 // Usamos webFrame.executeJavaScript() en lugar de <script> tag porque:
@@ -584,7 +608,7 @@ const DL_HOOK = `(function(){
 
 // webFrame.executeJavaScript corre en el main world y bypasa CSP de la página.
 // Es async pero GTM tarda más (descarga de red) → llegamos antes que sus eventos.
-void webFrame.executeJavaScript(DL_HOOK).catch(() => {});
+void webFrame.executeJavaScript(DL_HOOK).catch(() => { });
 
 // Los listeners en document cruzan el contextIsolation boundary (document es compartido)
 document.addEventListener(DL_EV, (e) => {
