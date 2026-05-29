@@ -69,6 +69,10 @@ module.exports = {
 
   asar: true,
 
+  asarUnpack: [
+    '**/node_modules/electron-chrome-extensions/**',
+  ],
+
   mac: {
     target: [
       { target: 'dmg', arch: ['x64', 'arm64'] },
@@ -95,10 +99,10 @@ module.exports = {
     // Activar cuando se tenga certificado OV/EV Code Signing.
     ...(process.env.WIN_CERT_PATH
       ? {
-          certificateFile: process.env.WIN_CERT_PATH,
-          certificatePassword: process.env.WIN_CERT_PASSWORD,
-          signingHashAlgorithms: ['sha256'],
-        }
+        certificateFile: process.env.WIN_CERT_PATH,
+        certificatePassword: process.env.WIN_CERT_PASSWORD,
+        signingHashAlgorithms: ['sha256'],
+      }
       : {}),
   },
 
