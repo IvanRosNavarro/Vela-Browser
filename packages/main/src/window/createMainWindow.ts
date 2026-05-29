@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { release } from 'node:os';
 import { platform } from 'node:process';
 import { app, BrowserWindow } from 'electron';
@@ -81,12 +82,17 @@ export function createMainWindow(initState?: WindowInitState): BrowserWindow {
   const isDev = !app.isPackaged;
   const cspHeader = buildCspHeader(isDev);
 
+  // Prefijo file:// del paquete de la app (dentro del ASAR en producción, repo en dev).
+  // Se usa para acotar la CSP solo a los recursos del bundle, excluyendo archivos
+  // en userData (p.ej. vela-ctxmenu.html) que tienen scripts inline y no son externos.
+  const appFilePrefix = pathToFileURL(app.getAppPath()).href + '/';
+
   // Aplica CSP y cabeceras de seguridad a todos los recursos que carga la shell.
   // Los WCV de las pestañas usan sesiones particionadas distintas y no se ven afectados.
   window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const isVelaResource =
       details.url.startsWith('vela://') ||
-      details.url.startsWith('file://') ||
+      details.url.startsWith(appFilePrefix) ||
       (isDev && details.url.startsWith('http://localhost'));
 
     if (!isVelaResource) {
