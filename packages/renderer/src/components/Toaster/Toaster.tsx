@@ -1,4 +1,5 @@
 import { useToastStore, type Toast } from '../../stores/toastStore';
+import { useUiStore, SIDEBAR_WIDTH_COMPACT } from '../../stores/uiStore';
 
 const VARIANT_STYLES: Record<Toast['variant'], React.CSSProperties> = {
   info: {
@@ -26,10 +27,21 @@ const VARIANT_STYLES: Record<Toast['variant'], React.CSSProperties> = {
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
+  const sidebarMode = useUiStore((s) => s.sidebarMode);
+  const sidebarWidthNormal = useUiStore((s) => s.sidebarWidthNormal);
+
   if (toasts.length === 0) return null;
+
+  // El WCV (WebContentsView) es una capa nativa que tapa todo el HTML del área
+  // de contenido (x ≥ sidebarWidth). Los toasts deben quedar dentro del sidebar
+  // (área HTML segura, a la izquierda del WCV).
+  const safeWidth = sidebarMode === 'compact' ? SIDEBAR_WIDTH_COMPACT : sidebarWidthNormal;
+  const maxWidth = Math.max(80, safeWidth - 16);
+
   return (
     <div
-      className="pointer-events-none fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
+      className="pointer-events-none fixed bottom-4 z-[100] flex flex-col gap-2"
+      style={{ left: 8, maxWidth }}
       role="status"
       aria-live="polite"
     >
