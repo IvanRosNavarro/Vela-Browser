@@ -267,7 +267,8 @@ export function App() {
 
   if (error) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center text-sm text-red-400">
+      <div className="flex h-screen w-screen items-center justify-center text-sm text-red-400"
+        style={{ background: '#0e0f12' }}>
         Error al inicializar: {error.message}
       </div>
     );
@@ -275,7 +276,8 @@ export function App() {
 
   if (!ready) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center text-sm text-[var(--vela-fg-muted)]">
+      <div className="flex h-screen w-screen items-center justify-center text-sm text-[var(--vela-fg-muted)]"
+        style={{ background: '#0e0f12' }}>
         Cargando…
       </div>
     );
