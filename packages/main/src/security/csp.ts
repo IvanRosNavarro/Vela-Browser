@@ -14,6 +14,7 @@ const DEV_CSP: Record<string, string[]> = {
   'connect-src': [
     "'self'",
     'ws://localhost:*',
+    'ws://cert-error',  // Chromium reporta conexiones WS fallidas (ej. HMR al reiniciar Vite) como este host
     'http://localhost:*',
     'https://api.anthropic.com',  // Fase 5 (stub)
   ],
