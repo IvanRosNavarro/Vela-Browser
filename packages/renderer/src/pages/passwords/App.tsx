@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { VaultEntry, VaultEntrySummary } from '@vela/shared';
+import type { VaultEntry, VaultEntrySummary, VaultSaveInput } from '@vela/shared';
 import { PasswordsList } from './components/PasswordsList';
 import { PasswordDetail } from './components/PasswordDetail';
 import { PasswordGenerator } from './components/PasswordGenerator';
+import { NewEntryForm } from './components/NewEntryForm';
 import { SecurityAudit } from './components/SecurityAudit';
 import { FolderSidebar } from './components/FolderSidebar';
 
@@ -17,6 +18,7 @@ export function App() {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('passwords');
   const [showGenerator, setShowGenerator] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   const loadEntries = useCallback(async () => {
     const res = search
@@ -57,6 +59,15 @@ export function App() {
     if (res.ok) {
       setSelectedEntry(res.data);
       void loadEntries();
+    }
+  }, [loadEntries]);
+
+  const handleCreate = useCallback(async (input: VaultSaveInput) => {
+    const res = await window.api.vault.save(input);
+    if (res.ok) {
+      setIsCreatingNew(false);
+      await loadEntries();
+      setSelectedId(res.data.id);
     }
   }, [loadEntries]);
 
@@ -116,6 +127,13 @@ export function App() {
               />
               <button
                 type="button"
+                onClick={() => { setIsCreatingNew(true); setSelectedId(null); setShowGenerator(false); }}
+                style={{ ...toolbarBtnStyle, background: 'var(--vela-accent)', color: '#fff', border: 'none', fontWeight: 500 }}
+              >
+                + Nueva contraseña
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowGenerator(!showGenerator)}
                 title="Generador de contraseñas"
                 style={toolbarBtnStyle}
@@ -141,24 +159,34 @@ export function App() {
 
               {/* Detail + Generator */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--vela-border)', minWidth: 0 }}>
-                {showGenerator && (
-                  <PasswordGenerator onUsePassword={(pwd) => {
-                    if (selectedEntry) void handleUpdate(selectedEntry.id, { password: pwd });
-                    setShowGenerator(false);
-                  }} />
-                )}
-                {selectedEntry ? (
-                  <PasswordDetail
-                    entry={selectedEntry}
-                    onUpdate={handleUpdate}
-                    onDelete={handleDelete}
+                {isCreatingNew ? (
+                  <NewEntryForm
+                    folders={folders}
+                    onCreate={handleCreate}
+                    onCancel={() => setIsCreatingNew(false)}
                   />
                 ) : (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <p style={{ color: 'var(--vela-fg-muted)', fontSize: 13 }}>
-                      Selecciona una entrada para ver los detalles
-                    </p>
-                  </div>
+                  <>
+                    {showGenerator && (
+                      <PasswordGenerator onUsePassword={(pwd) => {
+                        if (selectedEntry) void handleUpdate(selectedEntry.id, { password: pwd });
+                        setShowGenerator(false);
+                      }} />
+                    )}
+                    {selectedEntry ? (
+                      <PasswordDetail
+                        entry={selectedEntry}
+                        onUpdate={handleUpdate}
+                        onDelete={handleDelete}
+                      />
+                    ) : (
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <p style={{ color: 'var(--vela-fg-muted)', fontSize: 13 }}>
+                          Selecciona una entrada para ver los detalles
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
