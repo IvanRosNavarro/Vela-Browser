@@ -8,16 +8,16 @@ interface ErrorBoundaryState { error: Error | null }
 class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static override getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     // eslint-disable-next-line no-console
     console.error('[Vela] Error de renderizado:', error, info.componentStack);
   }
 
-  render() {
+  override render() {
     if (this.state.error) {
       return (
         <div style={{
