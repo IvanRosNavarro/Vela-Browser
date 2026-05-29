@@ -6,9 +6,11 @@ import './index.css';
 interface ErrorBoundaryState { error: Error | null }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null };
+  // state está en Component<P,S> → override requerido
+  override state: ErrorBoundaryState = { error: null };
 
-  static override getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  // getDerivedStateFromError es de StaticLifecycle (interfaz), no de la clase → sin override
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
 
@@ -17,6 +19,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
     console.error('[Vela] Error de renderizado:', error, info.componentStack);
   }
 
+  // render está declarado en la clase Component → override requerido
   override render() {
     if (this.state.error) {
       return (
