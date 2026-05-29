@@ -176,6 +176,10 @@ const api: PreloadApi = {
     download: () => call(IPC_CHANNELS.UPDATE_DOWNLOAD),
     quitAndInstall: () => call(IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL),
   },
+  defaultBrowser: {
+    getStatus: () => call(IPC_CHANNELS.DEFAULT_BROWSER_GET_STATUS),
+    set: () => call(IPC_CHANNELS.DEFAULT_BROWSER_SET),
+  },
   theme: {
     exportFile: (payload) => call(IPC_CHANNELS.THEME_EXPORT_FILE, payload),
   },

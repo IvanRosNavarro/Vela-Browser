@@ -738,6 +738,7 @@ export interface PreloadApi {
   findBar: FindBarApi;
   notifications: NotificationsApi;
   push: PushSubscriptionsApi;
+  defaultBrowser: DefaultBrowserApi;
   on<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): () => void;
   off<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): void;
 }
@@ -922,4 +923,9 @@ export interface PushSubscriptionsApi {
   unsubscribe(input: { origin: string }): Promise<IpcResponse<void>>;
   unsubscribeAll(): Promise<IpcResponse<void>>;
   getSubscription(input: { origin: string }): Promise<IpcResponse<PushSubscriptionItem | null>>;
+}
+
+export interface DefaultBrowserApi {
+  getStatus(): Promise<IpcResponse<{ isDefault: boolean }>>;
+  set(): Promise<IpcResponse<{ requested: boolean }>>;
 }
