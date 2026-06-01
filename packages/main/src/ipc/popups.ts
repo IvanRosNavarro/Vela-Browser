@@ -736,7 +736,6 @@ export function registerPopupHandlers(ctx: IpcContext): void {
 
         const { anchorRect } = payload as {
           anchorRect: { left: number; bottom: number };
-          itemCount: number;
         };
 
         const { profileId, repos } = getFrameContext(event, ctx);
@@ -744,15 +743,10 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         const POPUP_WIDTH = 380;
         const MAX_HEIGHT = 460;
 
-        const pos = parentWin.getPosition();
-        const { x, y } = clampToDisplay(
-          pos[0]! + Math.round(anchorRect.left),
-          pos[1]! + Math.round(anchorRect.bottom) + 4,
-          POPUP_WIDTH, MAX_HEIGHT,
-        );
-
-        // Start hidden with generous height; resize to measured content before showing
-        const popup = createPopupWindow({ width: POPUP_WIDTH, height: MAX_HEIGHT, x, y, ...(glass ? { glassmorphism: glass } : {}) });
+        // Create hidden at height=10 so content overflows → scrollHeight = actual content height.
+        // documentElement.scrollHeight = max(viewport, content), so starting at height=10 ensures
+        // scrollHeight correctly reports the real content height, not the initial window height.
+        const popup = createPopupWindow({ width: POPUP_WIDTH, height: 10, x: 0, y: 0, ...(glass ? { glassmorphism: glass } : {}) });
         wirePopupLifecycle(popup, { registry: downloadPopups, parentWindowId, profileId, ctx });
 
         const pageUrl = new URL('vela://download-popup');
@@ -761,11 +755,19 @@ export function registerPopupHandlers(ctx: IpcContext): void {
 
         await popup.loadURL(pageUrl.toString());
 
-        // Double rAF ensures React has committed before measuring scroll height
-        const measuredHeight = await popup.webContents.executeJavaScript(
+        // Double rAF ensures React has fully committed before measuring.
+        // body { margin: 0 } is set in the page's index.html so no margin offset.
+        const contentH = await popup.webContents.executeJavaScript(
           'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(document.documentElement.scrollHeight))))',
         ) as number;
-        const finalHeight = Math.min(MAX_HEIGHT, Math.max(160, Math.round(measuredHeight)));
+        const finalHeight = Math.min(MAX_HEIGHT, Math.max(160, Math.round(contentH)));
+
+        const pos = parentWin.getPosition();
+        const { x, y } = clampToDisplay(
+          pos[0]! + Math.round(anchorRect.left),
+          pos[1]! + Math.round(anchorRect.bottom) + 4,
+          POPUP_WIDTH, finalHeight,
+        );
         popup.setBounds({ x, y, width: POPUP_WIDTH, height: finalHeight });
         popup.show();
 

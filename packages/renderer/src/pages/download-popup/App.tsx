@@ -73,10 +73,14 @@ const btnStyle: CSSProperties = {
 
 function DownloadRow({ item, onRefresh }: { item: DownloadItem; onRefresh: () => void }) {
   const isActive = item.state === 'progressing';
+  const isCompleted = item.state === 'completed';
   const pct = item.totalBytes > 0 ? Math.round((item.receivedBytes / item.totalBytes) * 100) : null;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px', borderRadius: 6 }}>
+    <div
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px', borderRadius: 6, cursor: isCompleted ? 'pointer' : 'default' }}
+      onClick={isCompleted ? () => void window.api.downloads.openFile(item.savePath) : undefined}
+    >
       <div style={{ flexShrink: 0, color: 'var(--vela-fg-muted, rgba(255,255,255,0.4))', paddingTop: 2 }}>
         <IcoFileDownload />
       </div>
@@ -132,7 +136,7 @@ function DownloadRow({ item, onRefresh }: { item: DownloadItem; onRefresh: () =>
             <button style={btnStyle} title="Abrir carpeta"
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--vela-hover, rgba(255,255,255,0.08))'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-              onClick={() => void window.api.downloads.showInFolder(item.savePath)}>
+              onClick={(e) => { e.stopPropagation(); void window.api.downloads.showInFolder(item.savePath); }}>
               <IcoFolder />
             </button>
           </div>
@@ -186,8 +190,6 @@ export function App() {
 
   return (
     <div style={{
-      width: '100%',
-      height: '100%',
       background: 'var(--vela-bg-surface, #1c1f26)',
       border: '1px solid var(--vela-border, rgba(255,255,255,0.09))',
       borderRadius: 10,
@@ -220,7 +222,7 @@ export function App() {
           Sin descargas recientes
         </div>
       ) : (
-        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+        <div style={{ maxHeight: 320, overflowY: 'auto', padding: '4px 0' }}>
           {visible.map((item) => (
             <DownloadRow key={item.id} item={item} onRefresh={refresh} />
           ))}
