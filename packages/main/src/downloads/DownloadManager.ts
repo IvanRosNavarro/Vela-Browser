@@ -25,17 +25,14 @@ export class DownloadManager {
     session.on('will-download', (_event, item) => {
       const id = generateId();
 
-      const defaultSavePath = path.join(
-        this.lastDownloadDir,
-        item.getFilename(),
-      );
-      item.setSavePath(defaultSavePath);
+      // Don't call setSavePath so Electron shows the OS "Save As" dialog.
+      // The user can rename the file there; we update filename/savePath once confirmed.
 
       const dl: DlItem = {
         id,
         filename: item.getFilename(),
         url: item.getURL(),
-        savePath: defaultSavePath,
+        savePath: '',
         totalBytes: item.getTotalBytes(),
         receivedBytes: 0,
         state: 'progressing',
@@ -56,6 +53,12 @@ export class DownloadManager {
         d.totalBytes = item.getTotalBytes();
         d.paused = item.isPaused();
         d.state = state === 'interrupted' ? 'interrupted' : 'progressing';
+        // After the dialog is confirmed getSavePath() returns the user's chosen path.
+        const sp = item.getSavePath();
+        if (sp) {
+          d.savePath = sp;
+          d.filename = path.basename(sp);
+        }
         this.emit();
       });
 
@@ -66,8 +69,12 @@ export class DownloadManager {
         d.receivedBytes = item.getReceivedBytes();
         d.totalBytes = item.getTotalBytes();
         d.completedAt = Date.now();
-        d.savePath = item.getSavePath();
-        if (state === 'completed') {
+        const sp = item.getSavePath();
+        if (sp) {
+          d.savePath = sp;
+          d.filename = path.basename(sp);
+        }
+        if (state === 'completed' && d.savePath) {
           this.lastDownloadDir = path.dirname(d.savePath);
         }
         this.electronItems.delete(id);

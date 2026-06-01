@@ -498,15 +498,7 @@ export class ContextMenuPopup {
         break;
 
       case 'image:save': {
-        let defaultName = 'imagen';
-        try {
-          defaultName = path.basename(new URL(action.url as string).pathname) || 'imagen';
-        } catch { /* URL malformada */ }
-        const { filePath, canceled } = await dialog.showSaveDialog(
-          parentWin as BrowserWindow,
-          { defaultPath: defaultName },
-        );
-        if (!canceled && filePath) wc?.downloadURL(action.url as string);
+        wc?.downloadURL(action.url as string);
         break;
       }
 

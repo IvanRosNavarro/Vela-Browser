@@ -42,15 +42,7 @@ export function registerContextMenuHandlers(ctx: IpcContext): void {
             break;
 
           case 'image:save': {
-            let defaultName = 'imagen';
-            try {
-              defaultName = path.basename(new URL(action.url).pathname) || 'imagen';
-            } catch { /* URL malformada */ }
-            const { filePath, canceled } = await dialog.showSaveDialog({ defaultPath: defaultName });
-            if (!canceled && filePath) {
-              // TODO(deuda): usar session.once('will-download') para guardar en filePath.
-              wc?.downloadURL(action.url);
-            }
+            wc?.downloadURL(action.url);
             break;
           }
 
