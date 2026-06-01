@@ -56,6 +56,20 @@ app.userAgentFallback = app.userAgentFallback
   .replace(/ Electron\/[\d.]+/, '')
   .replace(new RegExp(` ${app.getName()}\\/[\\d.]+`, 'i'), '');
 
+// Sin este lock pueden arrancar dos procesos Electron simultáneamente,
+// lo que provoca colisiones de caché (Access Denied en Windows) y rompe
+// la coordinación multi-ventana, que requiere un único proceso.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+// Cuando el usuario lanza el ejecutable mientras ya hay una instancia viva,
+// el SO señaliza este proceso vía second-instance. Abrimos una nueva ventana
+// coordinada en lugar de arrancar un segundo proceso.
+app.on('second-instance', () => {
+  void openStartupWindow();
+});
+
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
 
 const isDev = !app.isPackaged;
