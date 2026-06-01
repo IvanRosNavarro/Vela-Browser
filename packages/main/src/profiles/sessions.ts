@@ -56,6 +56,8 @@ export async function configureSessionDefaults(
   s.setPermissionCheckHandler((wc, permission) => {
     const p = permission as string;
     if (p === 'periodicBackgroundSync') return true;
+    if (p === 'backgroundSync') return true;
+    if (p === 'persistent-storage') return true;
     if (p === 'notifications' || p === 'push') {
       if (!notificationManager || !wc) return true;
       const origin = safeOrigin(wc.getURL());
@@ -74,7 +76,7 @@ export async function configureSessionDefaults(
 
   s.setPermissionRequestHandler((wc, permission, callback) => {
     const p = permission as string;
-    if (p === 'periodicBackgroundSync') {
+    if (p === 'periodicBackgroundSync' || p === 'backgroundSync') {
       callback(true);
       return;
     }
