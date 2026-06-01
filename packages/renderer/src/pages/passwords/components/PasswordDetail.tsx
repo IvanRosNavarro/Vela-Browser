@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { VaultEntry } from '@vela/shared';
 import { useRuntimeStore } from '../../../stores/runtimeStore';
+import { writeToClipboard } from '../../../lib/clipboard';
 
 interface Props {
   entry: VaultEntry;
@@ -37,10 +38,10 @@ export function PasswordDetail({ entry, onUpdate, onDelete }: Props) {
   }, [entry.id, username, password, notes, folder, onUpdate]);
 
   const handleCopyPassword = useCallback(async () => {
-    await navigator.clipboard.writeText(entry.password);
+    await writeToClipboard(entry.password);
     setCopyMsg('¡Copiado!');
     setTimeout(() => setCopyMsg(''), 2000);
-    setTimeout(() => { void navigator.clipboard.writeText(''); }, 30_000);
+    setTimeout(() => { void writeToClipboard(''); }, 30_000);
   }, [entry.password]);
 
   const handleOpenAndFill = useCallback(async () => {

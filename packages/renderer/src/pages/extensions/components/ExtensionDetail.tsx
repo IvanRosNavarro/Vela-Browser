@@ -1,6 +1,7 @@
 import { useState, useCallback, type CSSProperties } from 'react';
 import type { InstalledExtension } from '@vela/shared';
 import { X, Globe, Puzzle, Copy, ExternalLink, Settings2, Trash2, Pin, Shield } from 'lucide-react';
+import { writeToClipboard } from '../../../lib/clipboard';
 
 interface Props {
   extension: InstalledExtension;
@@ -100,7 +101,7 @@ export function ExtensionDetail({ extension, onClose, onUninstall, onOpenOptions
   }, [secureToggling, onSetSecureAllowed, allowedInSecureTabs]);
 
   const handleCopyId = useCallback(() => {
-    void navigator.clipboard.writeText(extension.id);
+    void writeToClipboard(extension.id);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [extension.id]);

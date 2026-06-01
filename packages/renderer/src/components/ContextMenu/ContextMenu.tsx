@@ -5,6 +5,7 @@ import { useContextMenuStore } from '../../stores/contextMenuStore';
 import { useOverlayStore } from '../../stores/overlayStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import type { ContextMenuExecAction } from '@vela/shared';
+import { writeToClipboard } from '../../lib/clipboard';
 
 const MENU_WIDTH = 272;
 
@@ -177,7 +178,7 @@ export function ContextMenu() {
 
   const copyText = (text: string) => {
     hide();
-    void navigator.clipboard.writeText(text);
+    void writeToClipboard(text);
   };
 
   const searchSelection = () => {

@@ -506,6 +506,9 @@ const api: PreloadApi = {
     unsubscribeAll: () => call(IPC_CHANNELS.PUSH_UNSUBSCRIBE_ALL),
     getSubscription: (input) => call(IPC_CHANNELS.PUSH_GET_SUBSCRIPTION, input),
   },
+  clipboard: {
+    writeText: (text: string) => call(IPC_CHANNELS.CLIPBOARD_WRITE_TEXT, { text }),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

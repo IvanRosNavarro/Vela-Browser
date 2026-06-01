@@ -739,8 +739,13 @@ export interface PreloadApi {
   notifications: NotificationsApi;
   push: PushSubscriptionsApi;
   defaultBrowser: DefaultBrowserApi;
+  clipboard: ClipboardApi;
   on<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): () => void;
   off<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): void;
+}
+
+export interface ClipboardApi {
+  writeText(text: string): Promise<IpcResponse<void>>;
 }
 
 export interface UserScriptsApi {

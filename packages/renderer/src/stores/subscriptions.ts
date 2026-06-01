@@ -11,6 +11,7 @@ import { useAddressBarStore } from './addressBarStore';
 import { useProfilesStore } from './profilesStore';
 import { useProfileModalStore } from './profileModalStore';
 import { toast } from './toastStore';
+import { writeToClipboard } from '../lib/clipboard';
 import { useReaderStore } from './readerStore';
 import { useDeviceEmulationStore } from './deviceEmulationStore';
 import { usePageFeatureStore } from './pageFeatureStore';
@@ -73,7 +74,7 @@ function handleRendererAction(payload: CommandRendererActionPayload): void {
       const nodes = nodesByWorkspace[activeWorkspaceId] ?? [];
       const node = nodes.find((n) => n.id === activeTabId);
       if (!node || node.kind !== 'tab') return;
-      void navigator.clipboard.writeText(node.url).then(() => {
+      void writeToClipboard(node.url).then(() => {
         toast('URL copiada', 'info');
       }).catch(() => {
         toast('No se pudo copiar la URL', 'error');
