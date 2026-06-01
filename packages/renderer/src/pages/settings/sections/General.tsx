@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, CheckCircle2 } from 'lucide-react';
+import { IPC_EVENTS } from '@vela/shared';
 import type { useSettings } from '../lib/useSettings';
 import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
@@ -32,6 +33,27 @@ export function General({ settings }: Props) {
     });
   }, []);
 
+  useEffect(() => {
+    const offAvailable = window.api.on(IPC_EVENTS.UPDATE_AVAILABLE, ({ version }) => {
+      setUpdateMsg(`Nueva versión v${version} disponible — descargando…`);
+      void window.api.update.download();
+    });
+    const offNotAvailable = window.api.on(IPC_EVENTS.UPDATE_NOT_AVAILABLE, () => {
+      setUpdateMsg('Vela está al día.');
+    });
+    const offProgress = window.api.on(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, ({ percent }) => {
+      setUpdateMsg(`Descargando… ${percent}%`);
+    });
+    const offDownloaded = window.api.on(IPC_EVENTS.UPDATE_DOWNLOADED, ({ version }) => {
+      setUpdateMsg(`v${version} lista — reinicia Vela para instalarla.`);
+    });
+    const offError = window.api.on(IPC_EVENTS.UPDATE_ERROR, ({ message }) => {
+      setUpdateMsg(`Error: ${message}`);
+      setCheckingUpdate(false);
+    });
+    return () => { offAvailable(); offNotAvailable(); offProgress(); offDownloaded(); offError(); };
+  }, []);
+
   async function setAsDefault() {
     setSettingDefault(true);
     try {
@@ -45,10 +67,10 @@ export function General({ settings }: Props) {
 
   async function checkNow() {
     setCheckingUpdate(true);
-    setUpdateMsg('');
+    setUpdateMsg('Comprobando…');
     try {
       const res = await window.api.update.checkNow();
-      setUpdateMsg(res.ok ? 'Comprobación iniciada.' : 'Error al comprobar.');
+      if (!res.ok) setUpdateMsg('Error al comprobar.');
     } catch {
       setUpdateMsg('Error al comprobar.');
     } finally {
