@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useSyncStore } from '../../../stores/syncStore';
 import { useSettings } from '../lib/useSettings';
 import type { DeviceInfo } from '@vela/shared';
+import { writeToClipboard } from '../../../lib/clipboard';
 
 export function Sync() {
   const { uiStep, hydrate } = useSyncStore();
@@ -534,7 +535,7 @@ function RecoveryCardModal({ password, onClose }: RecoveryCardProps) {
   const dateStr = new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
 
   function handleCopyPassword() {
-    void navigator.clipboard.writeText(password).then(() => {
+    void writeToClipboard(password).then(() => {
       setCopied(true);
       let count = 30;
       setCopyTimer(count);
@@ -544,7 +545,7 @@ function RecoveryCardModal({ password, onClose }: RecoveryCardProps) {
         if (count <= 0) {
           clearInterval(timerRef.current!);
           timerRef.current = null;
-          void navigator.clipboard.writeText('').catch(() => {});
+          void writeToClipboard('').catch(() => {});
           setCopied(false);
         }
       }, 1000);

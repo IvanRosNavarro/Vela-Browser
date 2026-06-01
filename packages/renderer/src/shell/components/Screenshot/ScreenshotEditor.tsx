@@ -20,6 +20,7 @@ import {
 } from 'react-konva';
 import { ScreenshotToolbar, type Tool } from './ScreenshotToolbar';
 import { toast } from '../../../stores/toastStore';
+import { writeToClipboard } from '../../../lib/clipboard';
 
 interface Annotation {
   id: string;
@@ -318,7 +319,7 @@ export function ScreenshotEditor({ dataUrl, onClose }: Props) {
     if (!url) return;
     const md = `![captura](${url})`;
     try {
-      await navigator.clipboard.writeText(md);
+      await writeToClipboard(md);
       toast('Markdown copiado', 'info');
     } catch {
       toast('Error al copiar', 'error');

@@ -405,6 +405,8 @@ export const IPC_CHANNELS = {
 
   DEFAULT_BROWSER_GET_STATUS: 'default-browser:get-status',
   DEFAULT_BROWSER_SET: 'default-browser:set',
+
+  CLIPBOARD_WRITE_TEXT: 'clipboard:write-text',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

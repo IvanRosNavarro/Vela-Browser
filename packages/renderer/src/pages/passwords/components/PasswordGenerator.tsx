@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { writeToClipboard } from '../../../lib/clipboard';
 
 interface Props {
   onUsePassword: (pwd: string) => void;
@@ -41,7 +42,7 @@ export function PasswordGenerator({ onUsePassword }: Props) {
   useEffect(() => { regenerate(); }, [regenerate]);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(password);
+    await writeToClipboard(password);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [password]);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { call } from '../../lib/ipc';
+import { writeToClipboard } from '../../lib/clipboard';
 import { useUrlBarStore } from '../../stores/urlBarStore';
 import { URLBAR_ICON_LABELS } from '@vela/shared';
 import { IconContextMenu } from './IconContextMenu';
@@ -171,11 +172,11 @@ export function CopyUrlButton({ url, editing }: CopyUrlButtonProps) {
   const showClean = stripTracking && hasTrackingParams(url);
 
   async function copyNormal(): Promise<void> {
-    await navigator.clipboard.writeText(url);
+    await writeToClipboard(url);
   }
 
   async function copyClean(): Promise<void> {
-    await navigator.clipboard.writeText(stripTrackingParams(url));
+    await writeToClipboard(stripTrackingParams(url));
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
