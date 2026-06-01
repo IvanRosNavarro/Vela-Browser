@@ -113,7 +113,7 @@ export async function configureSessionDefaults(
       });
       return;
     }
-    if (permission === 'persistent-storage') {
+    if (p === 'persistent-storage') {
       callback(true);
       return;
     }
