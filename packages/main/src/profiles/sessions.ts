@@ -111,6 +111,10 @@ export async function configureSessionDefaults(
       });
       return;
     }
+    if (permission === 'persistent-storage') {
+      callback(true);
+      return;
+    }
     if (DEFAULT_DENY_PERMISSIONS.has(permission)) {
       callback(false);
       return;

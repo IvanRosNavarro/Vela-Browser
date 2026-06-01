@@ -52,7 +52,9 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/[\d.]+/, '');
+app.userAgentFallback = app.userAgentFallback
+  .replace(/ Electron\/[\d.]+/, '')
+  .replace(new RegExp(` ${app.getName()}\\/[\\d.]+`, 'i'), '');
 
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
 
