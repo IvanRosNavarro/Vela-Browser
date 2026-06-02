@@ -1,4 +1,4 @@
-import { session, type Session } from 'electron';
+import { app, session, type Session } from 'electron';
 import { logger } from '../logger';
 import type { NotificationManager } from '../notifications/NotificationManager';
 
@@ -53,6 +53,35 @@ export async function configureSessionDefaults(
   profileId: string,
   notificationManager?: NotificationManager,
 ): Promise<void> {
+  s.setUserAgent(app.userAgentFallback);
+
+  // Sec-CH-UA lo genera Chromium con "Electron" aunque el UA string no lo lleve.
+  // Google OAuth compara ambos: si el UA dice "Chrome" pero Sec-CH-UA dice
+  // "Electron", detecta inconsistencia y bloquea el login.
+  // Solución: para accounts.google.com restaurar Electron al UA (consistente
+  // con Sec-CH-UA, y Google lo acepta sin problemas). Para el resto eliminar
+  // Sec-CH-UA para que WhatsApp y similares solo vean el UA string limpio.
+  const electronVersion = process.versions.electron ?? '42.0.0';
+  s.webRequest.onBeforeSendHeaders((details, callback) => {
+    const headers = { ...details.requestHeaders };
+    if (details.url.includes('accounts.google.com')) {
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase() === 'user-agent') {
+          headers[key] = `${headers[key] ?? ''} Electron/${electronVersion}`;
+          break;
+        }
+      }
+    } else {
+      for (const key of Object.keys(headers)) {
+        const lower = key.toLowerCase();
+        if (lower === 'sec-ch-ua' || lower === 'sec-ch-ua-full-version-list') {
+          delete headers[key];
+        }
+      }
+    }
+    callback({ requestHeaders: headers });
+  });
+
   s.setPermissionCheckHandler((wc, permission) => {
     const p = permission as string;
     if (p === 'periodicBackgroundSync') return true;

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {
+  app,
   BrowserWindow,
   WebContentsView,
   type Session,
@@ -1900,6 +1901,10 @@ export class TabManager {
     ensureVelaProtocolOnSession(view.webContents.session);
     ensurePreviewProtocolOnSession(view.webContents.session);
 
+    if (!isInternal) {
+      view.webContents.setUserAgent(app.userAgentFallback);
+    }
+
     state.window.contentView.addChildView(view);
     view.setBounds({ ...HIDDEN_BOUNDS });
     state.tabs.set(tab.id, view);
@@ -1964,9 +1969,19 @@ export class TabManager {
       // de vuelta al padre. Dejamos que Electron cree una BrowserWindow real.
       const hasExplicitSize = /\b(?:width|height)\s*=\s*\d+/i.test(features);
       if (disposition === 'new-window' || hasExplicitSize) {
-        // Sin overrideBrowserWindowOptions: la sesión particionada del perfil
-        // y los webPreferences de seguridad del WCV padre se heredan solos.
-        return { action: 'allow' };
+        // Especificar la partición explícitamente evita el bug de Electron donde
+        // los popups de WebContentsView no heredan la sesión del perfil y caen
+        // a la sesión por defecto (sin onBeforeSendHeaders ni UA override).
+        const partition = state.profileId
+          ? `persist:profile-${state.profileId}`
+          : undefined;
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            autoHideMenuBar: true,
+            ...(partition ? { webPreferences: { partition, contextIsolation: true, nodeIntegration: false, sandbox: true } } : {}),
+          },
+        };
       }
 
       // Resto (target="_blank", clic central, etc.) → nueva pestaña en Vela.
@@ -1983,6 +1998,12 @@ export class TabManager {
         }
       });
       return { action: 'deny' };
+    });
+
+    // Popups (OAuth, login externo): sin menú para aspecto minimalista.
+    // La lógica de UA para Google OAuth la gestiona onBeforeSendHeaders en sessions.ts.
+    wc.on('did-create-window', (childWin) => {
+      childWin.setMenuBarVisibility(false);
     });
 
     wc.on('dom-ready', () => {

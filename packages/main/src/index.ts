@@ -56,6 +56,10 @@ app.userAgentFallback = app.userAgentFallback
   .replace(/ Electron\/[\d.]+/, '')
   .replace(new RegExp(` ${app.getName()}\\/[\\d.]+`, 'i'), '');
 
+// Evita que navigator.webdriver sea true (señal que Google usa para detectar
+// navegadores automatizados/embebidos).
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+
 // Sin este lock pueden arrancar dos procesos Electron simultáneamente,
 // lo que provoca colisiones de caché (Access Denied en Windows) y rompe
 // la coordinación multi-ventana, que requiere un único proceso.
