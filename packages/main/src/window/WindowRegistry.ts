@@ -9,6 +9,8 @@ export interface WindowEntry {
   profileId: string;
   workspaceId: string | null;
   isPrimary: boolean;
+  /** Ventana blindada: efímera, sin historial ni persistencia. */
+  isBlinded?: boolean;
 }
 
 export interface WindowInfo {

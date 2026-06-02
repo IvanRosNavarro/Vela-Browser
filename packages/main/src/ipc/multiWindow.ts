@@ -10,6 +10,20 @@ import { windowRegistry } from '../window/WindowRegistry';
 
 export function registerMultiWindowHandlers(ctx: IpcContext): void {
 
+  // Abrir una ventana blindada (efímera, sin perfil persistente)
+  ipcMain.handle(
+    IPC_CHANNELS.WINDOW_OPEN_BLINDED,
+    async (event): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.WINDOW_OPEN_BLINDED);
+      try {
+        await ctx.profileWindowManager.openBlindedWindow();
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.WINDOW_OPEN_BLINDED);
+      }
+    },
+  );
+
   // Abrir una nueva ventana del mismo perfil
   ipcMain.handle(
     IPC_CHANNELS.WINDOW_NEW_SAME_PROFILE,

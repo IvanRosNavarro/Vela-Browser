@@ -630,6 +630,22 @@ export function registerCoreCommands(
     }),
   );
 
+  registry.register(
+    defineCommand({
+      id: 'window.openBlinded',
+      title: 'Nueva ventana blindada',
+      category: 'view',
+      defaultShortcut: 'Ctrl+Shift+B',
+      run: async () => {
+        try {
+          await ipc.profileWindowManager.openBlindedWindow();
+        } catch (err) {
+          ipc.logger.warn('[commands] window.openBlinded falló', err);
+        }
+      },
+    }),
+  );
+
   // ---------- profile ----------
 
   registry.register(

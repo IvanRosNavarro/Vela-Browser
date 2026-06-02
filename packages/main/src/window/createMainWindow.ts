@@ -37,12 +37,16 @@ const titleBarConfig = (() => {
 
 export interface WindowInitState {
   sidebarWidth?: number;
+  isBlinded?: boolean;
 }
 
 export function createMainWindow(initState?: WindowInitState): BrowserWindow {
   const useAcrylic = isAcrylicSupported();
 
-  const velaInit = { sidebarWidth: initState?.sidebarWidth ?? 240 };
+  const velaInit = {
+    sidebarWidth: initState?.sidebarWidth ?? 240,
+    isBlindedWindow: initState?.isBlinded ?? false,
+  };
   const additionalArguments = [`--vela-init=${JSON.stringify(velaInit)}`];
 
   const window = new BrowserWindow({
