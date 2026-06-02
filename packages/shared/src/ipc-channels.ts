@@ -348,6 +348,7 @@ export const IPC_CHANNELS = {
   SUGGESTIONS_POPUP_UPDATE: 'suggestions-popup:update',
   SUGGESTIONS_POPUP_CLOSE: 'suggestions-popup:close',
   SUGGESTIONS_POPUP_SELECT: 'suggestions-popup:select',
+  SUGGESTIONS_POPUP_GET_INITIAL_DATA: 'suggestions-popup:get-initial-data',
 
   WORKSPACE_DROPDOWN_OPEN: 'workspace-dropdown:open',
   WORKSPACE_DROPDOWN_CLOSE: 'workspace-dropdown:close',

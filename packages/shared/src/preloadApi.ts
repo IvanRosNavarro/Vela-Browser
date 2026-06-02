@@ -350,6 +350,7 @@ export interface SuggestionsPopupApi {
   update(input: { windowId: number; suggestions: ExtendedSuggestion[]; selectedIndex: number }): Promise<IpcResponse<void>>;
   close(input: { windowId: number }): Promise<IpcResponse<void>>;
   select(input: { suggestion: ExtendedSuggestion; newTab: boolean }): Promise<IpcResponse<void>>;
+  getInitialData(): Promise<{ suggestions: ExtendedSuggestion[]; selectedIndex: number } | null>;
 }
 
 export interface SearchEnginesApi {
