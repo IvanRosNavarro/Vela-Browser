@@ -1,18 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { IPC_EVENTS, type ExtendedSuggestion } from '@vela/shared';
 import { getGlassStyle } from '../../lib/popupGlass';
-
-const params = new URLSearchParams(window.location.search);
-
-function parseInitialData(raw: string | null): { suggestions: ExtendedSuggestion[]; selectedIndex: number } {
-  try {
-    const parsed = JSON.parse(raw ?? 'null') as { suggestions: ExtendedSuggestion[]; selectedIndex: number } | null;
-    return parsed ?? { suggestions: [], selectedIndex: -1 };
-  } catch {
-    return { suggestions: [], selectedIndex: -1 };
-  }
-}
-const initialData = parseInitialData(params.get('d'));
 
 function getDomain(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
@@ -212,8 +200,19 @@ function ResultRow({
 }
 
 export function App() {
-  const [suggestions, setSuggestions] = useState<ExtendedSuggestion[]>(initialData.suggestions);
-  const [selectedIndex, setSelectedIndex] = useState(initialData.selectedIndex);
+  const [suggestions, setSuggestions] = useState<ExtendedSuggestion[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  // Fetch initial data via IPC (avoids URL length limits from long history URLs).
+  // useLayoutEffect runs before did-finish-load, so main already has the data ready.
+  useLayoutEffect(() => {
+    void window.api.suggestionsPopup.getInitialData().then((data) => {
+      if (data) {
+        setSuggestions(data.suggestions);
+        setSelectedIndex(data.selectedIndex);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const unsub = window.api.on(IPC_EVENTS.SUGGESTIONS_POPUP_DATA, (payload) => {
@@ -231,7 +230,6 @@ export function App() {
 
   const containerStyle: React.CSSProperties = {
     width: '100%',
-    height: '100%',
     background: 'var(--vela-bg-surface)',
     border: '1px solid var(--vela-border)',
     borderRadius: 10,

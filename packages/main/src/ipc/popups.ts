@@ -25,16 +25,6 @@ function readGlass(repos: ReposWithSettings): GlassParams | null {
   };
 }
 
-function suggestionsHeight(suggestions: ExtendedSuggestion[]): number {
-  const hasCommands = suggestions.some((s) => s.type === 'command');
-  if (hasCommands) return Math.min(400, suggestions.length * 40 + 8);
-  const types = new Set(suggestions.map((s) => s.type));
-  let sections = 0;
-  if (types.has('open-tab')) sections++;
-  if (types.has('history')) sections++;
-  if (types.has('navigate') || types.has('search')) sections++;
-  return Math.min(480, suggestions.length * 40 + sections * 26 + 8);
-}
 
 const downloadPopups = new Map<number, BrowserWindow>();
 const tabPreviewPopups = new Map<number, BrowserWindow>();
@@ -50,6 +40,8 @@ const addNodeMenuPopups = new Map<number, BrowserWindow>();
 const notificationPermissionPopups = new Map<number, BrowserWindow>();
 // Reverse map: popupWindowId → parentWindowId (for suggestions:select routing)
 const suggestionsPopupToParent = new Map<number, number>();
+// Initial data stored in memory to avoid URL length limits with long history URLs
+const suggestionsInitialData = new Map<number, { suggestions: ExtendedSuggestion[]; selectedIndex: number }>();
 
 export function registerPopupHandlers(ctx: IpcContext): void {
   // ── security:open-popup ───────────────────────────────────────────────────
@@ -243,29 +235,36 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         const { profileId, repos } = getFrameContext(event, ctx);
         const glass = readGlass(repos);
         const POPUP_WIDTH = Math.round(anchorRect.width);
-        const POPUP_HEIGHT = suggestionsHeight(suggestions);
+        // Window is always full height; the renderer sizes itself via height:auto.
+        // Transparent areas are click-through, so no BrowserWindow resize is needed.
+        const POPUP_MAX_HEIGHT = 480;
 
         const pos = parentWin.getPosition();
         const { x, y } = clampToDisplay(
           pos[0]! + Math.round(anchorRect.left),
           pos[1]! + Math.round(anchorRect.bottom) + 4,
-          POPUP_WIDTH, POPUP_HEIGHT,
+          POPUP_WIDTH, POPUP_MAX_HEIGHT,
         );
 
         const popup = createPopupWindow({
-          width: POPUP_WIDTH, height: POPUP_HEIGHT, x, y,
+          width: POPUP_WIDTH, height: POPUP_MAX_HEIGHT, x, y,
           focusable: false, roundedCorners: false,
+          transparent: true,
+          backgroundColor: '#00000000',
           ...(glass ? { glassmorphism: glass } : {}),
         });
         wirePopupLifecycle(popup, { registry: suggestionsPopups, parentWindowId, profileId, ctx, closeOnBlur: false });
         suggestionsPopupToParent.set(popup.id, parentWindowId);
-        popup.on('closed', () => suggestionsPopupToParent.delete(popup.id));
+        popup.on('closed', () => {
+          suggestionsPopupToParent.delete(popup.id);
+          suggestionsInitialData.delete(parentWindowId);
+        });
+
+        // Store initial data in memory (URL params fail when history URLs are very long)
+        suggestionsInitialData.set(parentWindowId, { suggestions, selectedIndex });
 
         const pageUrl = new URL('vela://suggestions-popup');
         pageUrl.searchParams.set('windowId', String(parentWindowId));
-        // Initial data passed as URL param to avoid IPC race condition:
-        // did-finish-load fires before React effects register the listener.
-        pageUrl.searchParams.set('d', JSON.stringify({ suggestions, selectedIndex }));
         if (glass) applyGlassUrlParams(pageUrl, glass);
 
         await popup.loadURL(pageUrl.toString());
@@ -291,10 +290,6 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         };
         const popup = suggestionsPopups.get(windowId);
         if (!popup || popup.isDestroyed()) return { ok: true, data: undefined };
-
-        const newHeight = suggestionsHeight(suggestions);
-        const [, currentH] = popup.getSize();
-        if (currentH !== newHeight) popup.setSize(popup.getSize()[0]!, newHeight);
 
         popup.webContents.send(IPC_EVENTS.SUGGESTIONS_POPUP_DATA, { suggestions, selectedIndex });
         return { ok: true, data: undefined };
@@ -543,6 +538,18 @@ export function registerPopupHandlers(ctx: IpcContext): void {
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SUGGESTIONS_POPUP_SELECT);
       }
+    },
+  );
+
+  // ── suggestions-popup:get-initial-data ───────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.SUGGESTIONS_POPUP_GET_INITIAL_DATA,
+    (event): { suggestions: ExtendedSuggestion[]; selectedIndex: number } | null => {
+      const popupWin = BrowserWindow.fromWebContents(event.sender);
+      if (!popupWin) return null;
+      const parentWindowId = suggestionsPopupToParent.get(popupWin.id);
+      if (parentWindowId === undefined) return null;
+      return suggestionsInitialData.get(parentWindowId) ?? null;
     },
   );
 

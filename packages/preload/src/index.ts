@@ -216,6 +216,7 @@ const api: PreloadApi = {
     update: (input) => call(IPC_CHANNELS.SUGGESTIONS_POPUP_UPDATE, input),
     close: (input) => call(IPC_CHANNELS.SUGGESTIONS_POPUP_CLOSE, input),
     select: (input) => call(IPC_CHANNELS.SUGGESTIONS_POPUP_SELECT, input),
+    getInitialData: () => ipcRenderer.invoke(IPC_CHANNELS.SUGGESTIONS_POPUP_GET_INITIAL_DATA) as ReturnType<PreloadApi['suggestionsPopup']['getInitialData']>,
   },
   commands: {
     execute: (commandId, opts) => call(IPC_CHANNELS.COMMAND_EXECUTE, { commandId, ...opts }),
