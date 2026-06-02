@@ -4,8 +4,9 @@ const params = new URLSearchParams(window.location.search);
 const parentWindowId = parseInt(params.get('windowId') ?? '0', 10);
 const workspaceId = params.get('workspaceId') ?? '';
 const parentId = params.get('parentId') ?? null;
+const IS_BLINDED_WINDOW = window.api.init.isBlindedWindow;
 
-type Action = 'new-tab' | 'new-folder' | 'new-secure-tab';
+type Action = 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window';
 
 async function triggerAction(action: Action): Promise<void> {
   await window.api.addNodeMenu.action({ windowId: parentWindowId, action, workspaceId, parentId });
@@ -37,6 +38,12 @@ const btnStyle: React.CSSProperties = {
   color: 'var(--vela-fg, #e6e8ee)',
 };
 
+const sepStyle: React.CSSProperties = {
+  height: 1,
+  background: 'var(--vela-border, rgba(255,255,255,0.09))',
+  margin: '4px 0',
+};
+
 function MenuItem({ label, icon, accent, onClick }: {
   label: string;
   icon: string;
@@ -58,6 +65,25 @@ function MenuItem({ label, icon, accent, onClick }: {
 }
 
 export function App() {
+  if (IS_BLINDED_WINDOW) {
+    return (
+      <div style={containerStyle}>
+        <MenuItem
+          label="Nueva carpeta"
+          icon="ti-folder-plus"
+          onClick={() => void triggerAction('new-folder')}
+        />
+        <div style={sepStyle} />
+        <MenuItem
+          label="Nueva pestaña fantasma"
+          icon="ti-shield-lock"
+          accent
+          onClick={() => void triggerAction('new-secure-tab')}
+        />
+      </div>
+    );
+  }
+
   return (
     <div style={containerStyle}>
       <MenuItem
@@ -70,12 +96,18 @@ export function App() {
         icon="ti-folder-plus"
         onClick={() => void triggerAction('new-folder')}
       />
-      <div style={{ height: 1, background: 'var(--vela-border, rgba(255,255,255,0.09))', margin: '4px 0' }} />
+      <div style={sepStyle} />
       <MenuItem
-        label="Nueva pestaña blindada"
+        label="Nueva pestaña fantasma"
         icon="ti-shield-lock"
         accent
         onClick={() => void triggerAction('new-secure-tab')}
+      />
+      <MenuItem
+        label="Nueva ventana fantasma"
+        icon="ti-ghost-2"
+        accent
+        onClick={() => void triggerAction('new-blinded-window')}
       />
     </div>
   );

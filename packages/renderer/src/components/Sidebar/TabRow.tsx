@@ -283,9 +283,10 @@ export function TabRow({
       {
         type: 'normal',
         id: 'open-secure',
-        label: 'Abrir en pestaña blindada',
+        label: 'Abrir en pestaña fantasma',
         enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
       },
+      { type: 'normal', id: 'open-blinded-window', label: 'Nueva ventana fantasma' },
       { type: 'normal', id: 'delete', label: 'Eliminar' },
       ...discardSection,
     ];
@@ -346,6 +347,7 @@ export function TabRow({
           parentId: node.parentId,
         }),
       'open-secure': () => void window.api.tab.createSecure({ url: node.url }),
+      'open-blinded-window': () => void window.api.window.openBlindedWindow(),
       delete: () => void deleteNode({ id: node.id }),
       // Discard actions
       'discard-tab': () => void call(() => window.api.discard.discardTab({ tabId: node.id })),
@@ -541,7 +543,7 @@ export function TabRow({
                 WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 2rem), transparent 100%)',
               }}
             >
-              {node.isSecure ? `[Blindada] ${title}` : title}
+              {node.isSecure ? `[Fantasma] ${title}` : title}
             </span>
           )}
           {mediaSource && !renaming && (

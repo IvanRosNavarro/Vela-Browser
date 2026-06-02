@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog } from 'electron';
 import { IPC_EVENTS } from '@vela/shared';
+import { isBlindedProfile, BLINDED_PROFILE_MARKER } from './blindedProfileUtils';
 import type { Logger } from '../logger';
 import type { MainEventBus } from '../ipc/events';
 import type {
@@ -44,7 +45,7 @@ export interface ProfileWindowManagerCtx {
   tabManager: TabManager;
   events: MainEventBus;
   logger: Logger;
-  createWindow: (initState?: { sidebarWidth?: number }) => BrowserWindow;
+  createWindow: (initState?: { sidebarWidth?: number; isBlinded?: boolean }) => BrowserWindow;
   loadRenderer: (window: BrowserWindow) => void;
   onWindowOpened?: (window: BrowserWindow, profileId: string) => void;
 }
@@ -364,6 +365,142 @@ export class ProfileWindowManager {
         isPrimary: entry.isPrimary,
       };
     });
+  }
+
+  /**
+   * Abre una ventana blindada: todas sus pestañas son efímeras, sin historial
+   * ni persistencia. Usa el último perfil activo para infraestructura (extensiones,
+   * bloqueador, workspace), pero la ventana en sí no se guarda en window_state.
+   */
+  /** @deprecated Usar BLINDED_PROFILE_MARKER importado de blindedProfileUtils. */
+  static readonly BLINDED_PROFILE_MARKER = BLINDED_PROFILE_MARKER;
+
+  /** Elimina perfiles fantasma que no tienen ninguna ventana abierta. */
+  private async cleanupOrphanedBlindedProfiles(): Promise<void> {
+    const all = [
+      ...this.ctx.profileRepo.list(),
+      ...this.ctx.profileRepo.listArchived(),
+    ].filter(isBlindedProfile);
+
+    for (const p of all) {
+      const windows = this.windowsByProfile.get(p.id);
+      if (windows && windows.size > 0) continue; // todavía en uso
+      try {
+        await this.ctx.profileManager.deleteProfile(p.id);
+        this.ctx.logger.info(`[profile-window] perfil fantasma huérfano eliminado: ${p.id} (${p.name})`);
+      } catch (err) {
+        this.ctx.logger.warn(`[profile-window] deleteProfile falló para ${p.id}, forzando borrado del registro`, err);
+        try { this.ctx.profileRepo.delete(p.id); } catch { /* ignorar */ }
+      }
+    }
+  }
+
+  /** Devuelve el primer nombre disponible del tipo "Fantasma", "Fantasma 2", etc. */
+  private nextBlindedProfileName(): string {
+    const taken = new Set([
+      ...this.ctx.profileRepo.list().map((p) => p.name),
+      ...this.ctx.profileRepo.listArchived().map((p) => p.name),
+    ]);
+    if (!taken.has('Fantasma')) return 'Fantasma';
+    for (let i = 2; i <= 99; i++) {
+      const candidate = `Fantasma ${i}`;
+      if (!taken.has(candidate)) return candidate;
+    }
+    return `Fantasma ${Date.now()}`;
+  }
+
+  async openBlindedWindow(): Promise<BrowserWindow> {
+    // Perfil temporal de un solo uso: sesión vacía, sin extensiones, sin datos
+    // del perfil activo. Se borra completamente al cerrar la ventana.
+    const tempProfile = await this.ctx.profileManager.createProfile({
+      name: this.nextBlindedProfileName(),
+      icon: ProfileWindowManager.BLINDED_PROFILE_MARKER,
+    });
+    const tempProfileId = tempProfile.id;
+    await this.ctx.profileManager.openProfile(tempProfileId);
+
+    const repos = this.ctx.profileManager.getRepositories(tempProfileId);
+    const workspaceId = repos.workspaces.list()[0]?.id;
+    if (!workspaceId) throw new InvariantViolationError('openBlindedWindow: perfil temporal sin workspace');
+
+    // Heredar el ancho de sidebar del perfil activo para consistencia visual.
+    const sourceProfileId = this.ctx.appMetadata.get(LAST_ACTIVE_PROFILE_KEY)
+      ?? this.ctx.profileRepo.list().find((p) => p.id !== tempProfileId)?.id;
+    const sourceRepos = sourceProfileId
+      ? this.ctx.profileManager.getRepositories(sourceProfileId)
+      : null;
+    const rawWidth = sourceRepos?.settings.get('ui:sidebarWidth');
+    const sidebarWidth = rawWidth !== null && rawWidth !== undefined ? Number(rawWidth) : undefined;
+
+    const window = this.ctx.createWindow({ sidebarWidth, isBlinded: true });
+    const electronId = window.id;
+    const stableWindowId = generateId();
+
+    this.profileByWindow.set(electronId, tempProfileId);
+    this.stableIdByElectronId.set(electronId, stableWindowId);
+    this.getOrCreateWindowSet(tempProfileId).add(electronId);
+
+    try {
+      this.ctx.loadRenderer(window);
+      this.ctx.tabManager.markWindowAsBlinded(electronId);
+      this.ctx.tabManager.attachWindow(window, workspaceId, tempProfileId);
+      await this.ctx.tabManager.createTab(electronId, {
+        workspaceId,
+        url: 'vela://newtab',
+        parentId: null,
+        activate: true,
+      });
+
+      windowRegistry.register({
+        windowId: stableWindowId,
+        electronId,
+        browserWindow: window,
+        profileId: tempProfileId,
+        workspaceId,
+        isPrimary: false,
+        isBlinded: true,
+      });
+
+      window.once('closed', () => {
+        void this.handleWindowClosed(electronId).catch((err) => {
+          this.ctx.logger.error(
+            `[profile-window] handleWindowClosed (blinded) falló (window=${electronId})`,
+            err,
+          );
+        });
+        // Borrar el perfil temporal y limpiar cualquier otro huérfano fantasma.
+        void this.ctx.profileManager.deleteProfile(tempProfileId)
+          .catch((err) => {
+            this.ctx.logger.warn('[profile-window] deleteProfile (blinded) falló', err);
+          })
+          .finally(() => { void this.cleanupOrphanedBlindedProfiles(); });
+      });
+
+      if (this.ctx.onWindowOpened) {
+        try { this.ctx.onWindowOpened(window, tempProfileId); } catch (err) {
+          this.ctx.logger.warn('[profile-window] onWindowOpened (blinded) lanzó', err);
+        }
+      }
+
+      this.ctx.logger.info(
+        `[profile-window] ventana fantasma abierta window=${electronId} (stable=${stableWindowId}) profile=${tempProfileId}`,
+      );
+
+      this.ctx.events.emit(IPC_EVENTS.ACTIVE_PROFILE_CHANGED, { windowId: electronId, profileId: tempProfileId });
+
+      return window;
+    } catch (err) {
+      this.profileByWindow.delete(electronId);
+      this.stableIdByElectronId.delete(electronId);
+      const set = this.windowsByProfile.get(tempProfileId);
+      set?.delete(electronId);
+      windowRegistry.unregister(stableWindowId);
+      void this.ctx.profileManager.deleteProfile(tempProfileId).catch(() => { /* ignorar */ });
+      if (!window.isDestroyed()) {
+        try { window.destroy(); } catch { /* ignorar */ }
+      }
+      throw err;
+    }
   }
 
   async switchWindowProfile(

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { FileText, Lock, ShieldAlert } from 'lucide-react';
+import { FileText, ShieldAlert } from 'lucide-react';
 import type { ParsedScheme } from './url';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import velaIcon from '../../assets/vela-icon.png';
@@ -7,6 +7,16 @@ import velaIcon from '../../assets/vela-icon.png';
 interface SecurityIndicatorProps {
   security: ParsedScheme;
   rawUrl: string;
+}
+
+function GhostIcon({ color }: { color: string }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3a9 9 0 0 1 9 9v8l-2 -2l-2 2l-2 -2l-2 2l-2 -2l-2 2v-8a9 9 0 0 1 9 -9z" />
+      <circle cx="9" cy="13" r="1" fill={color} stroke="none" />
+      <circle cx="15" cy="13" r="1" fill={color} stroke="none" />
+    </svg>
+  );
 }
 
 export function SecurityIndicator({ security, rawUrl }: SecurityIndicatorProps) {
@@ -26,10 +36,12 @@ export function SecurityIndicator({ security, rawUrl }: SecurityIndicatorProps) 
 
   const { icon, label, color } = (() => {
     if (security.scheme === 'https') {
-      return { icon: <Lock size={13} />, label: 'Conexión segura', color: 'var(--vela-secure)' };
+      const c = 'var(--vela-secure)';
+      return { icon: <GhostIcon color={c} />, label: 'Conexión segura', color: c };
     }
     if (security.scheme === 'http') {
-      return { icon: <ShieldAlert size={13} />, label: 'No seguro', color: 'var(--vela-insecure)' };
+      const c = 'var(--vela-insecure)';
+      return { icon: <GhostIcon color={c} />, label: 'No seguro', color: c };
     }
     if (security.scheme === 'file') {
       return { icon: <FileText size={13} />, label: 'Archivo local', color: 'var(--vela-addressbar-fg-muted)' };

@@ -27,6 +27,8 @@ import { IPC_EVENTS } from '@vela/shared';
 import { GlobalSettings } from './settings';
 import { attachWebContextMenu } from './tabs/webContextMenu';
 import { GestureRecognizer } from './gestures/GestureRecognizer';
+import { buildJumpList, parseJumpListArgs } from './jumplist';
+import { isBlindedProfile } from './profiles/blindedProfileUtils';
 
 // Debe llamarse antes de app.whenReady — protocol.handle no funciona si el
 // esquema no está registrado como privilegiado de antemano.
@@ -70,8 +72,15 @@ if (!app.requestSingleInstanceLock()) {
 // Cuando el usuario lanza el ejecutable mientras ya hay una instancia viva,
 // el SO señaliza este proceso vía second-instance. Abrimos una nueva ventana
 // coordinada en lugar de arrancar un segundo proceso.
-app.on('second-instance', () => {
-  void openStartupWindow();
+app.on('second-instance', (_event, argv) => {
+  const args = parseJumpListArgs(argv);
+  if (args.privateWindow) {
+    void ipcCtx?.profileWindowManager.openBlindedWindow().catch((err: unknown) => {
+      logger.warn('[app] openBlindedWindow (second-instance) falló', err);
+    });
+  } else {
+    void openStartupWindow({ profileId: args.profileId });
+  }
 });
 
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
@@ -220,9 +229,9 @@ async function ensureBootstrapProfile(ctx: IpcContext): Promise<void> {
   await ctx.profileManager.createProfile({ name: 'Default' });
 }
 
-async function openStartupWindow(): Promise<BrowserWindow | null> {
+async function openStartupWindow(opts?: { profileId?: string }): Promise<BrowserWindow | null> {
   if (!ipcCtx) return null;
-  const profileId = pickStartupProfileId();
+  const profileId = opts?.profileId ?? pickStartupProfileId();
   if (!profileId) {
     logger.error('[app] no hay perfiles disponibles; abortando apertura de ventana');
     return null;
@@ -259,7 +268,9 @@ app.whenReady().then(async () => {
 
   ipcCtx = buildIpcContext({
     onTabAttached: (view: WebContentsView, win: BrowserWindow) => {
-      getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);
+      if (!ipcCtx?.tabManager.isBlindedWindow(win.id)) {
+        getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);
+      }
       if (ipcCtx) attachWebContextMenu(view.webContents, win, ipcCtx);
       if (ipcCtx) {
         attachShortcuts(
@@ -297,6 +308,26 @@ app.whenReady().then(async () => {
   await ipcCtx.profileManager.initialize();
   // Limpiar directorios residuales de tabs blindadas de sesiones anteriores.
   void ipcCtx.tabManager.cleanupSecureResidualDirs();
+  // Eliminar perfiles temporales de ventanas fantasma que quedaron huérfanos.
+  // Criterios: icon === '__blinded__' (nuevo) o name === '__blinded__' (legacy).
+  // Si deleteProfile falla (p.ej. archivo bloqueado), forzamos el borrado del
+  // registro de la BD para que no sigan apareciendo en el switcher.
+  await (async () => {
+    const allProfiles = [
+      ...ipcCtx!.repositories.profiles.list(),
+      ...ipcCtx!.repositories.profiles.listArchived(),
+    ];
+    const orphans = allProfiles.filter(isBlindedProfile);
+    for (const p of orphans) {
+      logger.info(`[app] eliminando perfil fantasma huérfano: ${p.id} (${p.name})`);
+      try {
+        await ipcCtx!.profileManager.deleteProfile(p.id);
+      } catch (err) {
+        logger.warn(`[app] deleteProfile falló para ${p.id}, forzando borrado del registro`, err);
+        try { ipcCtx!.repositories.profiles.delete(p.id); } catch { /* ignorar */ }
+      }
+    }
+  })();
   // La migración inicial de Fase 3 corre ANTES de registrar handlers IPC y
   // abrir cualquier ventana: ningún renderer puede pedir datos mientras
   // estamos copiando workspaces/tree_nodes a profile.db. Si falla, el
@@ -348,7 +379,27 @@ app.whenReady().then(async () => {
   );
 
   await ensureBootstrapProfile(ipcCtx);
-  await openStartupWindow();
+
+  // Procesar args de jump list en el arranque inicial (cuando Vela no estaba abierto).
+  const startupArgs = parseJumpListArgs(process.argv);
+  if (startupArgs.privateWindow) {
+    await ipcCtx.profileWindowManager.openBlindedWindow();
+  } else {
+    await openStartupWindow({ profileId: startupArgs.profileId });
+  }
+
+  // Jump list de Windows: categoría de perfiles + tareas rápidas.
+  const refreshJumpList = (): void => {
+    if (!ipcCtx || process.platform !== 'win32') return;
+    try {
+      buildJumpList(ipcCtx.repositories.profiles.list());
+    } catch (err) {
+      logger.warn('[jumplist] error al actualizar jump list', err);
+    }
+  };
+
+  refreshJumpList();
+  ipcCtx.events.on(IPC_EVENTS.PROFILES_CHANGED, refreshJumpList);
 
   // Limpieza periódica de previews huérfanas (tabs cerradas cuyo .webp quedó
   // en disco tras un crash o error de ciclo de vida).

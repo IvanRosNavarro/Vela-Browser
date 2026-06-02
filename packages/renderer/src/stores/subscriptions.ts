@@ -275,7 +275,11 @@ export function initSubscriptions(): () => void {
   const offMediaChanged = window.api.on(
     IPC_EVENTS.MEDIA_CHANGED,
     (payload) => {
-      useMediaStore.getState().setSources(payload.sources);
+      const profileId = useRuntimeStore.getState().currentProfileId;
+      const sources = profileId
+        ? payload.sources.filter((s) => s.profileId === profileId)
+        : payload.sources;
+      useMediaStore.getState().setSources(sources);
     },
   );
 

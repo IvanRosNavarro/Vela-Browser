@@ -567,6 +567,7 @@ export function App() {
       anchorRect: { left: rect.left, bottom: rect.bottom },
       workspaceId: activeWsId,
       parentId: null,
+      itemCount: window.api.init.isBlindedWindow ? 2 : 4,
     });
   }, [activeWsId]);
 

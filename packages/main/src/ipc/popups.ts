@@ -589,6 +589,9 @@ export function registerPopupHandlers(ctx: IpcContext): void {
 
         const pageUrl = new URL('vela://vela-menu');
         pageUrl.searchParams.set('windowId', String(parentWindowId));
+        if (ctx.tabManager.isBlindedWindow(parentWindowId)) {
+          pageUrl.searchParams.set('isBlinded', '1');
+        }
         if (glass) applyGlassUrlParams(pageUrl, glass);
 
         await popup.loadURL(pageUrl.toString());
@@ -659,16 +662,18 @@ export function registerPopupHandlers(ctx: IpcContext): void {
           return { ok: true, data: undefined };
         }
 
-        const { anchorRect, workspaceId, parentId } = payload as {
+        const { anchorRect, workspaceId, parentId, itemCount = 4 } = payload as {
           anchorRect: { left: number; bottom: number };
           workspaceId: string;
           parentId: string | null;
+          itemCount?: number;
         };
 
         const { profileId, repos } = getFrameContext(event, ctx);
         const glass = readGlass(repos);
         const POPUP_WIDTH = 250;
-        const POPUP_HEIGHT = 130;
+        // 8px container padding + ~38px per item + 9px separator
+        const POPUP_HEIGHT = 8 + itemCount * 35 + 9;
 
         const pos = parentWin.getPosition();
         const { x, y } = clampToDisplay(
@@ -704,13 +709,18 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         guardTrustedFrame(event, IPC_CHANNELS.ADD_NODE_MENU_ACTION);
         const { windowId, action, workspaceId, parentId } = payload as {
           windowId: number;
-          action: 'new-tab' | 'new-folder' | 'new-secure-tab';
+          action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window';
           workspaceId: string;
           parentId: string | null;
         };
 
         const popup = addNodeMenuPopups.get(windowId);
         if (popup && !popup.isDestroyed()) popup.close();
+
+        if (action === 'new-blinded-window') {
+          await ctx.profileWindowManager.openBlindedWindow();
+          return { ok: true, data: undefined };
+        }
 
         const parentWin = BrowserWindow.fromId(windowId);
         if (parentWin && !parentWin.isDestroyed()) {

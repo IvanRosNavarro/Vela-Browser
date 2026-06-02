@@ -18,6 +18,8 @@ import { GestureTrail } from './shell/components/GestureTrail';
 import { NotificationCenter } from './shell/components/NotificationCenter/NotificationCenter';
 import { useMouseGestures, type GestureTrailHandle } from './shell/hooks/useMouseGestures';
 import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelector';
+import { UpdateModal } from './components/UpdateModal/UpdateModal';
+import { useUpdateStore } from './stores/updateStore';
 import { useBootstrap, useProfilesStore, useUiStore, useUrlBarStore } from './stores';
 import type { UrlBarIconId } from '@vela/shared';
 import { useScreenshotStore } from './stores/screenshotStore';
@@ -126,32 +128,52 @@ export function App() {
     });
     void useNotificationsStore.getState().hydrate();
 
+    const offUpdateModalOpen = window.api.on(IPC_EVENTS.UPDATE_MODAL_OPEN, () => {
+      useUpdateStore.getState().openModal();
+      useUpdateStore.getState().setPhase('checking');
+    });
+    const offUpdateDevMode = window.api.on(IPC_EVENTS.UPDATE_DEV_MODE, () => {
+      useUpdateStore.getState().setPhase('dev-mode');
+    });
     const offUpdateChecking = window.api.on(IPC_EVENTS.UPDATE_CHECKING, () => {
-      toast('Comprobando actualizaciones…');
+      useUpdateStore.getState().setPhase('checking');
     });
     const offUpdateAvailable = window.api.on(IPC_EVENTS.UPDATE_AVAILABLE, ({ version }) => {
-      toast(`Nueva versión v${version} disponible`, 'success', () => {
-        void window.api.update.download();
-      });
+      useUpdateStore.getState().setPhase('available', { version });
+      if (!useUpdateStore.getState().modalOpen) {
+        toast(`Nueva versión v${version} disponible`, 'success', () => {
+          useUpdateStore.getState().openModal();
+        });
+      }
     });
     const offUpdateNotAvailable = window.api.on(IPC_EVENTS.UPDATE_NOT_AVAILABLE, () => {
-      toast('Vela está al día', 'success');
+      useUpdateStore.getState().setPhase('up-to-date');
+      if (!useUpdateStore.getState().modalOpen) {
+        toast('Vela está al día', 'success');
+      }
     });
     let downloadingToastShown = false;
-    const offUpdateProgress = window.api.on(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, () => {
-      if (!downloadingToastShown) {
+    const offUpdateProgress = window.api.on(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, ({ percent }) => {
+      useUpdateStore.getState().setPhase('downloading', { percent });
+      if (!useUpdateStore.getState().modalOpen && !downloadingToastShown) {
         downloadingToastShown = true;
         toast('Descargando actualización…');
       }
     });
     const offUpdateDownloaded = window.api.on(IPC_EVENTS.UPDATE_DOWNLOADED, ({ version }) => {
       downloadingToastShown = false;
-      toast(`Actualización v${version} lista — Reinicia Vela para instalarla`, 'success', () => {
-        void window.api.update.quitAndInstall();
-      });
+      useUpdateStore.getState().setPhase('downloaded', { version });
+      if (!useUpdateStore.getState().modalOpen) {
+        toast(`Actualización v${version} lista — Reinicia Vela para instalarla`, 'success', () => {
+          void window.api.update.quitAndInstall();
+        });
+      }
     });
     const offUpdateError = window.api.on(IPC_EVENTS.UPDATE_ERROR, ({ message }) => {
-      toast(`Error al actualizar: ${message}`, 'error');
+      useUpdateStore.getState().setPhase('error', { message });
+      if (!useUpdateStore.getState().modalOpen) {
+        toast(`Error al actualizar: ${message}`, 'error');
+      }
     });
 
     const offClusterRelay = window.api.on(IPC_EVENTS.CLUSTER_RELAY, ({ action, payload }) => {
@@ -254,6 +276,7 @@ export function App() {
 
     return () => {
       offWorkspace(); offProfile(); offSnapshot(); offAddNodeMenu(); offDownloads();
+      offUpdateModalOpen(); offUpdateDevMode();
       offUpdateChecking(); offUpdateAvailable(); offUpdateNotAvailable();
       offUpdateProgress(); offUpdateDownloaded(); offUpdateError();
       offClusterRelay();
@@ -313,6 +336,7 @@ export function App() {
       <TabSwitcherModal />
       <CommandPalette />
       <ResourcesModal />
+      <UpdateModal />
       <SplitResizer />
       <SplitFocusIndicators />
       <ScreenshotOverlay />

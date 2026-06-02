@@ -217,7 +217,7 @@ export function Sidebar() {
         onDragCancel={() => { setDraggedId(null); setActiveDrop(null); }}
       >
         <GlobalAnchorBar activeDrop={activeDrop} />
-        <WorkspaceHeader />
+        {!window.api.init.isBlindedWindow && <WorkspaceHeader />}
         {activeWorkspaceId ? (
           <>
             <FavoritesBar

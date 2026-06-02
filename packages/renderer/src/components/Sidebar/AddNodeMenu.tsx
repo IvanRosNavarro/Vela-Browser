@@ -20,6 +20,7 @@ export function AddNodeMenu({ parentId = null, compact = false }: AddNodeMenuPro
       anchorRect: { left: rect.left, bottom: rect.bottom },
       workspaceId,
       parentId,
+      itemCount: window.api.init.isBlindedWindow ? 2 : 4,
     });
   }, [workspaceId, currentWindowId, parentId]);
 

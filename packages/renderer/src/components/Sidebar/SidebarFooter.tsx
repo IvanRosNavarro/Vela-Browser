@@ -5,6 +5,8 @@ import { ProfileSwitcher } from '../ProfileSwitcher';
 import { useUiStore } from '../../stores/uiStore';
 import { AddNodeMenu } from './AddNodeMenu';
 
+const IS_BLINDED_WINDOW = window.api.init.isBlindedWindow;
+
 interface SidebarFooterProps {
   mode: SidebarMode;
   onNewTab: () => void;
@@ -49,8 +51,8 @@ export function SidebarFooter({ mode, onNewTab }: SidebarFooterProps) {
         gap: 2,
       }}
     >
-      {/* Nueva pestaña — solo cuando está configurado en el footer */}
-      {newtabButtonPos === 'footer' && (
+      {/* Nueva pestaña — oculta en ventanas fantasma y cuando no está en footer */}
+      {!IS_BLINDED_WINDOW && newtabButtonPos === 'footer' && (
         <button
           type="button"
           onClick={onNewTab}
@@ -79,7 +81,7 @@ export function SidebarFooter({ mode, onNewTab }: SidebarFooterProps) {
         </button>
       )}
 
-      {/* Botones: Añadir + Colapsar + Ajustes — encima del perfil */}
+      {/* Botones: Añadir + Colapsar [+ Ajustes si no es fantasma] */}
       <div style={{
         display: 'flex',
         flexDirection: compact ? 'column' : 'row',
@@ -100,20 +102,22 @@ export function SidebarFooter({ mode, onNewTab }: SidebarFooterProps) {
           {compact ? '»' : '«'}
         </button>
 
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          title="Ajustes (Ctrl+,)"
-          aria-label="Abrir ajustes"
-          className="hover:bg-[var(--vela-bg-row-hover)] hover:text-[var(--vela-fg)]"
-          style={btnIcon}
-        >
-          <Settings size={14} />
-        </button>
+        {!IS_BLINDED_WINDOW && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            title="Ajustes (Ctrl+,)"
+            aria-label="Abrir ajustes"
+            className="hover:bg-[var(--vela-bg-row-hover)] hover:text-[var(--vela-fg)]"
+            style={btnIcon}
+          >
+            <Settings size={14} />
+          </button>
+        )}
       </div>
 
-      {/* Perfil activo — siempre abajo */}
-      <ProfileSwitcher />
+      {/* Perfil activo — oculto en ventanas fantasma */}
+      {!IS_BLINDED_WINDOW && <ProfileSwitcher />}
     </div>
   );
 }

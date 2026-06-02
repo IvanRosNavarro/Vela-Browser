@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MediaSource } from '@vela/shared';
+import { useRuntimeStore } from './runtimeStore';
 
 interface MediaState {
   sources: MediaSource[];
@@ -21,10 +22,11 @@ export const useMediaStore = create<MediaState>((set) => ({
   hydrate: async () => {
     const res = await window.api.media.getSources();
     if (res.ok) {
-      set({
-        sources: res.data,
-        activeCount: res.data.filter((s) => s.isPlaying).length,
-      });
+      const profileId = useRuntimeStore.getState().currentProfileId;
+      const sources = profileId
+        ? res.data.filter((s) => s.profileId === profileId)
+        : res.data;
+      set({ sources, activeCount: sources.filter((s) => s.isPlaying).length });
     }
   },
 

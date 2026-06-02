@@ -12,6 +12,7 @@ const TITLEBAR_HEIGHT = 32;
 // completamente por encima de él y sea visible. 360 (maxHeight) + 4 (gap).
 const SUGGEST_CLEARANCE = 364;
 const PLATFORM = window.api.platform;
+const IS_BLINDED_WINDOW = window.api.init.isBlindedWindow;
 
 export function TitleBar() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
@@ -66,6 +67,7 @@ export function TitleBar() {
   if (isFullscreen) return null;
 
   return (
+    <>
     <header
       style={{
         height: TITLEBAR_HEIGHT,
@@ -97,5 +99,6 @@ export function TitleBar() {
       <TitleBarCenter />
       <TitleBarRight />
     </header>
+    </>
   );
 }

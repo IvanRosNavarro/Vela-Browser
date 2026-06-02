@@ -4,6 +4,7 @@ import type { Profile, Workspace, HistorySearchEntry } from '@vela/shared';
 
 const params = new URLSearchParams(window.location.search);
 const parentWindowId = parseInt(params.get('windowId') ?? '0', 10);
+const IS_BLINDED_WINDOW = params.get('isBlinded') === '1';
 
 type SubView = 'workspaces' | 'history' | 'profiles' | 'developer';
 
@@ -31,6 +32,15 @@ function IcoMask() {
       <circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" stroke="none" />
       <circle cx="15.5" cy="9.5" r="1.5" fill="currentColor" stroke="none" />
       <path d="M10.5 15.5Q12 17 13.5 15.5" />
+    </svg>
+  );
+}
+function IcoGhost() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3a9 9 0 0 1 9 9v8l-2 -2l-2 2l-2 -2l-2 2l-2 -2l-2 2v-8a9 9 0 0 1 9 -9z" />
+      <circle cx="9" cy="13" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="13" r="1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -302,91 +312,112 @@ export function App() {
             )}
           </div>
 
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => { void window.api.update.checkNow(); window.close(); }}>
-            <span style={iconWrap}><IcoRefresh /></span>
-            Buscar actualizaciones
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => exec('internal.openNewTab')}>
-            <span style={iconWrap}><IcoPlus /></span>
-            Nueva pestaña
-            <span style={kbdStyle}>Ctrl+T</span>
-          </MenuItem>
-          <MenuItem onClick={() => exec('tab.createSecure')}>
-            <span style={iconWrap}><IcoMask /></span>
-            Nueva pestaña blindada
-            <span style={kbdStyle}>Ctrl+Shift+N</span>
-          </MenuItem>
-          <MenuItem onClick={() => exec('profile.openInNewWindow')}>
-            <span style={iconWrap}><IcoBrowser /></span>
-            Nueva ventana
-            <span style={kbdStyle}>Ctrl+N</span>
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => setSubView('workspaces')}>
-            <span style={iconWrap}><IcoSidebar /></span>
-            Workspaces
-            <span style={arrowStyle}><IcoChevronRight /></span>
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => setSubView('history')}>
-            <span style={iconWrap}><IcoHistory /></span>
-            Historial
-            <span style={arrowStyle}><IcoChevronRight /></span>
-          </MenuItem>
-          <MenuItem onClick={() => { void window.api.window.openUrlInNewTab({ url: 'vela://favorites' }); window.close(); }}>
-            <span style={iconWrap}><IcoStar /></span>
-            Favoritos
-          </MenuItem>
-          <MenuItem onClick={() => { void window.api.vault.openManager({ windowId: parentWindowId }); window.close(); }}>
-            <span style={iconWrap}><IcoKey /></span>
-            Contraseñas
-          </MenuItem>
-          <MenuItem onClick={() => exec('internal.openDownloads')}>
-            <span style={iconWrap}><IcoDownload /></span>
-            Descargas
-            <span style={kbdStyle}>Ctrl+J</span>
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => setSubView('profiles')}>
-            <span style={iconWrap}><IcoUser /></span>
-            Perfiles
-            <span style={arrowStyle}><IcoChevronRight /></span>
-          </MenuItem>
-          <MenuItem onClick={() => exec('internal.openExtensions')}>
-            <span style={iconWrap}><IcoPuzzle /></span>
-            Extensiones
-          </MenuItem>
-          <MenuItem onClick={() => setSubView('developer')}>
-            <span style={iconWrap}><IcoCode /></span>
-            Desarrollador
-            <span style={arrowStyle}><IcoChevronRight /></span>
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => exec('internal.openSettings')}>
-            <span style={iconWrap}><IcoSettings /></span>
-            Ajustes
-            <span style={kbdStyle}>Ctrl+,</span>
-          </MenuItem>
-
-          <div style={sepStyle} />
-
-          <MenuItem onClick={() => { void window.api.window.close(); window.close(); }}>
-            <span style={{ ...iconWrap, color: 'var(--vela-fg-muted, rgba(255,255,255,0.5))' }}><IcoX /></span>
-            <span style={{ color: 'var(--vela-fg-muted, rgba(255,255,255,0.7))' }}>Cerrar ventana</span>
-          </MenuItem>
+          {IS_BLINDED_WINDOW ? (
+            // ── Menú simplificado para ventanas fantasma ──────────────────────
+            <>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => exec('tab.createSecure')}>
+                <span style={iconWrap}><IcoMask /></span>
+                Nueva pestaña fantasma
+                <span style={kbdStyle}>Ctrl+Shift+N</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('window.openBlinded')}>
+                <span style={iconWrap}><IcoGhost /></span>
+                Nueva ventana fantasma
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => setSubView('developer')}>
+                <span style={iconWrap}><IcoCode /></span>
+                Desarrollador
+                <span style={arrowStyle}><IcoChevronRight /></span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => { void window.api.window.close(); window.close(); }}>
+                <span style={{ ...iconWrap, color: 'var(--vela-fg-muted, rgba(255,255,255,0.5))' }}><IcoX /></span>
+                <span style={{ color: 'var(--vela-fg-muted, rgba(255,255,255,0.7))' }}>Cerrar ventana</span>
+              </MenuItem>
+            </>
+          ) : (
+            // ── Menú completo ─────────────────────────────────────────────────
+            <>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => { void window.api.update.checkNow(); window.close(); }}>
+                <span style={iconWrap}><IcoRefresh /></span>
+                Buscar actualizaciones
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => exec('internal.openNewTab')}>
+                <span style={iconWrap}><IcoPlus /></span>
+                Nueva pestaña
+                <span style={kbdStyle}>Ctrl+T</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('tab.createSecure')}>
+                <span style={iconWrap}><IcoMask /></span>
+                Nueva pestaña fantasma
+                <span style={kbdStyle}>Ctrl+Shift+N</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('profile.openInNewWindow')}>
+                <span style={iconWrap}><IcoBrowser /></span>
+                Nueva ventana
+                <span style={kbdStyle}>Ctrl+N</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('window.openBlinded')}>
+                <span style={iconWrap}><IcoGhost /></span>
+                Nueva ventana fantasma
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => setSubView('workspaces')}>
+                <span style={iconWrap}><IcoSidebar /></span>
+                Workspaces
+                <span style={arrowStyle}><IcoChevronRight /></span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => setSubView('history')}>
+                <span style={iconWrap}><IcoHistory /></span>
+                Historial
+                <span style={arrowStyle}><IcoChevronRight /></span>
+              </MenuItem>
+              <MenuItem onClick={() => { void window.api.window.openUrlInNewTab({ url: 'vela://favorites' }); window.close(); }}>
+                <span style={iconWrap}><IcoStar /></span>
+                Favoritos
+              </MenuItem>
+              <MenuItem onClick={() => { void window.api.vault.openManager({ windowId: parentWindowId }); window.close(); }}>
+                <span style={iconWrap}><IcoKey /></span>
+                Contraseñas
+              </MenuItem>
+              <MenuItem onClick={() => exec('internal.openDownloads')}>
+                <span style={iconWrap}><IcoDownload /></span>
+                Descargas
+                <span style={kbdStyle}>Ctrl+J</span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => setSubView('profiles')}>
+                <span style={iconWrap}><IcoUser /></span>
+                Perfiles
+                <span style={arrowStyle}><IcoChevronRight /></span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('internal.openExtensions')}>
+                <span style={iconWrap}><IcoPuzzle /></span>
+                Extensiones
+              </MenuItem>
+              <MenuItem onClick={() => setSubView('developer')}>
+                <span style={iconWrap}><IcoCode /></span>
+                Desarrollador
+                <span style={arrowStyle}><IcoChevronRight /></span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => exec('internal.openSettings')}>
+                <span style={iconWrap}><IcoSettings /></span>
+                Ajustes
+                <span style={kbdStyle}>Ctrl+,</span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => { void window.api.window.close(); window.close(); }}>
+                <span style={{ ...iconWrap, color: 'var(--vela-fg-muted, rgba(255,255,255,0.5))' }}><IcoX /></span>
+                <span style={{ color: 'var(--vela-fg-muted, rgba(255,255,255,0.7))' }}>Cerrar ventana</span>
+              </MenuItem>
+            </>
+          )}
         </div>
       ) : (
         // ── Sub panel ───────────────────────────────────────────────────────

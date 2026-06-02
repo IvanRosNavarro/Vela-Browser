@@ -189,6 +189,8 @@ export class TabManager {
   private readonly suspendedWorkspaces = new Map<string, SuspendedState>();
   // IDs de tabs blindadas (en memoria; no se persisten al reiniciar).
   private readonly secureTabs = new Set<string>();
+  // IDs de ventanas blindadas: todas sus pestañas se crean como seguras automáticamente.
+  private readonly blindedWindows = new Set<number>();
   private readonly secureTabManager: SecureTabManager;
 
   constructor(private readonly ctx: TabManagerCtx) {
@@ -203,6 +205,16 @@ export class TabManager {
   /** Número total de tabs blindadas abiertas en todas las ventanas. */
   getSecureTabCount(): number {
     return this.secureTabs.size;
+  }
+
+  /** Marca una ventana como blindada: todas sus pestañas nuevas serán seguras. */
+  markWindowAsBlinded(electronWindowId: number): void {
+    this.blindedWindows.add(electronWindowId);
+  }
+
+  /** Devuelve true si la ventana está marcada como blindada. */
+  isBlindedWindow(electronWindowId: number): boolean {
+    return this.blindedWindows.has(electronWindowId);
   }
 
   getReaderState(tabId: string): { readable: boolean } | null {
@@ -274,13 +286,15 @@ export class TabManager {
       `[tabs] window ${windowId} attached a workspace=${workspaceId} profile=${profileId}`,
     );
 
-    try {
-      this.restoreOnStartup(windowId, workspaceId);
-    } catch (err) {
-      this.ctx.logger.error(
-        `[tabs] restoreOnStartup falló para window=${windowId} workspace=${workspaceId}`,
-        err,
-      );
+    if (!this.blindedWindows.has(windowId)) {
+      try {
+        this.restoreOnStartup(windowId, workspaceId);
+      } catch (err) {
+        this.ctx.logger.error(
+          `[tabs] restoreOnStartup falló para window=${windowId} workspace=${workspaceId}`,
+          err,
+        );
+      }
     }
   }
 
@@ -324,6 +338,7 @@ export class TabManager {
     }
 
     this.windows.delete(windowId);
+    this.blindedWindows.delete(windowId);
 
     this.ctx.logger.info(`[tabs] window ${windowId} detached`);
   }
@@ -557,6 +572,14 @@ export class TabManager {
     windowId: number,
     input: CreateTabInput,
   ): Promise<TabNode> {
+    // En ventanas blindadas todas las pestañas son seguras por definición.
+    if (this.blindedWindows.has(windowId)) {
+      const secureId = await this.createSecureTab(windowId, input.url);
+      const st = this.requireWindow(windowId);
+      const node = this.reposFor(st).treeNodes.getById(secureId);
+      return (node?.kind === 'tab' ? node : { id: secureId }) as TabNode;
+    }
+
     const state = this.requireWindow(windowId);
     const repos = this.reposFor(state);
     const activate = input.activate ?? true;
@@ -1831,13 +1854,14 @@ export class TabManager {
   }
 
   private spawnSecureView(state: PerWindow, tab: TabNode, secureSession: Session): WebContentsView {
+    const isInternal = tab.url.startsWith('vela://');
     const view = new WebContentsView({
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
         session: secureSession,
-        preload: WEB_TAB_PRELOAD_PATH,
+        preload: isInternal ? INTERNAL_PRELOAD_PATH : WEB_TAB_PRELOAD_PATH,
       },
     });
 

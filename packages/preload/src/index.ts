@@ -28,12 +28,15 @@ function ensureKnownEvent(channel: string): void {
 
 function parseVelaInit(): VelaInitState {
   const arg = (process.argv as string[]).find((a) => a.startsWith('--vela-init='));
-  if (!arg) return { sidebarWidth: 240 };
+  if (!arg) return { sidebarWidth: 240, isBlindedWindow: false };
   try {
     const raw = JSON.parse(arg.slice('--vela-init='.length)) as Record<string, unknown>;
-    return { sidebarWidth: typeof raw.sidebarWidth === 'number' ? raw.sidebarWidth : 240 };
+    return {
+      sidebarWidth: typeof raw.sidebarWidth === 'number' ? raw.sidebarWidth : 240,
+      isBlindedWindow: raw.isBlindedWindow === true,
+    };
   } catch {
-    return { sidebarWidth: 240 };
+    return { sidebarWidth: 240, isBlindedWindow: false };
   }
 }
 
@@ -124,6 +127,7 @@ const api: PreloadApi = {
     toggleFullscreen: () => call(IPC_CHANNELS.WINDOW_TOGGLE_FULLSCREEN),
     isFullscreen: () => call(IPC_CHANNELS.WINDOW_IS_FULLSCREEN),
     newSameProfile: () => call(IPC_CHANNELS.WINDOW_NEW_SAME_PROFILE),
+    openBlindedWindow: () => call(IPC_CHANNELS.WINDOW_OPEN_BLINDED),
     setWorkspace: (input) => call(IPC_CHANNELS.WINDOW_SET_WORKSPACE, input),
     getAllForProfile: () => call(IPC_CHANNELS.WINDOW_GET_ALL_FOR_PROFILE),
     focus: (input) => call(IPC_CHANNELS.WINDOW_FOCUS, input),

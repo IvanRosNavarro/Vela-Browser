@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { isBlindedProfile } from '../profiles/blindedProfileUtils';
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -41,7 +42,8 @@ export function registerProfileHandlers(ctx: IpcContext): void {
     async (event): Promise<IpcResponse<Profile[]>> => {
       guardTrustedFrame(event, IPC_CHANNELS.PROFILE_LIST);
       try {
-        return { ok: true, data: ctx.repositories.profiles.list() };
+        // Excluir perfiles temporales de ventanas fantasma del listado.
+        return { ok: true, data: ctx.repositories.profiles.list().filter((p) => !isBlindedProfile(p)) };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.PROFILE_LIST);
       }

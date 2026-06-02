@@ -240,6 +240,7 @@ export interface WindowApi {
   toggleFullscreen(): Promise<IpcResponse<void>>;
   isFullscreen(): Promise<IpcResponse<{ fullscreen: boolean }>>;
   newSameProfile(): Promise<IpcResponse<{ windowId: string }>>;
+  openBlindedWindow(): Promise<IpcResponse<void>>;
   setWorkspace(input: { workspaceId: string }): Promise<IpcResponse<void>>;
   getAllForProfile(): Promise<IpcResponse<WindowInfo[]>>;
   focus(input: { windowId: string }): Promise<IpcResponse<void>>;
@@ -667,6 +668,8 @@ export interface FindBarApi {
 export interface VelaInitState {
   /** Ancho del sidebar en px, leído síncronamente del perfil antes del primer render. */
   sidebarWidth: number;
+  /** Ventana blindada: todas las pestañas son efímeras, sin perfil persistente. */
+  isBlindedWindow: boolean;
 }
 
 export interface PreloadApi {
@@ -812,8 +815,8 @@ export interface ProfileDropApi {
 }
 
 export interface AddNodeMenuApi {
-  open(input: { windowId: number; anchorRect: { left: number; bottom: number }; workspaceId: string; parentId: string | null }): Promise<IpcResponse<void>>;
-  action(input: { windowId: number; action: 'new-tab' | 'new-folder' | 'new-secure-tab'; workspaceId: string; parentId: string | null }): Promise<IpcResponse<void>>;
+  open(input: { windowId: number; anchorRect: { left: number; bottom: number }; workspaceId: string; parentId: string | null; itemCount: number }): Promise<IpcResponse<void>>;
+  action(input: { windowId: number; action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null }): Promise<IpcResponse<void>>;
 }
 
 export interface DownloadsApi {
