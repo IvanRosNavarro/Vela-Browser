@@ -126,6 +126,6 @@ module.exports = {
     provider: 'github',
     owner,
     repo,
-    releaseType: 'draft',
+    releaseType: 'release',
   },
 };
