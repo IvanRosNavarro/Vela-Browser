@@ -322,6 +322,22 @@ syncRouter.get('/devices', (req, res) => {
   res.json({ devices });
 });
 
+// PUT /sync/device-name — actualiza el nombre del dispositivo actual.
+syncRouter.put('/device-name', (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return res.status(400).json({ error: 'Nombre inválido' });
+  }
+  const token = req.headers.authorization?.replace('Bearer ', '').trim();
+  if (!token) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  getDb().prepare(
+    'UPDATE device_sessions SET device_name = ? WHERE token = ?'
+  ).run(name.trim(), token);
+  res.json({ ok: true });
+});
+
 // DELETE /sync/devices/:suffix
 syncRouter.delete('/devices/:suffix', (req, res) => {
   const db = getDb();

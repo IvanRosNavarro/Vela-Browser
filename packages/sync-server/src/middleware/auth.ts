@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb } from '../db/database';
 
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 declare global {
   namespace Express {
     interface Request {
@@ -34,8 +36,9 @@ export function requireAuth(
 
   db.prepare(`
     UPDATE device_sessions
-    SET last_used_at = ? WHERE token = ?
-  `).run(Date.now(), token);
+    SET last_used_at = ?, expires_at = ?
+    WHERE token = ?
+  `).run(Date.now(), Date.now() + SESSION_TTL_MS, token);
 
   req.userId = session.user_id;
   next();

@@ -74,6 +74,18 @@ export function registerSyncHandlers(ctx: IpcContext): void {
     ctx.events.emit(IPC_EVENTS.SYNC_CALLBACK_RECEIVED, { token });
   });
 
+  // Cuando el servidor devuelve 401, el SyncManager emite SYNC_SESSION_EXPIRED.
+  // Limpiamos las credenciales del disco para que el próximo arranque no entre
+  // en un bucle de 401s, y dejamos el manager en estado unconfigured para que
+  // el usuario pueda volver a hacer login.
+  ctx.events.on(IPC_EVENTS.SYNC_SESSION_EXPIRED, ({ profileId }) => {
+    const manager = ctx.syncManagers.get(profileId);
+    if (!manager) return;
+    void manager.deactivate().then(() => {
+      ctx.logger.warn(`[sync] sesión expirada — credenciales limpiadas para perfil ${profileId}`);
+    });
+  });
+
   // Al abrir un perfil, intentar restaurar la sesión de sync desde el keychain
   // del SO (token + clave cifrada con safeStorage). Si no hay credenciales
   // guardadas el manager queda en estado unconfigured y sigue el flujo normal.
@@ -220,7 +232,10 @@ export function registerSyncHandlers(ctx: IpcContext): void {
         if (manager?.isConfigured()) {
           await fetch(`${SERVER_URL}/sync/device-name`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${manager.getSessionToken()!}`,
+            },
             body: JSON.stringify({ name }),
           });
         }

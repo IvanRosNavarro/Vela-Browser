@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS magic_link_tokens (
   used       INTEGER NOT NULL DEFAULT 0
 );
 
--- Sesiones de dispositivo (TTL: 90 días).
+-- Sesiones de dispositivo (TTL: 30 días deslizante — se renueva con cada request).
 CREATE TABLE IF NOT EXISTS device_sessions (
   token        TEXT PRIMARY KEY,
   user_id      TEXT NOT NULL REFERENCES users(id)
