@@ -85,10 +85,6 @@ export function initUpdater(): void {
 }
 
 export async function checkForUpdatesNow(): Promise<void> {
-  if (!app.isPackaged) {
-    logger.info('[updater] checkForUpdatesNow: omitido en dev');
-    return;
-  }
   await autoUpdater.checkForUpdates().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(`[updater] checkForUpdatesNow fallido: ${message}`);

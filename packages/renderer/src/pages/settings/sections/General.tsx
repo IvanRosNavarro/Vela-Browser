@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, CheckCircle2 } from 'lucide-react';
-import { IPC_EVENTS } from '@vela/shared';
 import type { useSettings } from '../lib/useSettings';
 import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
@@ -22,36 +21,12 @@ interface Props {
 
 export function General({ settings }: Props) {
   const { get, set } = settings;
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateMsg, setUpdateMsg] = useState('');
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const [settingDefault, setSettingDefault] = useState(false);
-
   useEffect(() => {
     void window.api.defaultBrowser.getStatus().then((res) => {
       if (res.ok) setIsDefault(res.data.isDefault);
     });
-  }, []);
-
-  useEffect(() => {
-    const offAvailable = window.api.on(IPC_EVENTS.UPDATE_AVAILABLE, ({ version }) => {
-      setUpdateMsg(`Nueva versión v${version} disponible — descargando…`);
-      void window.api.update.download();
-    });
-    const offNotAvailable = window.api.on(IPC_EVENTS.UPDATE_NOT_AVAILABLE, () => {
-      setUpdateMsg('Vela está al día.');
-    });
-    const offProgress = window.api.on(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, ({ percent }) => {
-      setUpdateMsg(`Descargando… ${percent}%`);
-    });
-    const offDownloaded = window.api.on(IPC_EVENTS.UPDATE_DOWNLOADED, ({ version }) => {
-      setUpdateMsg(`v${version} lista — reinicia Vela para instalarla.`);
-    });
-    const offError = window.api.on(IPC_EVENTS.UPDATE_ERROR, ({ message }) => {
-      setUpdateMsg(`Error: ${message}`);
-      setCheckingUpdate(false);
-    });
-    return () => { offAvailable(); offNotAvailable(); offProgress(); offDownloaded(); offError(); };
   }, []);
 
   async function setAsDefault() {
@@ -65,17 +40,8 @@ export function General({ settings }: Props) {
     }
   }
 
-  async function checkNow() {
-    setCheckingUpdate(true);
-    setUpdateMsg('Comprobando…');
-    try {
-      const res = await window.api.update.checkNow();
-      if (!res.ok) setUpdateMsg('Error al comprobar.');
-    } catch {
-      setUpdateMsg('Error al comprobar.');
-    } finally {
-      setCheckingUpdate(false);
-    }
+  function checkNow() {
+    void window.api.update.checkNow();
   }
 
   const startupPage = get<StartupPage>('startup:page', 'previous');
@@ -171,18 +137,12 @@ export function General({ settings }: Props) {
           />
         </SettingRow>
         <SettingRow label={`Versión actual: ${__APP_VERSION__}`}>
-          <div className="flex items-center gap-3">
-            {updateMsg && (
-              <span className="text-xs text-[var(--vela-fg-muted)]">{updateMsg}</span>
-            )}
-            <button
-              onClick={() => void checkNow()}
-              disabled={checkingUpdate}
-              className="rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {checkingUpdate ? 'Comprobando…' : 'Comprobar ahora'}
-            </button>
-          </div>
+          <button
+            onClick={checkNow}
+            className="rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+          >
+            Buscar actualizaciones
+          </button>
         </SettingRow>
       </SettingSection>
     </>

@@ -1,16 +1,31 @@
-import { ipcMain, session } from 'electron';
-import { IPC_CHANNELS, type IpcResponse } from '@vela/shared';
+import { app, ipcMain, session, BrowserWindow } from 'electron';
+import { IPC_CHANNELS, IPC_EVENTS, type IpcResponse } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { guardTrustedFrame } from './validate';
 import { checkForUpdatesNow, downloadUpdate, quitAndInstall } from '../updater';
 import { resolveWindowId } from './helpers';
 import { InvariantViolationError } from '../lib/errors';
+import { logger } from '../logger';
+
+function broadcastToAllWindows(channel: string, payload?: unknown): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+}
 
 export function registerUpdateHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.UPDATE_CHECK_NOW,
     async (): Promise<IpcResponse<void>> => {
+      broadcastToAllWindows(IPC_EVENTS.UPDATE_MODAL_OPEN);
+
+      if (!app.isPackaged) {
+        logger.info('[updater] check manual: modo de desarrollo, sin actualizaciones');
+        broadcastToAllWindows(IPC_EVENTS.UPDATE_DEV_MODE, { version: app.getVersion() });
+        return { ok: true, data: undefined };
+      }
+
       try {
         await checkForUpdatesNow();
         return { ok: true, data: undefined };
