@@ -1234,6 +1234,11 @@ export class TabManager {
     wc?.reload();
   }
 
+  reloadIgnoringCache(windowId: number): void {
+    const wc = this.activeWebContents(windowId);
+    wc?.reloadIgnoringCache();
+  }
+
   stop(windowId: number): void {
     const wc = this.activeWebContents(windowId);
     wc?.stop();

@@ -297,6 +297,14 @@ export function buildShortcutTable(
     });
   }
 
+  //    nav.reloadHard → Ctrl+F5 (alias de Ctrl+Shift+R)
+  const effectiveReloadHard = 'nav.reloadHard' in custom ? custom['nav.reloadHard'] : 'Ctrl+Shift+R';
+  if (effectiveReloadHard && effectiveReloadHard !== 'Ctrl+F5') {
+    table.tryRegister('Ctrl+F5', 'nav.reloadHard#alias', async (windowId) => {
+      await registry.execute('nav.reloadHard', buildContext(ipc, windowId));
+    });
+  }
+
   //    nav.focusAddressBar → Ctrl+E (alias de Ctrl+L)
   const effectiveFocus =
     'nav.focusAddressBar' in custom ? custom['nav.focusAddressBar'] : 'Ctrl+L';

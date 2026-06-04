@@ -458,6 +458,19 @@ export function registerCoreCommands(
 
   registry.register(
     defineCommand({
+      id: 'nav.reloadHard',
+      title: 'Recargar vaciando caché',
+      category: 'navigation',
+      defaultShortcut: 'Ctrl+Shift+R',
+      run: (ctx) => {
+        if (ctx.windowId === null) return;
+        ipc.tabManager.reloadIgnoringCache(ctx.windowId);
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
       id: 'nav.stop',
       title: 'Detener carga',
       category: 'navigation',
@@ -1362,6 +1375,118 @@ export function registerCoreCommands(
       defaultShortcut: 'Ctrl+Shift+Alt+A',
       run: (ctx) => {
         emitRendererAction(ipc, ctx, 'open-analytics-debugger');
+      },
+    }),
+  );
+
+  // ---------- herramientas desarrollador ----------
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.color-picker',
+      title: 'Herramientas dev: Pick de color',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-color-picker');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.json-formatter',
+      title: 'Herramientas dev: Formateador JSON',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-json-formatter');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.regex-tester',
+      title: 'Herramientas dev: Regex tester',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-regex-tester');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.text-diff',
+      title: 'Herramientas dev: Diff de texto',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-text-diff');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters',
+      title: 'Conversores',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'css' });
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters.css',
+      title: 'Conversores: Unidades CSS',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'css' });
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters.base64',
+      title: 'Conversores: Base64',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'base64' });
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters.hash',
+      title: 'Conversores: Hash',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'hash' });
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters.uuid',
+      title: 'Conversores: UUID / NanoID',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'uuid' });
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'devtools.converters.timestamp',
+      title: 'Conversores: Timestamps Unix',
+      category: 'devtools',
+      run: (ctx) => {
+        emitRendererAction(ipc, ctx, 'open-devtools-converters', { tab: 'timestamp' });
       },
     }),
   );
