@@ -5,7 +5,7 @@ import { buildCspHeader } from '../security/csp';
 import { syncEvents } from '../sync/syncEvents';
 import { certEvents } from '../security/certEvents';
 
-const ALLOWED_PAGES = ['settings', 'newtab', 'history', 'extensions', 'about', 'reader', 'filepicker', 'glance', 'media-popup', 'cookiepanel', 'favorites', 'anchors', 'adblocker-panel', 'vault-save-modal', 'vault-autofill-modal', 'passwords', 'scripts', 'security-popup', 'notification-permission', 'devmode-popup', 'suggestions-popup', 'workspace-dropdown', 'profile-dropdown', 'vela-menu', 'sidebar-floating', 'add-node-menu', 'downloads', 'download-popup', 'tab-preview', 'folder-view', 'analytics-debugger', 'tools-cluster', 'status-cluster', 'find-bar', 'cert-error'] as const;
+const ALLOWED_PAGES = ['settings', 'newtab', 'history', 'extensions', 'about', 'reader', 'filepicker', 'glance', 'media-popup', 'cookiepanel', 'favorites', 'anchors', 'adblocker-panel', 'vault-save-modal', 'vault-autofill-modal', 'passwords', 'scripts', 'security-popup', 'notification-permission', 'devmode-popup', 'devtools-eyedropper', 'suggestions-popup', 'workspace-dropdown', 'profile-dropdown', 'vela-menu', 'sidebar-floating', 'add-node-menu', 'downloads', 'download-popup', 'tab-preview', 'folder-view', 'analytics-debugger', 'tools-cluster', 'status-cluster', 'find-bar', 'cert-error'] as const;
 type InternalPage = (typeof ALLOWED_PAGES)[number];
 
 const VITE_DEV_URL = process.env['VITE_DEV_SERVER_URL'] ?? 'http://localhost:5173';

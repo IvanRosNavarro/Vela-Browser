@@ -141,7 +141,7 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         const { profileId, repos } = getFrameContext(event, ctx);
         const glass = readGlass(repos);
         const POPUP_WIDTH = 360;
-        const POPUP_HEIGHT = 248;
+        const POPUP_HEIGHT = 390;
 
         const pos = parentWin.getPosition();
         const { x, y } = clampToDisplay(

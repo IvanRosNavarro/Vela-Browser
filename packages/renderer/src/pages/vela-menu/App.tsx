@@ -519,6 +519,12 @@ export function App() {
             <MenuItem onClick={() => exec('view.toggleDeviceMode')}>Modo responsive</MenuItem>
             <MenuItem onClick={() => exec('devtools.captureBugSnapshot')}>Capturar snapshot de bug</MenuItem>
             <div style={sepStyle} />
+            <MenuItem onClick={() => exec('devtools.color-picker')}>Pick de color</MenuItem>
+            <MenuItem onClick={() => exec('devtools.json-formatter')}>JSON Formatter</MenuItem>
+            <MenuItem onClick={() => exec('devtools.regex-tester')}>Regex Tester</MenuItem>
+            <MenuItem onClick={() => exec('devtools.text-diff')}>Diff de texto</MenuItem>
+            <MenuItem onClick={() => exec('devtools.converters')}>Conversores →</MenuItem>
+            <div style={sepStyle} />
             <MenuItem onClick={() => exec('internal.openScripts')}>Scripts de usuario →</MenuItem>
           </>}
         </div>

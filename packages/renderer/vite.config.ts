@@ -46,6 +46,7 @@ export default defineConfig({
         'security-popup': resolve(__dirname, 'src/pages/security-popup/index.html'),
         'notification-permission': resolve(__dirname, 'src/pages/notification-permission/index.html'),
         'devmode-popup': resolve(__dirname, 'src/pages/devmode-popup/index.html'),
+        'devtools-eyedropper': resolve(__dirname, 'src/pages/devtools-eyedropper/index.html'),
         'suggestions-popup': resolve(__dirname, 'src/pages/suggestions-popup/index.html'),
         'sidebar-floating': resolve(__dirname, 'src/pages/sidebar-floating/index.html'),
         'vela-menu': resolve(__dirname, 'src/pages/vela-menu/index.html'),

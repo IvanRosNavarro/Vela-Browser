@@ -514,6 +514,13 @@ const api: PreloadApi = {
   clipboard: {
     writeText: (text: string) => call(IPC_CHANNELS.CLIPBOARD_WRITE_TEXT, { text }),
   },
+  devtoolsHelpers: {
+    eyedropperStart: () => call(IPC_CHANNELS.DEVTOOLS_EYEDROPPER_START),
+    eyedropperStop: () => call(IPC_CHANNELS.DEVTOOLS_EYEDROPPER_STOP),
+    eyedropperShowWindow: (args) => call(IPC_CHANNELS.DEVTOOLS_EYEDROPPER_SHOW_WINDOW, args),
+    eyedropperPickColor: (args) => call(IPC_CHANNELS.DEVTOOLS_EYEDROPPER_PICK_COLOR, args),
+    getTabCssValues: () => call(IPC_CHANNELS.DEVTOOLS_GET_TAB_CSS_VALUES),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

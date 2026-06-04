@@ -322,6 +322,11 @@ export const IPC_CHANNELS = {
 
   DEVTOOLS_OPEN_RESPONSIVE: 'devtools:open-responsive',
   DEVTOOLS_CLOSE_RESPONSIVE: 'devtools:close-responsive',
+  DEVTOOLS_EYEDROPPER_START: 'devtools:eyedropper-start',
+  DEVTOOLS_EYEDROPPER_STOP: 'devtools:eyedropper-stop',
+  DEVTOOLS_EYEDROPPER_SHOW_WINDOW: 'devtools:eyedropper-show-window',
+  DEVTOOLS_EYEDROPPER_PICK_COLOR: 'devtools:eyedropper-pick-color',
+  DEVTOOLS_GET_TAB_CSS_VALUES: 'devtools:get-tab-css-values',
 
   SYNC_REQUEST_MAGIC_LINK: 'sync:request-magic-link',
   SYNC_SETUP: 'sync:setup',
@@ -477,6 +482,8 @@ export const IPC_EVENTS = {
   FIND_RESULT: 'state:find-result',
   FIND_BAR_QUERY_SYNC: 'state:find-bar-query-sync',
   FIND_BAR_CLOSED: 'state:find-bar-closed',
+  DEVTOOLS_EYEDROPPER_FRAME: 'state:devtools-eyedropper-frame',
+  DEVTOOLS_COLOR_PICKED: 'state:devtools-color-picked',
 } as const;
 
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
@@ -574,5 +581,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.CLUSTER_RELAY]: { action: string; payload: Record<string, unknown> };
   [IPC_EVENTS.FIND_RESULT]: { current: number; total: number; windowId: number };
   [IPC_EVENTS.FIND_BAR_QUERY_SYNC]: { text: string; matchCase: boolean; windowId: number };
+  [IPC_EVENTS.DEVTOOLS_EYEDROPPER_FRAME]: { hex: string; r: number; g: number; b: number; cropDataUrl: string };
+  [IPC_EVENTS.DEVTOOLS_COLOR_PICKED]: { hex: string; r: number; g: number; b: number };
   [IPC_EVENTS.FIND_BAR_CLOSED]: { windowId: number };
 }

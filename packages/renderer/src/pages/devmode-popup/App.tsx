@@ -84,6 +84,11 @@ export function App() {
     void window.api.devmode.closePopup({ windowId: parentWindowId });
   }, []);
 
+  const execDevTool = useCallback((commandId: string) => {
+    void window.api.commands.execute(commandId, { targetWindowId: parentWindowId });
+    void window.api.devmode.closePopup({ windowId: parentWindowId });
+  }, []);
+
   return (
     <div style={{
       display: 'flex',
@@ -174,6 +179,34 @@ export function App() {
             </svg>
             Modo responsive
           </button>
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: 'var(--vela-border)', margin: '0 14px' }} />
+
+      {/* Dev tools section */}
+      <div style={{ padding: '10px 14px 12px' }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--vela-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+          Herramientas dev
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {[
+            { id: 'devtools.color-picker', label: 'Pick de color' },
+            { id: 'devtools.json-formatter', label: 'JSON Formatter' },
+            { id: 'devtools.regex-tester', label: 'Regex Tester' },
+            { id: 'devtools.text-diff', label: 'Diff de texto' },
+            { id: 'devtools.converters', label: 'Conversores →' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => execDevTool(id)}
+              style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', borderRadius: 5, border: 'none', background: 'none', color: 'var(--vela-fg)', fontSize: 12, cursor: 'pointer', textAlign: 'left', width: '100%' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--vela-bg-hover, rgba(255,255,255,0.07))'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 

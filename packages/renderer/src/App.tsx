@@ -15,6 +15,8 @@ import { TabSwitcherModal } from './shell/components/TabSwitcher';
 import { CommandPalette } from './shell/components/CommandPalette';
 import { ResourcesModal } from './shell/components/ResourcesModal/ResourcesModal';
 import { GestureTrail } from './shell/components/GestureTrail';
+import { DevToolsModal } from './shell/components/DevTools/DevToolsModal';
+import { useDevToolsStore } from './stores/devtoolsStore';
 import { NotificationCenter } from './shell/components/NotificationCenter/NotificationCenter';
 import { useMouseGestures, type GestureTrailHandle } from './shell/hooks/useMouseGestures';
 import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelector';
@@ -176,6 +178,10 @@ export function App() {
       }
     });
 
+    const offColorPicked = window.api.on(IPC_EVENTS.DEVTOOLS_COLOR_PICKED, (color) => {
+      useDevToolsStore.getState().receiveColor(color);
+    });
+
     const offClusterRelay = window.api.on(IPC_EVENTS.CLUSTER_RELAY, ({ action, payload }) => {
       const runtime = useRuntimeStore.getState();
       const windowId = runtime.currentWindowId;
@@ -275,6 +281,7 @@ export function App() {
     });
 
     return () => {
+      offColorPicked();
       offWorkspace(); offProfile(); offSnapshot(); offAddNodeMenu(); offDownloads();
       offUpdateModalOpen(); offUpdateDevMode();
       offUpdateChecking(); offUpdateAvailable(); offUpdateNotAvailable();
@@ -336,6 +343,7 @@ export function App() {
       <TabSwitcherModal />
       <CommandPalette />
       <ResourcesModal />
+      <DevToolsModal />
       <UpdateModal />
       <SplitResizer />
       <SplitFocusIndicators />

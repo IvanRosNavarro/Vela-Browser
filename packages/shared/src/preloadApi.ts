@@ -325,6 +325,14 @@ export interface DevtoolsApi {
   closeResponsive(): Promise<IpcResponse<void>>;
 }
 
+export interface DevToolsHelpersApi {
+  eyedropperStart(): Promise<IpcResponse<void>>;
+  eyedropperStop(): Promise<IpcResponse<void>>;
+  eyedropperShowWindow(args: { parentWindowId: number }): Promise<IpcResponse<void>>;
+  eyedropperPickColor(args: { parentWindowId: number; hex: string; r: number; g: number; b: number }): Promise<IpcResponse<void>>;
+  getTabCssValues(): Promise<IpcResponse<{ fontSize: number; vpWidth: number; vpHeight: number }>>;
+}
+
 export interface CertificateInfo {
   subject: string;
   issuer: string;
@@ -702,6 +710,7 @@ export interface PreloadApi {
   reader: ReaderApi;
   shortcuts: ShortcutsApi;
   devtools: DevtoolsApi;
+  devtoolsHelpers: DevToolsHelpersApi;
   security: SecurityApi;
   devmode: DevModeApi;
   suggestionsPopup: SuggestionsPopupApi;

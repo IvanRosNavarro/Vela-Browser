@@ -56,7 +56,12 @@ export type RendererCommandAction =
   | 'open-resources-monitor'
   | 'toggle-device-mode'
   | 'open-analytics-debugger'
-  | 'find-open';
+  | 'find-open'
+  | 'open-devtools-color-picker'
+  | 'open-devtools-json-formatter'
+  | 'open-devtools-regex-tester'
+  | 'open-devtools-text-diff'
+  | 'open-devtools-converters';
 
 export interface ShortcutCommandInfo {
   id: string;

@@ -29,6 +29,7 @@ import { useTitleBarIconStore } from './titleBarIconStore';
 import { useSyncStore } from './syncStore';
 import { useMultiWindowStore } from './multiWindowStore';
 import { useFindStore } from './findStore';
+import { useDevToolsStore, type ConverterTab } from './devtoolsStore';
 
 
 function handleRendererAction(payload: CommandRendererActionPayload): void {
@@ -142,6 +143,23 @@ function handleRendererAction(payload: CommandRendererActionPayload): void {
       // TODO(deuda): conectar con la UI cuando exista
       // (Fase 4.5: command palette + rename inline programático).
       return;
+    case 'open-devtools-color-picker':
+      useDevToolsStore.getState().open('color-picker');
+      return;
+    case 'open-devtools-json-formatter':
+      useDevToolsStore.getState().open('json-formatter');
+      return;
+    case 'open-devtools-regex-tester':
+      useDevToolsStore.getState().open('regex-tester');
+      return;
+    case 'open-devtools-text-diff':
+      useDevToolsStore.getState().open('text-diff');
+      return;
+    case 'open-devtools-converters': {
+      const p = payload.payload as { tab?: ConverterTab } | undefined;
+      useDevToolsStore.getState().open('converters', p?.tab ?? 'css');
+      return;
+    }
   }
 }
 
