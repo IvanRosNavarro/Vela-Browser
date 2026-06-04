@@ -74,7 +74,7 @@ export function buildSearchUrl(settings: SearchSettings, query: string): string 
         ? settings.customUrl
         : BUILTIN_SEARCH_ENGINES[SEARCH_ENGINE_DEFAULT].urlTemplate;
   } else {
-    template = BUILTIN_SEARCH_ENGINES[settings.engine].urlTemplate;
+    template = (BUILTIN_SEARCH_ENGINES[settings.engine] ?? BUILTIN_SEARCH_ENGINES[SEARCH_ENGINE_DEFAULT]).urlTemplate;
   }
   return template.replace('%s', encoded);
 }

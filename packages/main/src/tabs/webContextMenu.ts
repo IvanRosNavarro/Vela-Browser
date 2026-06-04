@@ -3,6 +3,8 @@ import {
   buildSearchUrl,
   searchEngineLabel,
   SEARCH_ENGINE_DEFAULT,
+  SEARCH_ENGINE_IDS,
+  type SearchEngineId,
   type SearchSettings,
   type ContextMenuShowPayload,
 } from '@vela/shared';
@@ -22,7 +24,9 @@ function getSearchSettings(ctx: IpcContext, profileId: string): SearchSettings {
     const repos = ctx.profileManager.getRepositories(profileId);
     const engineRaw = repos.settings.get('search:engine');
     const customUrlRaw = repos.settings.get('search:custom-url');
-    const engine = (engineRaw as SearchSettings['engine']) ?? SEARCH_ENGINE_DEFAULT;
+    const engine: SearchSettings['engine'] = SEARCH_ENGINE_IDS.includes(engineRaw as SearchEngineId)
+      ? (engineRaw as SearchSettings['engine'])
+      : SEARCH_ENGINE_DEFAULT;
     return { engine, customUrl: customUrlRaw ?? null };
   } catch {
     return { engine: SEARCH_ENGINE_DEFAULT, customUrl: null };
