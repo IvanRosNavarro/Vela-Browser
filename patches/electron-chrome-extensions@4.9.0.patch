@@ -1,0 +1,16 @@
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index b4242b0b847d33d8544832bfb2d8723a884a3072..d653d9ee509744aab8aab23c3b35994ed8b50d95 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js	
+@@ -212,9 +212,9 @@ var _PopupView = class _PopupView extends import_node_events.EventEmitter {
+       console.error(e);
+     }
+     if (this.destroyed) return;
+-    if (this.usingPreferredSize) {
++    if (this.usingPreferredSize && this.hidden) {
+       this.setSize({ width: _PopupView.BOUNDS.minWidth, height: _PopupView.BOUNDS.minHeight });
+-    } else {
++    } else if (!this.usingPreferredSize) {
+       this.setSize({ width: _PopupView.BOUNDS.maxWidth, height: _PopupView.BOUNDS.maxHeight });
+       await new Promise((resolve) => setTimeout(resolve, 100));
+       if (this.destroyed) return;
