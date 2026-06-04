@@ -4,7 +4,6 @@ import type { NotificationManager } from '../notifications/NotificationManager';
 
 const DEFAULT_DENY_PERMISSIONS = new Set<string>([
   'clipboard-read',
-  'clipboard-sanitized-write',
   'display-capture',
   'fullscreen',
   'geolocation',
@@ -87,6 +86,10 @@ export async function configureSessionDefaults(
     if (p === 'periodicBackgroundSync') return true;
     if (p === 'backgroundSync') return true;
     if (p === 'persistent-storage') return true;
+    if (p === 'clipboard-sanitized-write') {
+      if (!wc) return false;
+      try { return new URL(wc.getURL()).protocol === 'https:'; } catch { return false; }
+    }
     if (p === 'notifications' || p === 'push') {
       if (!notificationManager || !wc) return true;
       const origin = safeOrigin(wc.getURL());
@@ -144,6 +147,11 @@ export async function configureSessionDefaults(
     }
     if (p === 'persistent-storage') {
       callback(true);
+      return;
+    }
+    if (p === 'clipboard-sanitized-write') {
+      const origin = safeOrigin(wc.getURL());
+      callback(origin !== null && origin.startsWith('https://'));
       return;
     }
     if (DEFAULT_DENY_PERMISSIONS.has(permission)) {
