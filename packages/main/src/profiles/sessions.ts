@@ -53,7 +53,9 @@ export async function configureSessionDefaults(
   profileId: string,
   notificationManager?: NotificationManager,
 ): Promise<void> {
-  s.setUserAgent(app.userAgentFallback);
+  // Forzar español como idioma preferido en las peticiones HTTP.
+  // El segundo parámetro establece la cabecera Accept-Language de la sesión.
+  s.setUserAgent(app.userAgentFallback, 'es-ES,es;q=0.9,en;q=0.8');
 
   // Sec-CH-UA lo genera Chromium con "Electron" aunque el UA string no lo lleve.
   // Google OAuth compara ambos: si el UA dice "Chrome" pero Sec-CH-UA dice

@@ -62,6 +62,11 @@ app.userAgentFallback = app.userAgentFallback
 // navegadores automatizados/embebidos).
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
+// Forzar español como idioma del motor Chromium. Afecta a navigator.language,
+// chrome.i18n.getUILanguage() en extensiones y la UI nativa de Chromium.
+// Debe establecerse antes de app.whenReady().
+app.commandLine.appendSwitch('lang', 'es-ES');
+
 // Sin este lock pueden arrancar dos procesos Electron simultáneamente,
 // lo que provoca colisiones de caché (Access Denied en Windows) y rompe
 // la coordinación multi-ventana, que requiere un único proceso.
@@ -100,6 +105,21 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
   if (!ext) {
     ext = new ElectronChromeExtensions({ license: 'GPL-3.0', session: ses });
     extensionsBySession.set(ses, ext);
+
+    // Las extensiones instaladas por el usuario (CRX) se cargan en la sesión
+    // durante la inicialización del perfil, ANTES de que exista la instancia ECE.
+    // ECE escucha 'extension-loaded' para poblar su actionMap, pero el evento
+    // ya disparó → actionMap vacío → activateClick despacha onClicked en lugar
+    // de abrir el popup. Solución: procesar manualmente las ya cargadas.
+    const eceAny = ext as unknown as Record<string, unknown>;
+    const browserAction = (eceAny['api'] as Record<string, unknown> | undefined)?.['browserAction'] as
+      | { processExtension?(e: Electron.Extension): void }
+      | undefined;
+    if (browserAction?.processExtension) {
+      for (const loadedExt of ses.extensions.getAllExtensions()) {
+        browserAction.processExtension(loadedExt);
+      }
+    }
 
     // Para sesiones de perfil, leer qué bundles eliminó el usuario
     let removedByUser: Set<string> | undefined;
