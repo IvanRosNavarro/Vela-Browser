@@ -12,6 +12,7 @@ import type { IpcContext } from '../ipc';
 import { CommandRegistry, defineCommand } from './registry';
 import { reposForCommand } from './context';
 import { BugSnapshotService, initConsoleBuffers } from '../devtools/BugSnapshotService';
+import { translateAndShow } from '../ipc/translation';
 
 const ACTIVE_WORKSPACE_KEY = 'active-workspace';
 const MRU_SCOPE_KEY = 'mru:scope';
@@ -1529,6 +1530,32 @@ export function registerCoreCommands(
         void shell.openExternal(
           `https://github.com/IvanRosNavarro/Vela-Browser/issues/new?labels=bug&body=${encodeURIComponent(body)}`,
         );
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'translate.selectedText',
+      title: 'Traducir texto seleccionado',
+      category: 'translation',
+      run: (ctx) => {
+        if (ctx.windowId === null || !ctx.activeTabId) return;
+        const wcv = ipc.tabManager.getWcvForTab(ctx.activeTabId);
+        if (!wcv) return;
+        void (async () => {
+          let text = '';
+          try {
+            text = (await wcv.webContents.executeJavaScript(
+              'window.getSelection().toString()',
+              true,
+            )) as string;
+          } catch {
+            return;
+          }
+          if (!text?.trim()) return;
+          void translateAndShow(ipc, ctx.windowId!, text.trim());
+        })();
       },
     }),
   );

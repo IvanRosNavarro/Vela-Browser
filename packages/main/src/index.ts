@@ -1,3 +1,14 @@
+// Suprimir DEP0169 (url.parse) que emiten dependencias transitivas (node-fetch, cacheable-request, etc.)
+// process.on('warning') no evita la impresión; hay que interceptar process.emit.
+{
+  const _emit = process.emit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (process as any).emit = function (event: string | symbol, ...args: any[]): boolean {
+    if (event === 'warning' && (args[0] as { code?: string } | undefined)?.code === 'DEP0169') return false;
+    return Reflect.apply(_emit, process, [event, ...args]) as boolean;
+  };
+}
+
 import path from 'node:path';
 import { app, BrowserWindow, dialog, protocol, shell, type Session, type WebContentsView } from 'electron';
 import { registerVelaProtocol } from './protocols/velaProtocol';
@@ -29,6 +40,7 @@ import { attachWebContextMenu } from './tabs/webContextMenu';
 import { GestureRecognizer } from './gestures/GestureRecognizer';
 import { buildJumpList, parseJumpListArgs } from './jumplist';
 import { isBlindedProfile } from './profiles/blindedProfileUtils';
+import { registerWindowsCapabilities } from './platform/windowsBrowserRegistration';
 
 // Debe llamarse antes de app.whenReady — protocol.handle no funciona si el
 // esquema no está registrado como privilegiado de antemano.
@@ -269,6 +281,7 @@ app.whenReady().then(async () => {
   // icono de la barra de tareas se agrupe bajo "Vela" y no bajo "Electron".
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.vela.browser');
+    registerWindowsCapabilities();
   }
 
   // Propaga el icono a cualquier BrowserWindow futura (splash, onboarding…).

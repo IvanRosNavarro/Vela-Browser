@@ -13,6 +13,7 @@ import { generateKeyBetween } from 'fractional-indexing';
 import type { IpcContext } from '../ipc/context';
 import type { ContextMenuShowPayload } from '@vela/shared';
 import { IPC_EVENTS } from '@vela/shared';
+import { translateAndShow } from '../ipc/translation';
 
 const MENU_WIDTH = 272;
 
@@ -20,6 +21,15 @@ const CTXMENU_PRELOAD_PATH = path.join(
   __dirname,
   '../../preload/dist/ctxMenu.js',
 );
+
+/** Limpia un título de página para usarlo como nombre de fichero por defecto. */
+function sanitizeFileName(name: string): string {
+  return name
+    .replace(/[<>:"/\\|?*]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
 
 // ─── HTML del popup ───────────────────────────────────────────────────────────
 
@@ -275,7 +285,8 @@ function render(p) {
   if (p.selection) {
     const q = trunc(p.selection.text, 30);
     add.push(item('Buscar "' + q + '" en ' + p.selection.searchLabel, false, { type: 'selection:search', url: p.selection.searchUrl }));
-    add.push(item('Traducir "' + trunc(p.selection.text, 20) + '"',   true,  null));
+    add.push(item('Traducir "' + trunc(p.selection.text, 20) + '"',   false, { type: 'text:translate', text: p.selection.text }));
+    add.push(item('Copiar a un archivo de texto\\u2026', false, { type: 'selection:save-to-file', text: p.selection.text, title: p.currentTitle }));
     add.push(sep());
   }
 
@@ -493,6 +504,34 @@ export class ContextMenuPopup {
         clipboard.writeText(action.text as string);
         break;
 
+      case 'selection:save-to-file': {
+        const text = (action.text as string | undefined) ?? '';
+        if (!text || !parentWin || parentWin.isDestroyed()) break;
+        const rawTitle = (action.title as string | null | undefined) ?? '';
+        const baseName = sanitizeFileName(rawTitle) || 'seleccion';
+        const { filePath, canceled } = await dialog.showSaveDialog(parentWin, {
+          title: 'Copiar selección a un archivo de texto',
+          defaultPath: `${baseName}.txt`,
+          filters: [
+            { name: 'Texto plano', extensions: ['txt'] },
+            { name: 'Markdown', extensions: ['md', 'markdown'] },
+            { name: 'CSV', extensions: ['csv'] },
+            { name: 'Registro', extensions: ['log'] },
+            { name: 'Todos los archivos', extensions: ['*'] },
+          ],
+        });
+        if (canceled || !filePath) break;
+        try {
+          await fs.promises.writeFile(filePath, text, 'utf8');
+          if (!parentWin.isDestroyed()) {
+            parentWin.webContents.send(IPC_EVENTS.SELECTION_SAVED_TO_FILE, { filePath });
+          }
+        } catch {
+          /* error de escritura: no se notifica al usuario */
+        }
+        break;
+      }
+
       case 'image:copy':
         wc?.copyImageAt(action.wcvX as number, action.wcvY as number);
         break;
@@ -583,6 +622,13 @@ export class ContextMenuPopup {
       case 'page:print':
         wc?.print();
         break;
+
+      case 'text:translate': {
+        const text = (action.text as string | undefined) ?? '';
+        if (!text || windowId === null) break;
+        void translateAndShow(this.ctx, windowId, text);
+        break;
+      }
 
       case 'devtools:inspect':
         if (!wc) break;

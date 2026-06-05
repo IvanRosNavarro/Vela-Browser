@@ -26,6 +26,7 @@ const CATEGORY_TO_GROUP: Record<CommandCategory, DisplayGroup> = {
   reader: 'Herramientas',
   screenshot: 'Herramientas',
   devtools: 'Herramientas',
+  translation: 'Herramientas',
 };
 
 const GROUP_ORDER: DisplayGroup[] = [

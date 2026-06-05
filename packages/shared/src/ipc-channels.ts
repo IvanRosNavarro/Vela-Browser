@@ -414,6 +414,20 @@ export const IPC_CHANNELS = {
   DEFAULT_BROWSER_SET: 'default-browser:set',
 
   CLIPBOARD_WRITE_TEXT: 'clipboard:write-text',
+
+  TRANSLATE_TEXT: 'translate:text',
+  TRANSLATE_GET_SETTINGS: 'translate:get-settings',
+  TRANSLATE_SAVE_SETTINGS: 'translate:save-settings',
+  TRANSLATE_DETECT_PAGE: 'translate:detect-page',
+  TRANSLATE_SHOW_POPUP: 'translate:show-popup',
+  TRANSLATE_CLOSE_POPUP: 'translate:close-popup',
+  TRANSLATE_RESIZE_POPUP: 'translate:resize-popup',
+  TRANSLATE_COPY_AND_CLOSE: 'translate:copy-and-close',
+  TRANSLATE_PAGE: 'translate:page',
+  TRANSLATE_REVERT: 'translate:revert',
+  TRANSLATE_DETECT_LANG: 'translate:detect-lang',
+  TRANSLATE_CONFIRM_OPEN: 'translate-confirm:open',
+  TRANSLATE_CONFIRM_EXEC: 'translate-confirm:exec',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -464,6 +478,7 @@ export const IPC_EVENTS = {
   WORKSPACE_MODAL_TRIGGER: 'state:workspace-modal-trigger',
   PROFILE_MODAL_TRIGGER: 'state:profile-modal-trigger',
   BUG_SNAPSHOT_COMPLETE: 'state:bug-snapshot-complete',
+  SELECTION_SAVED_TO_FILE: 'state:selection-saved-to-file',
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
   UPDATE_MODAL_OPEN: 'state:update-modal-open',
@@ -484,6 +499,9 @@ export const IPC_EVENTS = {
   FIND_BAR_CLOSED: 'state:find-bar-closed',
   DEVTOOLS_EYEDROPPER_FRAME: 'state:devtools-eyedropper-frame',
   DEVTOOLS_COLOR_PICKED: 'state:devtools-color-picked',
+  TRANSLATION_STATUS_CHANGED: 'state:translation-status-changed',
+  TRANSLATION_RESULT_READY: 'state:translation-result-ready',
+  TRANSLATION_ERROR: 'state:translation-error',
 } as const;
 
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
@@ -564,6 +582,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.WORKSPACE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'edit'; editId?: string };
   [IPC_EVENTS.PROFILE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'unlock'; profileId?: string };
   [IPC_EVENTS.BUG_SNAPSHOT_COMPLETE]: { zipPath: string };
+  [IPC_EVENTS.SELECTION_SAVED_TO_FILE]: { filePath: string };
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };
   [IPC_EVENTS.UPDATE_MODAL_OPEN]: void;
@@ -584,4 +603,14 @@ export interface MainEventPayloads {
   [IPC_EVENTS.DEVTOOLS_EYEDROPPER_FRAME]: { hex: string; r: number; g: number; b: number; cropDataUrl: string };
   [IPC_EVENTS.DEVTOOLS_COLOR_PICKED]: { hex: string; r: number; g: number; b: number };
   [IPC_EVENTS.FIND_BAR_CLOSED]: { windowId: number };
+  [IPC_EVENTS.TRANSLATION_STATUS_CHANGED]: { windowId: number; tabId: string; status: 'neutral' | 'suggested' | 'translated' };
+  [IPC_EVENTS.TRANSLATION_RESULT_READY]: {
+    windowId: number;
+    translatedText: string;
+    detectedLang: string;
+    sourceLang: string;
+    targetLang: string;
+    originalText: string;
+  };
+  [IPC_EVENTS.TRANSLATION_ERROR]: { windowId: number; message: string };
 }

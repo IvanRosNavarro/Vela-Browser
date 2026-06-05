@@ -39,6 +39,7 @@ import { themeManager } from './shared-ui/theme';
 import { VelaLogo } from './shared-ui/VelaLogo';
 import { IPC_EVENTS } from '@vela/shared';
 import { clusterRegistry } from './components/AddressBar/clusterRegistry';
+import { useTranslationStore } from './stores/translationStore';
 
 function WebContentArea() {
   const backgroundSnapshot = useScreenshotStore((s) => s.backgroundSnapshot);
@@ -97,6 +98,12 @@ export function App() {
       const filename = zipPath.split(/[/\\]/).pop() ?? 'snapshot.zip';
       toast(`Snapshot guardado: ${filename}`, 'success', () => {
         void window.api.bugSnapshot.showInFolder({ zipPath });
+      });
+    });
+    const offSelectionSaved = window.api.on(IPC_EVENTS.SELECTION_SAVED_TO_FILE, ({ filePath }) => {
+      const filename = filePath.split(/[/\\]/).pop() ?? 'seleccion.txt';
+      toast(`Selección guardada: ${filename}`, 'success', () => {
+        void window.api.downloads.showInFolder(filePath);
       });
     });
     const offAddNodeMenu = window.api.on(IPC_EVENTS.ADD_NODE_MENU_ACTION, ({ action, workspaceId, parentId }) => {
@@ -180,6 +187,25 @@ export function App() {
 
     const offColorPicked = window.api.on(IPC_EVENTS.DEVTOOLS_COLOR_PICKED, (color) => {
       useDevToolsStore.getState().receiveColor(color);
+    });
+
+    const offTranslationStatus = window.api.on(IPC_EVENTS.TRANSLATION_STATUS_CHANGED, ({ tabId, status }) => {
+      useTranslationStore.getState().setTabStatus(tabId, status);
+      if (status === 'translated') toast('Página traducida', 'success');
+    });
+
+    const offTranslationError = window.api.on(IPC_EVENTS.TRANSLATION_ERROR, ({ message }) => {
+      toast(message, 'error');
+    });
+
+    const offTabNavigated = window.api.on(IPC_EVENTS.TAB_NAVIGATED, ({ tabId }) => {
+      // Resetear al navegar (icono desaparece durante la carga)
+      useTranslationStore.getState().setTabStatus(tabId, 'neutral');
+    });
+
+    // Detectar idioma cuando la página TERMINA de cargar (DOM ready)
+    const offTabLoading = window.api.on(IPC_EVENTS.TAB_LOADING_CHANGED, ({ tabId, loading }) => {
+      if (!loading) void window.api.translation.detectLang({ tabId });
     });
 
     const offClusterRelay = window.api.on(IPC_EVENTS.CLUSTER_RELAY, ({ action, payload }) => {
@@ -282,12 +308,16 @@ export function App() {
 
     return () => {
       offColorPicked();
-      offWorkspace(); offProfile(); offSnapshot(); offAddNodeMenu(); offDownloads();
+      offWorkspace(); offProfile(); offSnapshot(); offSelectionSaved(); offAddNodeMenu(); offDownloads();
       offUpdateModalOpen(); offUpdateDevMode();
       offUpdateChecking(); offUpdateAvailable(); offUpdateNotAvailable();
       offUpdateProgress(); offUpdateDownloaded(); offUpdateError();
       offClusterRelay();
       offNotificationsChanged(); offPermissionPending(); offPermissionChanged(); offNotificationCenterOpen();
+      offTranslationStatus();
+      offTranslationError();
+      offTabNavigated();
+      offTabLoading();
     };
   }, []);
 

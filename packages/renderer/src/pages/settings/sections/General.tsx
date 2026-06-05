@@ -4,8 +4,27 @@ import type { useSettings } from '../lib/useSettings';
 import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
 import { Select, type SelectOption } from '../components/controls/Select';
+import type { TranslationSettings } from '@vela/shared';
 
 declare const __APP_VERSION__: string;
+
+const LANG_OPTIONS: SelectOption<string>[] = [
+  { value: 'es', label: 'Español' },
+  { value: 'en', label: 'Inglés' },
+  { value: 'fr', label: 'Francés' },
+  { value: 'de', label: 'Alemán' },
+  { value: 'it', label: 'Italiano' },
+  { value: 'pt', label: 'Portugués' },
+  { value: 'ru', label: 'Ruso' },
+  { value: 'zh', label: 'Chino (simplificado)' },
+  { value: 'ja', label: 'Japonés' },
+  { value: 'ko', label: 'Coreano' },
+  { value: 'ar', label: 'Árabe' },
+  { value: 'nl', label: 'Neerlandés' },
+  { value: 'pl', label: 'Polaco' },
+  { value: 'tr', label: 'Turco' },
+  { value: 'uk', label: 'Ucraniano' },
+];
 
 type StartupPage = 'blank' | 'previous' | 'custom';
 
@@ -23,6 +42,18 @@ export function General({ settings }: Props) {
   const { get, set } = settings;
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const [settingDefault, setSettingDefault] = useState(false);
+
+  const [transSettings, setTransSettings] = useState<TranslationSettings | null>(null);
+  useEffect(() => {
+    void window.api.translation.getSettings().then((res) => {
+      if (res.ok) setTransSettings(res.data);
+    });
+  }, []);
+
+  async function saveTransSetting(partial: Partial<TranslationSettings>): Promise<void> {
+    const res = await window.api.translation.saveSettings(partial);
+    if (res.ok) setTransSettings(res.data);
+  }
   useEffect(() => {
     void window.api.defaultBrowser.getStatus().then((res) => {
       if (res.ok) setIsDefault(res.data.isDefault);
@@ -109,6 +140,39 @@ export function General({ settings }: Props) {
             disabled
           />
         </SettingRow>
+      </SettingSection>
+
+      <SettingSection title="Traducción">
+        <SettingRow
+          label="Idioma de destino"
+          description="Idioma al que se traduce el texto seleccionado."
+        >
+          <Select<string>
+            value={transSettings?.targetLang ?? 'es'}
+            options={LANG_OPTIONS}
+            onChange={(v) => void saveTransSetting({ targetLang: v })}
+            disabled={transSettings === null}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Detectar idioma automáticamente"
+          description="Si está desactivado, puedes fijar el idioma de origen manualmente."
+        >
+          <Toggle
+            value={(transSettings?.sourceMode ?? 'auto') === 'auto'}
+            onChange={(v) => void saveTransSetting({ sourceMode: v ? 'auto' : 'manual' })}
+          />
+        </SettingRow>
+        {transSettings !== null && transSettings.sourceMode !== 'auto' && (
+          <SettingRow label="Idioma de origen">
+            <Select<string>
+              value={transSettings?.sourceLang ?? 'en'}
+              options={LANG_OPTIONS}
+              onChange={(v) => void saveTransSetting({ sourceLang: v })}
+              disabled={transSettings === null}
+            />
+          </SettingRow>
+        )}
       </SettingSection>
 
       <SettingSection title="Rendimiento">
