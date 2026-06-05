@@ -122,12 +122,17 @@ export function ScreenshotEditor({ dataUrl, onClose }: Props) {
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA';
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
       if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
       if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      if (!isTyping && e.ctrlKey && e.key === 'c') { e.preventDefault(); void handleCopy(); }
+      if (!isTyping && e.ctrlKey && e.key === 's') { e.preventDefault(); void handleSavePng(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undo, redo, onClose]);
 
   // --- Dibujo ---
@@ -293,26 +298,27 @@ export function ScreenshotEditor({ dataUrl, onClose }: Props) {
     const res = await window.api.screenshot.copyImage(url);
     if (res.ok) toast('Imagen copiada al portapapeles', 'info');
     else toast('Error al copiar', 'error');
-  }, [getExportDataUrl]);
+    onClose();
+  }, [getExportDataUrl, onClose]);
 
   const handleSavePng = useCallback(async () => {
     const url = getExportDataUrl();
     if (!url) return;
     const res = await window.api.screenshot.saveFile({ dataUrl: url, format: 'png' });
-    if (res.ok && res.data.saved) toast('PNG guardado', 'info');
-    else if (res.ok && !res.data.saved) { /* cancelado */ }
-    else toast('Error al guardar', 'error');
-  }, [getExportDataUrl]);
+    if (res.ok && res.data.saved) { toast('PNG guardado', 'info'); onClose(); }
+    else if (res.ok && !res.data.saved) { /* cancelado — no cerrar */ }
+    else { toast('Error al guardar', 'error'); onClose(); }
+  }, [getExportDataUrl, onClose]);
 
   const handleSaveJpeg = useCallback(async () => {
     const stage = stageRef.current;
     if (!stage) return;
     const url = stage.toDataURL({ pixelRatio: 2, mimeType: 'image/jpeg', quality: 0.9 });
     const res = await window.api.screenshot.saveFile({ dataUrl: url, format: 'jpeg' });
-    if (res.ok && res.data.saved) toast('JPEG guardado', 'info');
-    else if (res.ok && !res.data.saved) { /* cancelado */ }
-    else toast('Error al guardar', 'error');
-  }, []);
+    if (res.ok && res.data.saved) { toast('JPEG guardado', 'info'); onClose(); }
+    else if (res.ok && !res.data.saved) { /* cancelado — no cerrar */ }
+    else { toast('Error al guardar', 'error'); onClose(); }
+  }, [onClose]);
 
   const handleCopyMarkdown = useCallback(async () => {
     const url = getExportDataUrl();
@@ -324,7 +330,8 @@ export function ScreenshotEditor({ dataUrl, onClose }: Props) {
     } catch {
       toast('Error al copiar', 'error');
     }
-  }, [getExportDataUrl]);
+    onClose();
+  }, [getExportDataUrl, onClose]);
 
   if (!img) {
     return (
@@ -471,6 +478,8 @@ export function ScreenshotEditor({ dataUrl, onClose }: Props) {
         if (e.key === 'Escape') { e.preventDefault(); onClose(); }
         if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
         if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+        if (e.ctrlKey && e.key === 'c') { e.preventDefault(); void handleCopy(); }
+        if (e.ctrlKey && e.key === 's') { e.preventDefault(); void handleSavePng(); }
       }}
     >
       {/* Toolbar */}
