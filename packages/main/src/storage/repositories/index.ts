@@ -15,3 +15,4 @@ export * from './AdblockerExceptionsRepository';
 export * from './UserScriptsRepository';
 export * from './SyncPendingRepository';
 export * from './WindowStateRepository';
+export * from './TranslationSettingsRepository';

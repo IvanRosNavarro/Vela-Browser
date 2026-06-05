@@ -63,6 +63,7 @@ import { registerMultiWindowHandlers } from './multiWindow';
 import { registerFindHandlers } from './find';
 import { registerCertHandlers } from './cert';
 import { registerClipboardHandlers } from './clipboard';
+import { registerTranslationHandlers } from './translation';
 import { CertificateManager } from '../security/CertificateManager';
 import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
@@ -295,6 +296,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerNotificationHandlers(ctx);
   registerCertHandlers(ctx);
   registerClipboardHandlers();
+  registerTranslationHandlers(ctx);
 }
 
 export function getEventBus(ctx: IpcContext): MainEventBus {

@@ -11,7 +11,8 @@ export type CommandCategory =
   | 'internal'
   | 'reader'
   | 'screenshot'
-  | 'devtools';
+  | 'devtools'
+  | 'translation';
 
 export interface CommandContext {
   windowId: number | null;

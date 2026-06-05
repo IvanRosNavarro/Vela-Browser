@@ -753,6 +753,7 @@ export interface PreloadApi {
   push: PushSubscriptionsApi;
   defaultBrowser: DefaultBrowserApi;
   clipboard: ClipboardApi;
+  translation: TranslationApi;
   on<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): () => void;
   off<E extends keyof MainEventPayloads>(channel: E, handler: EventListener<E>): void;
 }
@@ -946,4 +947,34 @@ export interface PushSubscriptionsApi {
 export interface DefaultBrowserApi {
   getStatus(): Promise<IpcResponse<{ isDefault: boolean }>>;
   set(): Promise<IpcResponse<{ requested: boolean }>>;
+}
+
+export interface TranslationSettings {
+  targetLang: string;
+  sourceMode: 'auto' | string;
+  sourceLang: string;
+}
+
+export interface TranslationResult {
+  translatedText: string;
+  detectedLang: string;
+  sourceLang: string;
+  targetLang: string;
+  originalText: string;
+}
+
+export interface TranslationApi {
+  translate(input: { text: string; targetLang?: string; sourceLang?: string }): Promise<IpcResponse<TranslationResult>>;
+  getSettings(): Promise<IpcResponse<TranslationSettings>>;
+  saveSettings(input: Partial<TranslationSettings>): Promise<IpcResponse<TranslationSettings>>;
+  detectPageLanguage(input: { text: string }): Promise<IpcResponse<{ lang: string }>>;
+  showPopup(input: { windowId: number; result: TranslationResult }): Promise<IpcResponse<void>>;
+  closePopup(input: { windowId: number }): Promise<IpcResponse<void>>;
+  resizePopup(input: { windowId: number; height: number }): Promise<void>;
+  copyAndClose(input: { windowId: number }): Promise<void>;
+  translatePage(input: { tabId: string; targetLang?: string }): Promise<IpcResponse<{ detectedLang: string; translatedCount: number; targetLang: string }>>;
+  revertPage(input: { tabId: string }): Promise<IpcResponse<void>>;
+  detectLang(input: { tabId: string }): Promise<IpcResponse<{ lang: string; status: string }>>;
+  openConfirmPopup(input: { windowId: number }): Promise<IpcResponse<void>>;
+  confirmExec(input: { windowId: number; tabId: string; targetLang: string }): Promise<IpcResponse<void>>;
 }

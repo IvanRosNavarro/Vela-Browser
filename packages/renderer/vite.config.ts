@@ -61,6 +61,8 @@ export default defineConfig({
         'status-cluster': resolve(__dirname, 'src/pages/status-cluster/index.html'),
         'find-bar': resolve(__dirname, 'src/pages/find-bar/index.html'),
         'cert-error': resolve(__dirname, 'src/pages/cert-error/index.html'),
+        'translate-result': resolve(__dirname, 'src/pages/translate-result/index.html'),
+        'translate-confirm': resolve(__dirname, 'src/pages/translate-confirm/index.html'),
       },
     },
   },

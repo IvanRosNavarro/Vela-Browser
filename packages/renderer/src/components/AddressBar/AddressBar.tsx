@@ -15,6 +15,7 @@ import { SecurityIndicator } from './SecurityIndicator';
 import { SuggestionsList } from './SuggestionsList';
 import { UrlInput } from './UrlInput';
 import { CopyUrlButton } from './CopyUrlButton';
+import { TranslateButton } from './TranslateButton';
 import { ModeChip } from './ModeChip';
 import { UrlBreadcrumb } from './UrlBreadcrumb';
 import { HoverUrlDisplay } from './HoverUrlDisplay';
@@ -283,6 +284,8 @@ export function AddressBar() {
 
         {/* Always-visible: copy URL */}
         <CopyUrlButton url={ctrl.displayUrl.raw} editing={ctrl.editing} />
+        {/* Translate selected text */}
+        <TranslateButton editing={ctrl.editing} />
         {/* Notification bell — permission state for current tab's origin */}
         <NotificationBell />
         {/* Vault button — standalone in URL bar so it stays above the WCV */}

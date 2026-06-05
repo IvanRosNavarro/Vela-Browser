@@ -111,6 +111,7 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     perMachine: false,
     deleteAppDataOnUninstall: false,
+    include: 'build/installer.nsh',
   },
 
   linux: {
