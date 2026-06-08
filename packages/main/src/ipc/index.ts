@@ -1,4 +1,4 @@
-import { safeStorage, app, type BrowserWindow } from 'electron';
+import { safeStorage, app, type BrowserWindow, type Session } from 'electron';
 import { WindowStateRepository } from '../storage/repositories/WindowStateRepository';
 import { getDb } from '../storage/db';
 import {
@@ -90,6 +90,10 @@ export interface BuildIpcContextOptions {
   loadRenderer: (window: BrowserWindow) => void;
   /** Hook tras abrir una ventana (atajos, etc.). */
   onWindowOpened?: (window: BrowserWindow, profileId: string) => void;
+  /** Hook llamado cuando la sesión de un perfil está lista, ANTES de que se
+   *  carguen las extensiones del perfil. Permite que index.ts cree la instancia
+   *  ECE a tiempo para capturar los eventos extension-loaded de las CRX. */
+  onProfileSessionReady?: (profileId: string, session: Session) => void;
 }
 
 export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
@@ -195,6 +199,11 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
 
   profileManager.setProfileSessionReadyCallback(
     (profileId, _session) => {
+      // Crear ECE ANTES de que loadExtensionsForProfile cargue las extensiones
+      // del usuario. Así ECE captura los eventos extension-loaded y registra los
+      // content scripts correctamente (necesario para autofill de Bitwarden, etc.)
+      opts.onProfileSessionReady?.(profileId, _session);
+
       const repos = profileManager.getRepositories(profileId);
       void adBlockerManager.initialize(
         profileId,
