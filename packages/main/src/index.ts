@@ -111,18 +111,22 @@ const RENDERER_INDEX = path.join(__dirname, '..', '..', 'renderer', 'dist', 'ind
 // WebContents coincida con la sesión con la que se construyó. Por eso no podemos
 // tener una instancia global apuntando a defaultSession.
 const extensionsBySession = new Map<Session, ElectronChromeExtensions>();
+// Sesiones para las que ya se cargaron las extensiones bundled. Separado del
+// mapa de ECE porque la creación de ECE ocurre antes (en onProfileSessionReady)
+// mientras que la carga de bundles se difiere hasta tener contexto de ventana.
+const bundledLoadedForSession = new Set<Session>();
 
 function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChromeExtensions {
   let ext = extensionsBySession.get(ses);
   if (!ext) {
+    // IMPORTANTE: ECE debe existir ANTES de que se carguen las extensiones del
+    // usuario. Si se llama aquí con extensiones ya cargadas (path de seguridad),
+    // procesarlas retroactivamente para browserAction/popup. Para que los content
+    // scripts funcionen (autofill de Bitwarden, etc.) hay que llamar a esta
+    // función desde onProfileSessionReady, ANTES de loadExtensionsForProfile.
     ext = new ElectronChromeExtensions({ license: 'GPL-3.0', session: ses });
     extensionsBySession.set(ses, ext);
 
-    // Las extensiones instaladas por el usuario (CRX) se cargan en la sesión
-    // durante la inicialización del perfil, ANTES de que exista la instancia ECE.
-    // ECE escucha 'extension-loaded' para poblar su actionMap, pero el evento
-    // ya disparó → actionMap vacío → activateClick despacha onClicked en lugar
-    // de abrir el popup. Solución: procesar manualmente las ya cargadas.
     const eceAny = ext as unknown as Record<string, unknown>;
     const browserAction = (eceAny['api'] as Record<string, unknown> | undefined)?.['browserAction'] as
       | { processExtension?(e: Electron.Extension): void }
@@ -132,10 +136,14 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
         browserAction.processExtension(loadedExt);
       }
     }
+  }
 
-    // Para sesiones de perfil, leer qué bundles eliminó el usuario
+  // Cargar extensiones bundled una sola vez por sesión, en cuanto tengamos
+  // contexto de ventana para leer las preferencias del usuario (removedByUser).
+  if (win && !bundledLoadedForSession.has(ses)) {
+    bundledLoadedForSession.add(ses);
     let removedByUser: Set<string> | undefined;
-    if (win && ipcCtx) {
+    if (ipcCtx) {
       try {
         const profileId = ipcCtx.profileWindowManager.getProfileForWindow(win.id);
         if (profileId) {
@@ -145,12 +153,11 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
         }
       } catch { /* perfil aún no inicializado, ignorar */ }
     }
-
     void loadExtensions(ses, removedByUser).then(() => {
-      // Notificar a las páginas de extensiones abiertas para que actualicen la lista
       ipcCtx?.events.emit(IPC_EVENTS.EXTENSION_ACTIONS_CHANGED);
     });
   }
+
   return ext;
 }
 
@@ -313,6 +320,13 @@ app.whenReady().then(async () => {
           () => (win.isDestroyed() ? null : win.id),
         );
       }
+    },
+    onProfileSessionReady: (_profileId, session) => {
+      // Crear ECE para esta sesión ANTES de que ProfileManager llame a
+      // loadExtensionsForProfile. Así los eventos extension-loaded de las CRX
+      // del usuario (Bitwarden, etc.) son capturados por ECE y los content
+      // scripts quedan registrados → autofill y otras funciones funcionan.
+      getOrCreateExtensions(session);
     },
     createWindow: (initState) => createMainWindow(initState),
     loadRenderer,

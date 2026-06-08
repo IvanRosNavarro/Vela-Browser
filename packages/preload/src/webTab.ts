@@ -42,7 +42,12 @@ contextBridge.exposeInMainWorld('velaApi', {
   bugSnapshot: { getConsoleBuffer: () => consoleBuffer },
   pushProxy: {
     getSubscription: (origin: string): Promise<{ endpoint: string; p256dh: string; auth: string } | null> =>
-      ipcRenderer.invoke('push:get-proxy-subscription', { origin }) as Promise<{ endpoint: string; p256dh: string; auth: string } | null>,
+      ipcRenderer
+        .invoke('push:get-proxy-subscription', { origin })
+        .then((res: { ok: boolean; data?: unknown }) => {
+          if (res?.ok && res.data) return res.data as { endpoint: string; p256dh: string; auth: string };
+          return null;
+        }),
   },
 });
 
