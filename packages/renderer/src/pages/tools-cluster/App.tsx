@@ -156,7 +156,7 @@ export function App() {
       {isWeb && !state.isSecureTab && (
         <Item
           icon={<MaskIcon />}
-          label="Abrir en pestaña blindada"
+          label="Abrir en pestaña fantasma"
           onClick={() => relay('secure-tab', { url: state.currentUrl })}
         />
       )}

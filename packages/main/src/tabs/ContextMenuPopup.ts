@@ -257,9 +257,11 @@ function render(p) {
   const add = [];
 
   if (p.link) {
-    add.push(item('Abrir enlace en nueva pesta\\u00f1a',        false, { type: 'link:new-tab', url: p.link.url, activate: false }));
-    add.push(item('Abrir enlace en nueva pesta\\u00f1a activa', false, { type: 'link:new-tab', url: p.link.url, activate: true  }));
-    add.push(item('Abrir enlace en nueva ventana',              false, { type: 'link:new-window', url: p.link.url }));
+    add.push(item('Abrir enlace en nueva pesta\\u00f1a',          false, { type: 'link:new-tab', url: p.link.url, activate: false }));
+    add.push(item('Abrir enlace en nueva pesta\\u00f1a activa',   false, { type: 'link:new-tab', url: p.link.url, activate: true  }));
+    add.push(item('Abrir enlace en nueva pesta\\u00f1a fantasma', false, { type: 'link:new-secure-tab', url: p.link.url }));
+    add.push(item('Abrir enlace en nueva ventana',               false, { type: 'link:new-window', url: p.link.url }));
+    add.push(item('Abrir enlace en nueva ventana fantasma',      false, { type: 'link:new-blinded-window', url: p.link.url }));
     if (p.link.profiles && p.link.profiles.length > 1) {
       const profileItems = p.link.profiles.map(pr =>
         item(pr.name, false, { type: 'link:open-profile', url: p.link.url, profileId: pr.id })
@@ -468,6 +470,12 @@ export class ContextMenuPopup {
         break;
       }
 
+      case 'link:new-secure-tab': {
+        if (windowId === null) break;
+        await this.ctx.tabManager.createSecureTab(windowId, action.url as string);
+        break;
+      }
+
       case 'link:new-window': {
         const profileId = windowId !== null
           ? this.ctx.tabManager.getProfileForWindow(windowId)
@@ -483,6 +491,11 @@ export class ContextMenuPopup {
             activate: true,
           });
         }
+        break;
+      }
+
+      case 'link:new-blinded-window': {
+        await this.ctx.profileWindowManager.openBlindedWindow(action.url as string);
         break;
       }
 

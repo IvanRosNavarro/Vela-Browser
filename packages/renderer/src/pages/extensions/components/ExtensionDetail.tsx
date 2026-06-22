@@ -205,8 +205,8 @@ export function ExtensionDetail({ extension, onClose, onUninstall, onOpenOptions
             />
           )}
           <ToggleRow
-            label="Permitir en pestañas blindadas"
-            description={allowedInSecureTabs ? 'Se ejecuta en tabs blindadas' : 'No se ejecuta en tabs blindadas'}
+            label="Permitir en pestañas fantasma"
+            description={allowedInSecureTabs ? 'Se ejecuta en tabs fantasma' : 'No se ejecuta en tabs fantasma'}
             icon={<Shield size={14} />}
             enabled={allowedInSecureTabs}
             toggling={secureToggling}

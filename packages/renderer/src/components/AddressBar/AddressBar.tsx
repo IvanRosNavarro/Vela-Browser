@@ -218,7 +218,7 @@ export function AddressBar() {
               flexShrink: 0,
             }}
           >
-            Blindada
+            Fantasma
           </span>
         )}
         {showModeChip && (

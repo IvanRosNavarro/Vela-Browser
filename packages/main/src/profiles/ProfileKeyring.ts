@@ -14,6 +14,12 @@ const SETTING_WRAPPED_KEY = 'keyring:wrapped-key';
 const SETTING_SALT = 'keyring:salt';
 const SETTING_NONCE = 'keyring:nonce';
 const SETTING_SAFE_STORAGE_BLOB = 'keyring:safe-storage-blob';
+// Parámetros Argon2id usados para envolver la clave. Se persisten junto a la
+// envuelta para poder endurecer el KDF sin romper perfiles ya creados: una
+// envuelta sin estos campos es legacy y se descifra con los params INTERACTIVE
+// originales. Las contraseñas nuevas/rotadas usan MODERATE (~256 MiB).
+const SETTING_KDF_OPS = 'keyring:kdf-ops';
+const SETTING_KDF_MEM = 'keyring:kdf-mem';
 
 type KeyringMode = 'master-password' | 'safe-storage';
 
@@ -52,6 +58,12 @@ export class SafeStorageUnavailableError extends Error {
 export interface ProfileKeyringCtx {
   logger: Logger;
   safeStorage: SafeStorageAdapter;
+  /**
+   * Fuerza del KDF (Argon2id) para envolver la clave del perfil. En producción
+   * se usa 'moderate' (~256 MiB) por defecto; los tests pueden inyectar
+   * 'interactive' para no tardar segundos por derivación.
+   */
+  kdfStrength?: 'interactive' | 'moderate';
 }
 
 function toB64(bytes: Uint8Array): string {
@@ -249,13 +261,31 @@ export class ProfileKeyring {
 
   // ---- helpers internos ----------------------------------------------------
 
-  private deriveKek(password: string, salt: Uint8Array): Uint8Array {
+  private kdfParams(): { ops: number; mem: number } {
+    if (this.ctx.kdfStrength === 'interactive') {
+      return {
+        ops: sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+        mem: sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+      };
+    }
+    return {
+      ops: sodium.crypto_pwhash_OPSLIMIT_MODERATE,
+      mem: sodium.crypto_pwhash_MEMLIMIT_MODERATE,
+    };
+  }
+
+  private deriveKek(
+    password: string,
+    salt: Uint8Array,
+    opslimit: number,
+    memlimit: number,
+  ): Uint8Array {
     return sodium.crypto_pwhash(
       KEY_LEN,
       password,
       salt,
-      sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
-      sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
+      opslimit,
+      memlimit,
       sodium.crypto_pwhash_ALG_ARGON2ID13,
     );
   }
@@ -266,7 +296,8 @@ export class ProfileKeyring {
     password: string,
   ): void {
     const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
-    const kek = this.deriveKek(password, salt);
+    const { ops: opslimit, mem: memlimit } = this.kdfParams();
+    const kek = this.deriveKek(password, salt, opslimit, memlimit);
     try {
       const nonce = sodium.randombytes_buf(
         sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES,
@@ -282,6 +313,8 @@ export class ProfileKeyring {
       settings.set(SETTING_SALT, toB64(salt));
       settings.set(SETTING_NONCE, toB64(nonce));
       settings.set(SETTING_WRAPPED_KEY, toB64(wrapped));
+      settings.set(SETTING_KDF_OPS, String(opslimit));
+      settings.set(SETTING_KDF_MEM, String(memlimit));
     } finally {
       sodium.memzero(kek);
     }
@@ -303,6 +336,8 @@ export class ProfileKeyring {
     settings.delete(SETTING_WRAPPED_KEY);
     settings.delete(SETTING_SALT);
     settings.delete(SETTING_NONCE);
+    settings.delete(SETTING_KDF_OPS);
+    settings.delete(SETTING_KDF_MEM);
   }
 
   private clearSafeStorageMode(settings: ProfileSettingsRepository): void {
@@ -322,7 +357,16 @@ export class ProfileKeyring {
         `[keyring] datos incompletos para profile=${profileId} en modo master-password`,
       );
     }
-    const kek = this.deriveKek(password, fromB64(saltB64));
+    // Params del KDF: si faltan, es una envuelta legacy (INTERACTIVE).
+    const opsRaw = settings.get(SETTING_KDF_OPS);
+    const memRaw = settings.get(SETTING_KDF_MEM);
+    const opslimit = opsRaw
+      ? parseInt(opsRaw, 10)
+      : sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE;
+    const memlimit = memRaw
+      ? parseInt(memRaw, 10)
+      : sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE;
+    const kek = this.deriveKek(password, fromB64(saltB64), opslimit, memlimit);
     try {
       try {
         return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(

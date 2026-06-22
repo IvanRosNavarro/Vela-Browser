@@ -52,7 +52,7 @@ describe('ProfileKeyring', () => {
 
   it('createKeyForProfile sin master password usa safe-storage y deja la clave desbloqueada', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
 
     await kr.createKeyForProfile('p1', settings);
@@ -65,7 +65,7 @@ describe('ProfileKeyring', () => {
 
   it('createKeyForProfile con master password usa modo wrapped y persiste salt+nonce', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
 
     await kr.createKeyForProfile('p1', settings, 'correct horse battery staple');
@@ -79,7 +79,7 @@ describe('ProfileKeyring', () => {
 
   it('unlockProfile en safe-storage devuelve la misma clave que se creó', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings);
     const original = Buffer.from(kr.getKey('p1'));
@@ -91,7 +91,7 @@ describe('ProfileKeyring', () => {
 
   it('unlockProfile con master password correcta recupera la clave', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings, 'pw1');
     const original = Buffer.from(kr.getKey('p1'));
@@ -103,7 +103,7 @@ describe('ProfileKeyring', () => {
 
   it('unlockProfile con master password incorrecta lanza InvalidMasterPasswordError', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings, 'pw1');
     kr.lockProfile('p1');
@@ -116,7 +116,7 @@ describe('ProfileKeyring', () => {
 
   it('unlockProfile sin master password en perfil con master lanza MasterPasswordRequiredError', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings, 'pw1');
     kr.lockProfile('p1');
@@ -128,7 +128,7 @@ describe('ProfileKeyring', () => {
 
   it('lockProfile zerifica la clave en memoria y getKey lanza ProfileLockedError', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings);
 
@@ -143,7 +143,7 @@ describe('ProfileKeyring', () => {
 
   it('cada perfil tiene clave independiente', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const a = makeSettingsRepo();
     const b = makeSettingsRepo();
 
@@ -157,7 +157,7 @@ describe('ProfileKeyring', () => {
 
   it('setMasterPassword pasa de safe-storage a master-password (current=null)', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings);
     const original = Buffer.from(kr.getKey('p1'));
@@ -174,7 +174,7 @@ describe('ProfileKeyring', () => {
 
   it('setMasterPassword pasa de master-password a safe-storage (next=null)', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings, 'old-pw');
     const original = Buffer.from(kr.getKey('p1'));
@@ -192,7 +192,7 @@ describe('ProfileKeyring', () => {
 
   it('setMasterPassword con current incorrecto lanza InvalidMasterPasswordError', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings, 'old-pw');
 
@@ -205,7 +205,7 @@ describe('ProfileKeyring', () => {
 
   it('safeStorage no disponible obliga a usar contraseña maestra', async () => {
     const ss = buildMockSafeStorage(false);
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await expect(kr.createKeyForProfile('p1', settings)).rejects.toThrowError(
       /safeStorage/,
@@ -214,7 +214,7 @@ describe('ProfileKeyring', () => {
 
   it('unlockProfile sin keyring previo bootstrapea perezosamente (perfil legacy)', async () => {
     const ss = buildMockSafeStorage();
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     // Sin createKeyForProfile previo: simula un perfil de Prompt 6.
     await kr.unlockProfile('legacy', settings);
@@ -232,7 +232,7 @@ describe('ProfileKeyring vi.fn check', () => {
       encryptString: enc,
       decryptString: dec,
     };
-    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss });
+    const kr = new ProfileKeyring({ logger: noopLogger, safeStorage: ss, kdfStrength: 'interactive' });
     const { settings } = makeSettingsRepo();
     await kr.createKeyForProfile('p1', settings);
     expect(enc).toHaveBeenCalledTimes(1);

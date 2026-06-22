@@ -7,10 +7,13 @@ export function registerCertHandlers(ctx: IpcContext): void {
   // evento tras verificar los parámetros. Aquí añadimos la huella a la lista de
   // aceptados y recargamos la URL original.
   certEvents.on('proceed', ({ fingerprint, url, wcId }) => {
-    ctx.certManager.allow(fingerprint);
+    // Solo continúa si la huella coincide con el error mostrado en ese WC y el
+    // origen casa; devuelve la URL original validada a la que navegar.
+    const target = ctx.certManager.allowForWebContents(wcId, fingerprint, url);
+    if (!target) return;
     const wc = webContents.fromId(wcId);
     if (wc && !wc.isDestroyed()) {
-      setImmediate(() => { void wc.loadURL(url); });
+      setImmediate(() => { void wc.loadURL(target); });
     }
   });
 
@@ -44,8 +47,13 @@ export function registerCertHandlers(ctx: IpcContext): void {
     if (!senderUrl.startsWith('vela://cert-error')) return;
     const args = rawArgs as { fingerprint?: unknown; url?: unknown };
     if (typeof args?.fingerprint !== 'string' || typeof args?.url !== 'string') return;
-    ctx.certManager.allow(args.fingerprint);
-    void event.sender.loadURL(args.url);
+    const target = ctx.certManager.allowForWebContents(
+      event.sender.id,
+      args.fingerprint,
+      args.url,
+    );
+    if (!target) return;
+    void event.sender.loadURL(target);
   });
 
   ipcMain.handle('cert:go-back', (event) => {

@@ -85,7 +85,7 @@ export function ProfileMenu({ profile, onClose }: ProfileMenuProps) {
         style={{ color: 'var(--vela-accent)' }}
       >
         <span className="ti ti-shield-lock" style={{ fontSize: 13, lineHeight: 1 }} aria-hidden />
-        Abrir en ventana blindada
+        Abrir en ventana fantasma
       </button>
       <button
         type="button"

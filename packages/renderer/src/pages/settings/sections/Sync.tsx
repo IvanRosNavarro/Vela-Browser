@@ -67,7 +67,7 @@ function SyncNotConfigured() {
           <ul className="space-y-1.5 text-sm text-[var(--vela-fg-muted)]">
             <li>Historial</li>
             <li>Extensiones</li>
-            <li>Pestañas blindadas</li>
+            <li>Pestañas fantasma</li>
           </ul>
         </div>
       </div>

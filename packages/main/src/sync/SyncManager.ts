@@ -74,8 +74,8 @@ export class SyncManager {
       lastSeq,
     };
 
-    // Persist session token so PushProxyManager can read it
-    repos.settings.set('sync:session-token', sessionToken);
+    // Persist session token (cifrado en reposo) para que sobreviva reinicios.
+    this.persistSessionToken(repos, sessionToken);
 
     // Encrypt and persist sync key so the session survives restarts
     try {
@@ -98,7 +98,7 @@ export class SyncManager {
 
   async restoreFromStorage(): Promise<boolean> {
     const repos = this.getRepos();
-    const sessionToken = repos.settings.get('sync:session-token');
+    const sessionToken = this.readSessionToken(repos);
     const encryptedKeyB64 = repos.settings.get('sync:key-encrypted');
     if (!sessionToken || !encryptedKeyB64) return false;
 
@@ -135,12 +135,53 @@ export class SyncManager {
     const repos = this.getRepos();
     repos.settings.set('sync:last-seq', '0');
     repos.settings.delete('sync:session-token');
+    repos.settings.delete('sync:session-token-enc');
     repos.settings.delete('sync:key-encrypted');
     this.emitStatus();
   }
 
   getSessionToken(): string | null {
     return this.config?.sessionToken ?? null;
+  }
+
+  /**
+   * Persiste el token de sesión cifrado con safeStorage (DPAPI/Keychain/
+   * libsecret). El token es un bearer de larga vida: en claro en profile.db
+   * permitiría suplantar la sesión a quien lea el fichero. Si safeStorage no
+   * está disponible, cae a texto plano (igual que la clave de sync).
+   */
+  private persistSessionToken(
+    repos: ReturnType<SyncManager['getRepos']>,
+    token: string,
+  ): void {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const enc = safeStorage.encryptString(token).toString('base64');
+        repos.settings.set('sync:session-token-enc', enc);
+        repos.settings.delete('sync:session-token'); // limpiar legacy en claro
+        return;
+      }
+    } catch {
+      /* fallback a texto plano abajo */
+    }
+    repos.settings.set('sync:session-token', token);
+  }
+
+  private readSessionToken(
+    repos: ReturnType<SyncManager['getRepos']>,
+  ): string | null {
+    const enc = repos.settings.get('sync:session-token-enc');
+    if (enc) {
+      try {
+        if (safeStorage.isEncryptionAvailable()) {
+          return safeStorage.decryptString(Buffer.from(enc, 'base64'));
+        }
+      } catch {
+        return null;
+      }
+    }
+    // Compat: tokens persistidos en claro por versiones anteriores.
+    return repos.settings.get('sync:session-token') ?? null;
   }
 
   // ── Conexión WebSocket ─────────────────────────────────────────────────────
@@ -288,7 +329,16 @@ export class SyncManager {
       const body = await res.json() as { entities: RemoteEntity[]; current_seq: number };
 
       for (const entity of body.entities) {
-        await this.applyRemoteEntity(entity);
+        try {
+          await this.applyRemoteEntity(entity);
+        } catch (e) {
+          // Una entidad inválida (p.ej. userscript que no pasa validación) se
+          // descarta sin abortar el resto del lote ni bloquear el avance de seq.
+          this.logger.warn(
+            `[sync] entidad descartada ${entity.entity_type}/${entity.id}:`,
+            e,
+          );
+        }
       }
 
       this.config.lastSeq = body.current_seq;

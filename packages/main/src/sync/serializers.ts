@@ -1,4 +1,22 @@
+import { z } from '@vela/shared';
 import type { ProfileRepositories } from '../profiles/ProfileManager';
+
+// Validación estricta de un userscript que llega por sync ANTES de persistirlo.
+// Un userscript se ejecuta vía executeJavaScript contra páginas web: una
+// entidad malformada o con tipos inesperados no debe llegar nunca al repo.
+// (La confidencialidad/integridad frente al servidor la da el E2EE; esto cierra
+// el type-confusion y acota tamaños.)
+const syncedUserScriptSchema = z.object({
+  id: z.string().min(1).max(128),
+  name: z.string().max(256).default(''),
+  description: z.string().max(4096).default(''),
+  type: z.enum(['js', 'css']),
+  code: z.string().max(512 * 1024),
+  matchPatterns: z.array(z.string().max(4096)).min(1).max(128),
+  enabled: z.union([z.literal(0), z.literal(1), z.boolean()]),
+  runAt: z.enum(['document-start', 'document-end', 'document-idle']),
+  updatedAt: z.number(),
+});
 
 export interface EntitySerializer {
   toSync: (entity: unknown) => object;
@@ -91,8 +109,13 @@ export const serializers: Record<string, EntitySerializer> = {
       runAt: s.runAt,
       updatedAt: s.updatedAt ?? Date.now(),
     }),
-    applyUpsert: async (data: any, repos) => {
-      repos.userScripts.syncUpsert(data);
+    applyUpsert: async (data: unknown, repos) => {
+      // Lanza si la entidad no valida → el merge la descarta (no se persiste).
+      const parsed = syncedUserScriptSchema.parse(data);
+      repos.userScripts.syncUpsert({
+        ...parsed,
+        enabled: parsed.enabled === true || parsed.enabled === 1 ? 1 : 0,
+      });
     },
     applyDelete: async (id, repos) => {
       repos.userScripts.delete(id);

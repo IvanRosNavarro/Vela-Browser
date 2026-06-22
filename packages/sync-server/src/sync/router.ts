@@ -6,6 +6,24 @@ import { notifyPeers } from './websocket';
 export const syncRouter = Router();
 syncRouter.use(requireAuth);
 
+// Tipos de entidad sincronizable conocidos (debe coincidir con los serializers
+// del cliente). Cualquier otro entity_type se rechaza para no almacenar basura.
+const ALLOWED_ENTITY_TYPES = new Set([
+  'workspace',
+  'treenode',
+  'favorite',
+  'user_script',
+  'adblocker_exception',
+  'setting',
+]);
+
+const MAX_ENTITIES_PER_REQUEST = 1000;
+const MAX_ENTITY_ID_LEN = 256;
+const MAX_DATA_CT_BYTES = 512 * 1024; // por entidad (cifrada)
+const MAX_BLOB_B64_LEN = 1_500_000; // ydoc / vault (~1.1 MB binarios)
+// Cota de entidades por perfil para evitar agotar el disco del servidor.
+const MAX_ENTITIES_PER_PROFILE = 100_000;
+
 // ── Perfiles ─────────────────────────────────────────────────────────────────
 
 // POST /sync/profiles
@@ -110,6 +128,31 @@ syncRouter.put('/entities', (req, res) => {
     return res.status(400).json({ error: 'Payload inválido' });
   }
 
+  if (entities.length > MAX_ENTITIES_PER_REQUEST) {
+    return res.status(413).json({ error: 'Demasiadas entidades en una petición' });
+  }
+
+  // Validación por entidad: tipo conocido, id acotado y blob acotado.
+  for (const entity of entities) {
+    if (
+      !entity ||
+      typeof entity.id !== 'string' ||
+      entity.id.length === 0 ||
+      entity.id.length > MAX_ENTITY_ID_LEN
+    ) {
+      return res.status(400).json({ error: 'Entidad con id inválido' });
+    }
+    if (!ALLOWED_ENTITY_TYPES.has(entity.entity_type)) {
+      return res.status(400).json({ error: `entity_type no permitido: ${entity.entity_type}` });
+    }
+    if (
+      entity.data_ct != null &&
+      (typeof entity.data_ct !== 'string' || entity.data_ct.length > MAX_DATA_CT_BYTES)
+    ) {
+      return res.status(413).json({ error: 'Entidad demasiado grande' });
+    }
+  }
+
   const db = getDb();
   const profile = db.prepare(`
     SELECT id FROM sync_profiles
@@ -118,6 +161,14 @@ syncRouter.put('/entities', (req, res) => {
 
   if (!profile) {
     return res.status(403).json({ error: 'Perfil no encontrado' });
+  }
+
+  // Cuota de almacenamiento: limitar el nº total de entidades por perfil.
+  const countRow = db.prepare(
+    'SELECT COUNT(*) AS n FROM sync_entities WHERE profile_id = ?'
+  ).get(profile_id) as { n: number };
+  if (countRow.n + entities.length > MAX_ENTITIES_PER_PROFILE) {
+    return res.status(507).json({ error: 'Cuota de almacenamiento superada' });
   }
 
   let maxSeq = 0;
@@ -211,6 +262,9 @@ syncRouter.put('/ydocs/:workspace_id', (req, res) => {
   if (!profile_id || !doc_ct) {
     return res.status(400).json({ error: 'Payload inválido' });
   }
+  if (typeof doc_ct !== 'string' || doc_ct.length > MAX_BLOB_B64_LEN) {
+    return res.status(413).json({ error: 'Documento demasiado grande' });
+  }
 
   const db = getDb();
 
@@ -279,6 +333,9 @@ syncRouter.put('/vault', (req, res) => {
 
   if (!profile_id || !vault_ct) {
     return res.status(400).json({ error: 'Payload inválido' });
+  }
+  if (typeof vault_ct !== 'string' || vault_ct.length > MAX_BLOB_B64_LEN) {
+    return res.status(413).json({ error: 'Vault demasiado grande' });
   }
 
   const db = getDb();

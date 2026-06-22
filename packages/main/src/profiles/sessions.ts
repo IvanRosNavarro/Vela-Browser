@@ -83,6 +83,15 @@ export async function configureSessionDefaults(
     callback({ requestHeaders: headers });
   });
 
+  // NOTA: la protección "vela:// no cargable desde contenido web" NO se hace con
+  // webRequest.onBeforeRequest porque ese hook solo admite UN listener por
+  // sesión y el ad-blocker (enableBlockingInSession) ya lo ocupa. Se aplica en
+  // la capa de navegación: el guard will-navigate/will-frame-navigate y
+  // setWindowOpenHandler de TabManager impiden que un frame web navegue (o abra)
+  // hacia vela://, que es el único modo de obtener un senderFrame.url de
+  // confianza. Las peticiones de subrecurso a vela:// desde un origen web las
+  // bloquea CORS (vela: no es corsEnabled).
+
   s.setPermissionCheckHandler((wc, permission) => {
     const p = permission as string;
     if (p === 'periodicBackgroundSync') return true;

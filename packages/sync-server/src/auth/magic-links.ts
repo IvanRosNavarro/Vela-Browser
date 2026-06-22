@@ -3,13 +3,18 @@ import { nanoid } from 'nanoid';
 import { getDb } from '../db/database';
 import { sendMagicLink } from '../email/resend';
 import { createSession } from './sessions';
-import { rateLimitMagicLink } from '../middleware/rate-limit';
+import {
+  rateLimitMagicLink,
+  rateLimitMagicLinkByEmail,
+  rateLimitVerify,
+} from '../middleware/rate-limit';
 
 export const authRouter = Router();
 
 // POST /auth/magic-link
 authRouter.post('/magic-link',
   rateLimitMagicLink,
+  rateLimitMagicLinkByEmail,
   async (req, res) => {
     const { email } = req.body as { email?: string };
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,7 +66,7 @@ authRouter.post('/magic-link',
 );
 
 // GET /auth/verify?token=XXX
-authRouter.get('/verify', (req, res) => {
+authRouter.get('/verify', rateLimitVerify, (req, res) => {
   const { token } = req.query;
   if (!token || typeof token !== 'string') {
     return res.status(400).send('Token inválido');

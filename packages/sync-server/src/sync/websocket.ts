@@ -6,10 +6,21 @@ import { getDb } from '../db/database';
 const connections = new Map<string, Set<WebSocket>>();
 
 export function setupWebSocket(server: Server): void {
-  const wss = new WebSocketServer({ server });
+  // maxPayload acotado: el único mensaje entrante esperado es {token}. Sin esto
+  // el default son 100 MB, lo que permitiría a un cliente enviar un frame enorme.
+  const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 
   wss.on('connection', (ws) => {
     let userId: string | null = null;
+
+    // Si el cliente no se autentica en 10 s, cerramos: evita acumular
+    // conexiones sin autenticar (DoS de recursos).
+    const authTimeout = setTimeout(() => {
+      if (!userId && ws.readyState === WebSocket.OPEN) {
+        ws.close(4008, 'Auth timeout');
+      }
+    }, 10_000);
+    if (typeof authTimeout.unref === 'function') authTimeout.unref();
 
     // El cliente envía su token al conectar.
     ws.once('message', (data) => {
@@ -27,6 +38,7 @@ export function setupWebSocket(server: Server): void {
         }
 
         userId = session.user_id;
+        clearTimeout(authTimeout);
 
         if (!connections.has(userId)) {
           connections.set(userId, new Set());
@@ -47,6 +59,7 @@ export function setupWebSocket(server: Server): void {
         }
       }
       clearInterval(pingInterval);
+      clearTimeout(authTimeout);
     };
 
     ws.on('close', cleanup);

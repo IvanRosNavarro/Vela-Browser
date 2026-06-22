@@ -10,6 +10,8 @@ import {
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getFrameContext } from './helpers';
+import { guardTrustedFrame } from './validate';
+import { isPublicHttpUrl } from '../lib/urlSafety';
 
 const addSchema = z.object({
   name: z.string().min(1).max(256),
@@ -170,13 +172,22 @@ export function registerScriptsHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.SCRIPTS_IMPORT_URL,
     async (event, payload): Promise<IpcResponse<UserScriptMeta>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.SCRIPTS_IMPORT_URL);
       try {
         const { url } = importUrlSchema.parse(payload);
-        const response = await net.fetch(url);
+        // Anti-SSRF: solo http(s) público.
+        if (!isPublicHttpUrl(url)) {
+          return { ok: false, error: 'INVALID_INPUT', details: 'URL no permitida' };
+        }
+        const response = await net.fetch(url, { redirect: 'error' });
         if (!response.ok) {
           return { ok: false, error: 'INTERNAL', details: `HTTP ${response.status}` };
         }
-        const code = await response.text();
+        const buf = Buffer.from(await response.arrayBuffer());
+        if (buf.byteLength > 2 * 1024 * 1024) {
+          return { ok: false, error: 'INVALID_INPUT', details: 'Script demasiado grande' };
+        }
+        const code = buf.toString('utf-8');
         const meta = parseGreasemonkeyMeta(code);
         return {
           ok: true,

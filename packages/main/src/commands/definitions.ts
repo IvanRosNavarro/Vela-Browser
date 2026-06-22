@@ -647,7 +647,7 @@ export function registerCoreCommands(
   registry.register(
     defineCommand({
       id: 'window.openBlinded',
-      title: 'Nueva ventana blindada',
+      title: 'Nueva ventana fantasma',
       category: 'view',
       defaultShortcut: 'Ctrl+Shift+B',
       run: async () => {
@@ -975,7 +975,7 @@ export function registerCoreCommands(
   registry.register(
     defineCommand({
       id: 'tab.createSecure',
-      title: 'Nueva pestaña blindada',
+      title: 'Nueva pestaña fantasma',
       category: 'tab',
       // Ctrl+Shift+N está reservado para workspace.create; usamos Ctrl+Alt+N.
       defaultShortcut: 'Ctrl+Alt+N',
@@ -985,7 +985,7 @@ export function registerCoreCommands(
         const count = ipc.tabManager.getSecureTabCount();
         if (count > 5) {
           emitRendererAction(ipc, ctx, 'show-toast', {
-            message: `Tienes ${count} pestañas blindadas abiertas. Cada una usa un proceso de renderer dedicado.`,
+            message: `Tienes ${count} pestañas fantasma abiertas. Cada una usa un proceso de renderer dedicado.`,
             type: 'info',
           });
         }

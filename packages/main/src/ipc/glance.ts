@@ -19,8 +19,25 @@ const modifiersSchema = z.object({
   meta: z.boolean(),
 });
 
+// Glance solo debe previsualizar contenido web: nunca file:/vela:/data:, que
+// permitirían cargar ficheros locales o páginas internas en la sesión del perfil.
+const httpUrlString = z
+  .string()
+  .url()
+  .refine(
+    (u) => {
+      try {
+        const p = new URL(u).protocol;
+        return p === 'http:' || p === 'https:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Solo se permiten URLs http(s)' },
+  );
+
 const showSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlString,
   anchorRect: anchorRectSchema,
   modifiers: modifiersSchema,
 });

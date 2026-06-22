@@ -305,8 +305,20 @@ export function registerNotificationHandlers(ctx: IpcContext): void {
     IPC_CHANNELS.PUSH_GET_PROXY_SUBSCRIPTION,
     async (event, payload): Promise<IpcResponse<unknown>> => {
       try {
-        const { origin } = payload as { origin: string };
-        if (!origin || typeof origin !== 'string') return { ok: true, data: null };
+        // El origen se DERIVA del frame emisor, nunca del payload: si lo
+        // tomáramos del payload, una página podría suscribirse a / consultar el
+        // canal push de otro origen (spoofing). payload.origin se ignora.
+        const senderUrl = event.senderFrame?.url ?? '';
+        let origin: string;
+        try {
+          const u = new URL(senderUrl);
+          if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+            return { ok: true, data: null };
+          }
+          origin = u.origin;
+        } catch {
+          return { ok: true, data: null };
+        }
 
         // Resolve window from the sender's WebContents (works for WCV tabs)
         const windowId = resolveWindowId(event);

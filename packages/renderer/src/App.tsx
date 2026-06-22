@@ -60,6 +60,10 @@ function WebContentArea() {
           draggable={false}
         />
       ) : (
+        // Backdrop de la shell. En navegación normal el WCV (blanco) lo cubre por
+        // completo, así que no se ve. En device mode el WCV se encoge al tamaño
+        // del dispositivo: el fondo VELA que asoma alrededor delimita visualmente
+        // dónde empieza y acaba la página emulada (el viewport sí es blanco).
         <VelaLogo size={3.5} opacity={0.15} />
       )}
     </main>

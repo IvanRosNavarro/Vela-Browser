@@ -74,10 +74,17 @@ function PinnedTab({
     e.stopPropagation();
     const items: MenuItemSpec[] = [
       { type: 'normal', id: 'unpin', label: 'Unpin' },
+      { type: 'normal', id: 'duplicate', label: 'Duplicar' },
       { type: 'normal', id: 'close', label: 'Cerrar' },
     ];
     void showContextMenu(items, {
       unpin: () => void window.api.tab.unpin({ id: node.id }),
+      duplicate: () =>
+        void window.api.window.openUrlInNewTab({
+          url: node.url,
+          parentId: null,
+          activate: true,
+        }),
       close: () => closeTab(node.id),
     });
   }

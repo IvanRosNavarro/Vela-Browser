@@ -5,6 +5,7 @@ import { IPC_CHANNELS, z, type IpcResponse } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { resolveWindowId } from './helpers';
+import { guardTrustedFrame } from './validate';
 
 const PICKER_WIDTH  = 400;
 const PICKER_HEIGHT = 480;
@@ -310,7 +311,10 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:select ──────────────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_SELECT,
-    async (_event, payload): Promise<IpcResponse<void>> => {
+    async (event, payload): Promise<IpcResponse<void>> => {
+      // Solo la ventana del picker (vela://filepicker) puede inyectar ficheros;
+      // nunca una pestaña web. Evita lectura/exfiltración de ficheros locales.
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_SELECT);
       const parsed = selectSchema.safeParse(payload);
       if (!parsed.success) {
         return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
@@ -356,7 +360,8 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:open-native ─────────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_OPEN_NATIVE,
-    async (_event, payload): Promise<IpcResponse<{ paths: string[] }>> => {
+    async (event, payload): Promise<IpcResponse<{ paths: string[] }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_OPEN_NATIVE);
       const parsed = nativeSchema.safeParse(payload);
       if (!parsed.success) {
         return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
@@ -401,7 +406,8 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:list-recent ─────────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_LIST_RECENT,
-    (_event, payload): IpcResponse<unknown[]> => {
+    (event, payload): IpcResponse<unknown[]> => {
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_LIST_RECENT);
       const parsed = listRecentSchema.safeParse(payload);
       if (!parsed.success) {
         return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
@@ -420,7 +426,8 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:list-downloads ──────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_LIST_DOWNLOADS,
-    async (_event, payload): Promise<IpcResponse<unknown[]>> => {
+    async (event, payload): Promise<IpcResponse<unknown[]>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_LIST_DOWNLOADS);
       const parsed = listDownloadsSchema.safeParse(payload);
       if (!parsed.success) {
         return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
@@ -462,7 +469,8 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:clipboard-image ─────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_CLIPBOARD_IMAGE,
-    (): IpcResponse<{ dataUrl: string | null }> => {
+    (event): IpcResponse<{ dataUrl: string | null }> => {
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_CLIPBOARD_IMAGE);
       try {
         const dataUrl = clipboardImageToDataUrl();
         return { ok: true, data: { dataUrl } };
@@ -493,7 +501,8 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
   // ── filepicker:clear-recent ────────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.FILEPICKER_CLEAR_RECENT,
-    (_event, payload): IpcResponse<void> => {
+    (event, payload): IpcResponse<void> => {
+      guardTrustedFrame(event, IPC_CHANNELS.FILEPICKER_CLEAR_RECENT);
       const parsed = clearRecentSchema.safeParse(payload);
       if (!parsed.success) {
         return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };

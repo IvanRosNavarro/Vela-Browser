@@ -69,8 +69,8 @@ export function SecureTabButton({ url, editing }: SecureTabButtonProps) {
   return (
     <button
       type="button"
-      aria-label="Abrir en pestaña blindada"
-      title="Abrir en pestaña blindada"
+      aria-label="Abrir en pestaña fantasma"
+      title="Abrir en pestaña fantasma"
       style={{
         ...BTN_STYLE,
         color: 'var(--vela-addressbar-fg-muted)',

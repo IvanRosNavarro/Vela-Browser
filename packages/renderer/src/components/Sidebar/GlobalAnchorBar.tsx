@@ -68,12 +68,19 @@ function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
         ]
         : []),
       { type: 'normal' as const, id: 'rename', label: 'Renombrar' },
+      { type: 'normal' as const, id: 'duplicate', label: 'Duplicar' },
       { type: 'separator' as const },
       { type: 'normal' as const, id: 'remove', label: 'Levar Ancla' },
     ];
     void showContextMenu(items, {
       'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
       'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
+      duplicate: () =>
+        void window.api.window.openUrlInNewTab({
+          url: node.url,
+          parentId: null,
+          activate: true,
+        }),
       rename: async () => {
         const currentTitle = node.name || node.originalTitle || '';
         const newTitle = prompt('Nuevo nombre:', currentTitle);

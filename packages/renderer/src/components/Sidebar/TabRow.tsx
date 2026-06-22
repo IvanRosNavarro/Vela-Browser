@@ -236,7 +236,7 @@ export function TabRow({
         ]
       : [
           { type: 'separator' },
-          { type: 'normal', id: 'discard-tab', label: 'Suspender esta pestaña' },
+          { type: 'normal', id: 'discard-tab', label: 'Suspender esta pestaña', enabled: !isActive },
           ...(node.parentId
             ? [{ type: 'normal' as const, id: 'discard-folder', label: 'Suspender todas las pestañas de esta carpeta' }]
             : []),
@@ -350,7 +350,17 @@ export function TabRow({
       'open-blinded-window': () => void window.api.window.openBlindedWindow(),
       delete: () => void deleteNode({ id: node.id }),
       // Discard actions
-      'discard-tab': () => void call(() => window.api.discard.discardTab({ tabId: node.id })),
+      'discard-tab': () => {
+        void call(() => window.api.discard.discardTab({ tabId: node.id })).catch((err) => {
+          // El único fallo esperado es intentar suspender la tab activa (en
+          // esta u otra ventana): el main lo rechaza con INVARIANT.
+          if (err instanceof IpcError && err.code === 'INVARIANT') {
+            toast('No se puede suspender la pestaña activa. Cambia a otra primero.', 'warning');
+            return;
+          }
+          throw err;
+        });
+      },
       'discard-folder': () => {
         if (node.parentId) {
           void call(() => window.api.discard.discardFolder({ folderId: node.parentId! }));
@@ -502,8 +512,8 @@ export function TabRow({
         <>
           {node.isSecure && (
             <span
-              aria-label="Pestaña blindada"
-              title="Pestaña blindada"
+              aria-label="Pestaña fantasma"
+              title="Pestaña fantasma"
               style={{
                 fontSize: 14,
                 color: 'var(--vela-accent)',

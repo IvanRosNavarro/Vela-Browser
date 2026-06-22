@@ -44,11 +44,10 @@ export class PushProxyManager {
     }
   }
 
-  private createEntry(): ProxyKeyEntry {
+  private createCryptoEntry(): Omit<ProxyKeyEntry, 'token'> {
     const ecdh = createECDH('prime256v1');
     ecdh.generateKeys();
     return {
-      token: crypto.randomUUID(),
       privateKey: ecdh.getPrivateKey().toString('hex'),
       publicKey: ecdh.getPublicKey().toString('hex'),
       auth: randomBytes(16).toString('hex'),
@@ -67,9 +66,11 @@ export class PushProxyManager {
   async getOrCreate(profileId: string, origin: string, sessionToken: string): Promise<ProxySubscription | null> {
     let entry = this.getEntry(profileId, origin);
     if (!entry) {
-      entry = this.createEntry();
-      this.saveEntry(profileId, origin, entry);
-
+      // Generamos las claves localmente, pero el TOKEN de routing lo emite el
+      // servidor (es impredecible y de longitud fija). Sin token del servidor no
+      // hay suscripción válida posible, así que devolvemos null si el registro falla.
+      const cryptoEntry = this.createCryptoEntry();
+      let token: string | null = null;
       try {
         const res = await fetch(`${SYNC_SERVER}/push/register`, {
           method: 'POST',
@@ -78,17 +79,22 @@ export class PushProxyManager {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            token: entry.token,
             profile_id: profileId,
             origin,
           }),
         });
-        if (!res.ok) {
+        if (res.ok) {
+          const json = (await res.json()) as { token?: string };
+          token = typeof json.token === 'string' ? json.token : null;
+        } else {
           this.ctx.logger.warn(`[push-proxy] register returned ${res.status}`);
         }
       } catch (err) {
-        this.ctx.logger.warn('[push-proxy] register failed, keeping local entry', err);
+        this.ctx.logger.warn('[push-proxy] register failed', err);
       }
+      if (!token) return null;
+      entry = { token, ...cryptoEntry };
+      this.saveEntry(profileId, origin, entry);
     }
 
     return {

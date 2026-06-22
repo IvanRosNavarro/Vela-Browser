@@ -409,7 +409,7 @@ export class ProfileWindowManager {
     return `Fantasma ${Date.now()}`;
   }
 
-  async openBlindedWindow(): Promise<BrowserWindow> {
+  async openBlindedWindow(url?: string): Promise<BrowserWindow> {
     // Perfil temporal de un solo uso: sesión vacía, sin extensiones, sin datos
     // del perfil activo. Se borra completamente al cerrar la ventana.
     const tempProfile = await this.ctx.profileManager.createProfile({
@@ -446,7 +446,7 @@ export class ProfileWindowManager {
       this.ctx.tabManager.attachWindow(window, workspaceId, tempProfileId);
       await this.ctx.tabManager.createTab(electronId, {
         workspaceId,
-        url: 'vela://newtab',
+        url: url ?? 'vela://newtab',
         parentId: null,
         activate: true,
       });

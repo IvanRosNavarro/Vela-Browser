@@ -148,7 +148,7 @@ function ProfileSubmenu({ profile, onBack }: ProfileSubmenuProps) {
         onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--vela-hover, rgba(255,255,255,0.06))'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
       >
-        Abrir en ventana blindada
+        Abrir en ventana fantasma
       </button>
     </>
   );

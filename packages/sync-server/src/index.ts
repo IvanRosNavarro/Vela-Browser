@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { createServer } from 'http';
 import { setupWebSocket } from './sync/websocket';
 import { syncRouter } from './sync/router';
@@ -69,6 +69,15 @@ async function main(): Promise<void> {
   // 404 para rutas no encontradas.
   app.use((_, res) => {
     res.status(404).json({ error: 'Not found' });
+  });
+
+  // Manejador de errores final: NUNCA devolver el stack al cliente (Express en
+  // modo no-production lo filtraría). Se registra el detalle solo en el servidor.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('[server] error no controlado:', err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: 'Internal error' });
   });
 
   const server = createServer(app);

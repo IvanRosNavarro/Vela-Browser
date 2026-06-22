@@ -761,7 +761,7 @@ export function App() {
         {
           type: 'normal',
           id: 'open-secure',
-          label: 'Abrir en pestaña blindada',
+          label: 'Abrir en pestaña fantasma',
           enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
         },
         { type: 'normal', id: 'delete', label: 'Eliminar' },

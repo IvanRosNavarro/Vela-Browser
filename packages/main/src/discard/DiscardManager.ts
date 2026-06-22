@@ -95,6 +95,10 @@ export class DiscardManager {
 
     const workspaces = repos.workspaces.list();
 
+    // Ventana representativa del perfil para enrutar repos al descartar tabs
+    // suspendidas (que no pertenecen a la ventana visible de ningún window).
+    const profileWindowId = this.ctx.tabManager.getAnyWindowIdForProfile(profileId);
+
     for (const ws of workspaces) {
       if (wsWhitelists[ws.id]) continue;
 
@@ -105,8 +109,12 @@ export class DiscardManager {
         if (noPinned && node.pinned) continue;
         if (!node.lastActiveAt || node.lastActiveAt >= now - timeoutMs) continue;
 
-        // Solo descartar tabs que tengan WCV activo en runtime
-        const windowId = this.ctx.tabManager.getWindowIdForTab(node.id);
+        // Solo descartar tabs con WCV vivo en runtime (en ventana o suspendido).
+        // Las suspendidas (otros workspaces) también consumen memoria y deben
+        // poder descartarse.
+        if (!this.ctx.tabManager.hasRuntimeView(node.id)) continue;
+        const windowId =
+          this.ctx.tabManager.getWindowIdForTab(node.id) ?? profileWindowId;
         if (windowId === null) continue;
 
         // Dominio en whitelist global
@@ -127,8 +135,10 @@ export class DiscardManager {
         // Audio activo
         if (noAudio && this.ctx.tabManager.isTabCurrentlyAudible(node.id)) continue;
 
-        // Formulario con datos sin enviar
-        if (noForm && this.ctx.tabManager.getPageFeaturesForTab(node.id).includes('form')) continue;
+        // Formulario con datos introducidos por el usuario sin enviar.
+        // (No basta con que la página tenga un formulario: casi todas lo
+        // tienen — buscadores, logins — y eso impediría descartar casi todo.)
+        if (noForm && this.ctx.tabManager.isTabFormDirty(node.id)) continue;
 
         // Descartar
         try {

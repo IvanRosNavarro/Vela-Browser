@@ -312,6 +312,51 @@ document.addEventListener(
   true,
 );
 
+// ─── Dirty form tracking (auto-discard exclusion) ─────────────────────────────
+// Reports to main whether the user has typed unsent data into a form field, so
+// DiscardManager can avoid suspending a tab the user is filling in. We track
+// real user interaction (an `input`/`change` event), NOT mere form presence —
+// almost every site has a search box, so "has a form" would block discard for
+// nearly all tabs. Pre-filled values without user interaction don't trigger.
+let formDirty = false;
+
+function isUserEditableField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLInputElement) {
+    const type = target.type;
+    return (
+      type !== 'hidden' &&
+      type !== 'submit' &&
+      type !== 'button' &&
+      type !== 'reset' &&
+      type !== 'checkbox' &&
+      type !== 'radio' &&
+      type !== 'file'
+    );
+  }
+  return false;
+}
+
+function setFormDirty(next: boolean): void {
+  if (next === formDirty) return;
+  formDirty = next;
+  ipcRenderer.send('form-dirty:changed', { dirty: next });
+}
+
+document.addEventListener(
+  'input',
+  (e) => {
+    if (formDirty) return;
+    if (isUserEditableField(e.target)) setFormDirty(true);
+  },
+  true,
+);
+
+// Submitting the form sends the data, so it's no longer "unsent".
+document.addEventListener('submit', () => setFormDirty(false), true);
+
 // Full-page navigation (traditional sites)
 window.addEventListener('beforeunload', flushDetectedCreds);
 

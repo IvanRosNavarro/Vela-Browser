@@ -14,6 +14,7 @@ import {
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getReposForFrame } from './helpers';
+import { guardTrustedFrame } from './validate';
 import { GlobalSettings, ProfileSettings, type SettingsStore } from '../settings';
 
 /**
@@ -47,6 +48,7 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET,
     async (event, payload): Promise<IpcResponse<{ value: unknown }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.SETTINGS_GET);
       const parsed = settingsGetInputSchema.safeParse(payload);
       if (!parsed.success) {
         return {
@@ -68,6 +70,7 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_SET,
     async (event, payload): Promise<IpcResponse<{ key: SettingsKey }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.SETTINGS_SET);
       const parsed = settingsSetInputSchema.safeParse(payload);
       if (!parsed.success) {
         return {
@@ -99,6 +102,7 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET_ALL,
     async (event, payload): Promise<IpcResponse<Record<SettingsKey, unknown>>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.SETTINGS_GET_ALL);
       const parsed = settingsGetAllInputSchema.safeParse(payload ?? {});
       if (!parsed.success) {
         return {

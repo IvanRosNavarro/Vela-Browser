@@ -182,6 +182,10 @@ export class TabManager {
   private readonly mruLoaded = new Set<string>();
   private readonly readerStateByTab = new Map<string, { readable: boolean }>();
   private readonly pageFeatsByTab = new Map<string, Array<'rss' | 'form' | 'media'>>();
+  // Tabs cuyo formulario tiene datos introducidos por el usuario sin enviar.
+  // Lo reporta el preload (webTab.ts) vía 'form-dirty:changed'. El DiscardManager
+  // lo consulta para no suspender una tab que el usuario está rellenando.
+  private readonly dirtyFormsByTab = new Set<string>();
   private readonly previewStores = new Map<string, PreviewStore>();
   private readonly previewCapturers = new Map<string, PreviewCapturer>();
   private readonly recentlyClosed = new Map<number, RecentlyClosedTab[]>();
@@ -728,6 +732,7 @@ export class TabManager {
     this.removeFromGlobal(state.profileId, tabId);
     this.readerStateByTab.delete(tabId);
     this.pageFeatsByTab.delete(tabId);
+    this.dirtyFormsByTab.delete(tabId);
 
     // Hook 4: eliminar preview y limpiar throttle al cerrar la tab.
     const { store: previewStore, capturer: previewCapturer } =
@@ -839,7 +844,13 @@ export class TabManager {
         owner.tabs.delete(tabId);
       }
       this.tabToWindow.delete(tabId);
+    } else {
+      // Tab suspendida (workspace no visible): su WCV vive en
+      // suspendedWorkspaces. Sin esto, descartarla solo marcaría la DB y el
+      // WCV seguiría en memoria (fuga).
+      this.destroySuspendedView(tabId);
     }
+    this.dirtyFormsByTab.delete(tabId);
 
     const node = repos.treeNodes.getById(tabId);
     if (!node) throw new NotFoundError('Node', tabId);
@@ -1719,6 +1730,33 @@ export class TabManager {
     return this.pageFeatsByTab.get(tabId) ?? [];
   }
 
+  /** True si el usuario tiene datos sin enviar en un formulario de la tab. */
+  isTabFormDirty(tabId: string): boolean {
+    return this.dirtyFormsByTab.has(tabId);
+  }
+
+  /**
+   * True si la tab tiene un WebContentsView vivo en runtime, ya sea en una
+   * ventana activa o suspendido (workspace no visible). Las tabs suspendidas
+   * mantienen su WCV en memoria, así que el DiscardManager debe poder
+   * descartarlas para liberar recursos.
+   */
+  hasRuntimeView(tabId: string): boolean {
+    if (this.tabToWindow.has(tabId)) return true;
+    for (const suspended of this.suspendedWorkspaces.values()) {
+      if (suspended.tabs.has(tabId)) return true;
+    }
+    return false;
+  }
+
+  /** Cualquier ventana abierta del perfil dado (para enrutar repos), o null. */
+  getAnyWindowIdForProfile(profileId: string): number | null {
+    for (const state of this.windows.values()) {
+      if (state.profileId === profileId) return state.windowId;
+    }
+    return null;
+  }
+
   /** IDs de los perfiles que tienen al menos una ventana abierta en este manager. */
   getOpenProfileIds(): string[] {
     const seen = new Set<string>();
@@ -1728,11 +1766,27 @@ export class TabManager {
     return [...seen];
   }
 
+  /**
+   * Localiza el WebContentsView de una tab en cualquier sitio: ventana activa
+   * o estado suspendido. Las tabs suspendidas siguen pudiendo reproducir audio,
+   * por lo que sus comprobaciones de runtime deben verlas.
+   */
+  private findViewAnywhere(tabId: string): WebContentsView | null {
+    const windowId = this.tabToWindow.get(tabId);
+    if (windowId !== undefined) {
+      const view = this.windows.get(windowId)?.tabs.get(tabId);
+      if (view) return view;
+    }
+    for (const suspended of this.suspendedWorkspaces.values()) {
+      const view = suspended.tabs.get(tabId);
+      if (view) return view;
+    }
+    return null;
+  }
+
   /** Devuelve true si la tab tiene audio activo en su WebContentsView. */
   isTabCurrentlyAudible(tabId: string): boolean {
-    const windowId = this.tabToWindow.get(tabId);
-    if (windowId === undefined) return false;
-    const view = this.windows.get(windowId)?.tabs.get(tabId);
+    const view = this.findViewAnywhere(tabId);
     if (!view || view.webContents.isDestroyed()) return false;
     return view.webContents.isCurrentlyAudible();
   }
@@ -1814,7 +1868,10 @@ export class TabManager {
     const view = state.tabs.get(state.activeTabId);
     if (!view || view.webContents.isDestroyed()) return;
     state.deviceEmulation = params;
-    view.setBackgroundColor(params.backgroundColor);
+    // El viewport emulado, igual que cualquier WCV, debe respaldarse con blanco
+    // (no con el fondo de la shell) para que una web sin `background-color`
+    // propio no deje ver el logo VELA dentro del dispositivo.
+    view.setBackgroundColor('#ffffff');
     // applyActiveBounds calcula el centrado y llama a enableDeviceEmulation
     this.recalculateBounds(windowId);
   }
@@ -1827,7 +1884,7 @@ export class TabManager {
       const view = state.tabs.get(state.activeTabId);
       if (view && !view.webContents.isDestroyed()) {
         view.webContents.disableDeviceEmulation();
-        view.setBackgroundColor('#00000000');
+        view.setBackgroundColor('#ffffff');
       }
     }
   }
@@ -1875,6 +1932,8 @@ export class TabManager {
 
     state.window.contentView.addChildView(view);
     view.setBounds({ ...HIDDEN_BOUNDS });
+    // Fondo opaco blanco: ver nota en spawnView.
+    view.setBackgroundColor('#ffffff');
     state.tabs.set(tab.id, view);
     this.tabToWindow.set(tab.id, state.windowId);
 
@@ -1934,6 +1993,14 @@ export class TabManager {
       view.webContents.setUserAgent(app.userAgentFallback);
     }
 
+    // Fondo opaco blanco por defecto. Sin esto, el WCV es transparente y las
+    // webs que no definen su propio `background-color` dejan ver el backdrop de
+    // la shell (logo VELA) a través del contenido. Blanco es el fallback
+    // estándar del navegador y "cuadra" con la página: cualquier web que pinte
+    // su fondo (incluidas las de tema oscuro) lo dibuja encima de este blanco,
+    // así que sólo se ve donde la página es realmente transparente.
+    view.setBackgroundColor('#ffffff');
+
     state.window.contentView.addChildView(view);
     view.setBounds({ ...HIDDEN_BOUNDS });
     state.tabs.set(tab.id, view);
@@ -1978,6 +2045,61 @@ export class TabManager {
   ): void {
     const wc = view.webContents;
 
+    // ── Guard de navegación (seguridad) ──────────────────────────────────────
+    // El contenido web no debe poder auto-navegar (top frame o subframe) hacia
+    // esquemas internos privilegiados. Si lo permitiéramos, una pestaña web
+    // podría cargar una página vela:// y heredar un senderFrame.url de confianza
+    // que pasaría guardTrustedFrame. Las cargas internas legítimas las inicia
+    // main vía loadURL (que no dispara will-navigate), así que esto solo afecta
+    // a navegaciones iniciadas por el renderer.
+    // chrome-extension: NO se bloquea: electron-chrome-extensions carga páginas
+    // de extensión (popups/options) que pueden navegar legítimamente a ese
+    // esquema, y no son frames de confianza para el IPC (guardTrustedFrame solo
+    // confía en vela://file://), así que no hay escalada que prevenir.
+    const DANGEROUS_NAV_SCHEMES = new Set([
+      'vela:',
+      'vela-preview:',
+      'file:',
+      'chrome:',
+      'devtools:',
+    ]);
+    const blockDangerousNavigation = (
+      e: { preventDefault(): void },
+      targetUrl: string,
+    ): void => {
+      const current = wc.isDestroyed() ? '' : wc.getURL();
+      const currentIsInternal =
+        current === '' ||
+        current.startsWith('vela://') ||
+        current.startsWith('vela-preview://') ||
+        current.startsWith('file://') ||
+        current.startsWith('about:');
+      if (currentIsInternal) return; // páginas internas pueden navegar entre sí
+      let scheme = '';
+      try {
+        scheme = new URL(targetUrl).protocol;
+      } catch {
+        return;
+      }
+      if (DANGEROUS_NAV_SCHEMES.has(scheme)) {
+        e.preventDefault();
+        this.ctx.logger.warn(
+          `[tabs] navegación bloqueada a ${targetUrl} desde ${current}`,
+        );
+      }
+    };
+    wc.on('will-navigate', (e, targetUrl) => {
+      blockDangerousNavigation(e, targetUrl);
+    });
+    // will-frame-navigate cubre subframes/iframes (Electron entrega un único
+    // objeto evento con .url además de preventDefault()).
+    wc.on(
+      'will-frame-navigate',
+      (details: { preventDefault(): void; url: string }) => {
+        blockDangerousNavigation(details, details.url);
+      },
+    );
+
     // En split mode: cuando el usuario hace clic en un WCV, auto-detectar el panel.
     wc.on('focus', () => {
       if (state.layoutMode === 'single') return;
@@ -1993,6 +2115,14 @@ export class TabManager {
     // IMPORTANT: requestPermission MUST delegate to the real Chromium API so that
     // setPermissionRequestHandler in sessions.ts can hold the callback until the
     wc.setWindowOpenHandler(({ url, features, disposition }) => {
+      // Seguridad: nunca abrir esquemas internos/privilegiados vía window.open.
+      let urlScheme = '';
+      try { urlScheme = new URL(url).protocol; } catch { /* about:blank, etc. */ }
+      if (DANGEROUS_NAV_SCHEMES.has(urlScheme)) {
+        this.ctx.logger.warn(`[tabs] window.open bloqueado a esquema interno ${url}`);
+        return { action: 'deny' };
+      }
+
       // OAuth / login externo: window.open con dimensiones explícitas o
       // disposition 'new-window'. Necesitan window.opener para postMessage
       // de vuelta al padre. Dejamos que Electron cree una BrowserWindow real.
@@ -2001,6 +2131,8 @@ export class TabManager {
         // Especificar la partición explícitamente evita el bug de Electron donde
         // los popups de WebContentsView no heredan la sesión del perfil y caen
         // a la sesión por defecto (sin onBeforeSendHeaders ni UA override).
+        // webPreferences seguros SIEMPRE, aunque no haya partición (si no, el
+        // popup heredaría los defaults del proceso).
         const partition = state.profileId
           ? `persist:profile-${state.profileId}`
           : undefined;
@@ -2008,7 +2140,12 @@ export class TabManager {
           action: 'allow',
           overrideBrowserWindowOptions: {
             autoHideMenuBar: true,
-            ...(partition ? { webPreferences: { partition, contextIsolation: true, nodeIntegration: false, sandbox: true } } : {}),
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+              ...(partition ? { partition } : {}),
+            },
           },
         };
       }
@@ -2039,7 +2176,7 @@ export class TabManager {
       // Inyectar scripts con run_at = document-end
       if (!wc.isDestroyed()) {
         const url = wc.getURL();
-        if (url && !url.startsWith('vela://') && !url.startsWith('about:')) {
+        if (url && !url.startsWith('vela://') && !url.startsWith('about:') && !url.startsWith('file://')) {
           const repos = this.reposForTab(tabId);
           if (repos) {
             const matching = repos.userScripts.getMatchingUrl(url);
@@ -2162,7 +2299,18 @@ export class TabManager {
       if (isMainFrame) onNavigated(url, false);
     });
 
+    // El preload reporta si el usuario ha escrito datos sin enviar en un
+    // formulario. Lo usamos como excepción de auto-descartado.
+    wc.ipc.on('form-dirty:changed', (_event, data: unknown) => {
+      const dirty =
+        typeof data === 'object' && data !== null && (data as { dirty?: unknown }).dirty === true;
+      if (dirty) this.dirtyFormsByTab.add(tabId);
+      else this.dirtyFormsByTab.delete(tabId);
+    });
+
     wc.on('did-start-loading', () => {
+      // Una navegación/recarga descarta los datos del formulario anterior.
+      this.dirtyFormsByTab.delete(tabId);
       this.ctx.events.emit(IPC_EVENTS.TAB_LOADING_CHANGED, {
         tabId,
         loading: true,
@@ -2170,7 +2318,7 @@ export class TabManager {
       // Inyectar scripts con run_at = document-start (antes del DOM)
       if (!wc.isDestroyed()) {
         const url = wc.getURL();
-        if (url && !url.startsWith('vela://') && !url.startsWith('about:')) {
+        if (url && !url.startsWith('vela://') && !url.startsWith('about:') && !url.startsWith('file://')) {
           const repos = this.reposForTab(tabId);
           if (repos) {
             const matching = repos.userScripts.getMatchingUrl(url);
@@ -2239,7 +2387,7 @@ export class TabManager {
         } catch { /* URL inválida, ignorar */ }
       }, 500);
       // Inyectar scripts con run_at = document-idle
-      if (!wc.isDestroyed() && finishedUrl && !finishedUrl.startsWith('vela://') && !finishedUrl.startsWith('about:')) {
+      if (!wc.isDestroyed() && finishedUrl && !finishedUrl.startsWith('vela://') && !finishedUrl.startsWith('about:') && !finishedUrl.startsWith('file://')) {
         const matching = repos.userScripts.getMatchingUrl(finishedUrl);
         for (const script of matching) {
           if (script.runAt !== 'document-idle') continue;
@@ -2286,7 +2434,7 @@ export class TabManager {
         const prevWc = prev?.webContents;
         if (prevWc && !prevWc.isDestroyed()) {
           prevWc.disableDeviceEmulation();
-          prev!.setBackgroundColor('#00000000');
+          prev!.setBackgroundColor('#ffffff');
         }
         state.deviceEmulation = null;
         prev?.setBounds({ ...HIDDEN_BOUNDS });
@@ -2597,6 +2745,43 @@ export class TabManager {
         this.ctx.logger.warn('[tabs] webContents.close falló', err);
       }
     }
+  }
+
+  /**
+   * Destruye el WCV de una tab suspendida (workspace no visible) y la elimina
+   * del estado suspendido. Devuelve true si se encontró y destruyó. La entrada
+   * del workspace suspendido se elimina si se queda vacía.
+   */
+  private destroySuspendedView(tabId: string): boolean {
+    for (const [key, suspended] of this.suspendedWorkspaces) {
+      const view = suspended.tabs.get(tabId);
+      if (!view) continue;
+
+      const wc = view.webContents;
+      try {
+        wc?.removeAllListeners();
+      } catch {
+        // ignorar
+      }
+      if (wc && !wc.isDestroyed()) {
+        try {
+          wc.close();
+        } catch (err) {
+          this.ctx.logger.warn('[tabs] webContents.close (suspended) falló', err);
+        }
+      }
+
+      suspended.tabs.delete(tabId);
+      suspended.mru.remove(tabId);
+      if (suspended.activeTabId === tabId) {
+        suspended.activeTabId = suspended.tabs.keys().next().value ?? null;
+      }
+      if (suspended.tabs.size === 0) {
+        this.suspendedWorkspaces.delete(key);
+      }
+      return true;
+    }
+    return false;
   }
 
   private pickNextTab(state: PerWindow, justClosed: string): string | null {
