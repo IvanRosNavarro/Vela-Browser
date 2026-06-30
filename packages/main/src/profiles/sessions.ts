@@ -1,6 +1,7 @@
 import { app, session, type Session } from 'electron';
 import { logger } from '../logger';
 import type { NotificationManager } from '../notifications/NotificationManager';
+import type { MediaPermissionManager } from '../media-permissions/MediaPermissionManager';
 
 const DEFAULT_DENY_PERMISSIONS = new Set<string>([
   'clipboard-read',
@@ -8,7 +9,6 @@ const DEFAULT_DENY_PERMISSIONS = new Set<string>([
   'fullscreen',
   'geolocation',
   'idle-detection',
-  'media',
   'mediaKeySystem',
   'midi',
   'midiSysex',
@@ -51,6 +51,7 @@ export async function configureSessionDefaults(
   s: Session,
   profileId: string,
   notificationManager?: NotificationManager,
+  mediaPermissionManager?: MediaPermissionManager,
 ): Promise<void> {
   // Forzar español como idioma preferido en las peticiones HTTP.
   // El segundo parámetro establece la cabecera Accept-Language de la sesión.
@@ -111,13 +112,20 @@ export async function configureSessionDefaults(
       // o pushManager.subscribe(), lo que activa nuestro requestHandler.
       return !notificationManager.isDenied(origin, profileId);
     }
+    if (p === 'media') {
+      if (!mediaPermissionManager || !wc) return false;
+      const origin = safeOrigin(wc.getURL());
+      if (!origin) return false;
+      return mediaPermissionManager.isGranted(origin, profileId);
+    }
     return false;
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ses = s as any;
 
-  s.setPermissionRequestHandler((wc, permission, callback) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  s.setPermissionRequestHandler((wc, permission, callback, details?: any) => {
     const p = permission as string;
     if (p === 'periodicBackgroundSync' || p === 'backgroundSync') {
       callback(true);
@@ -163,6 +171,19 @@ export async function configureSessionDefaults(
     if (p === 'clipboard-sanitized-write') {
       const origin = safeOrigin(wc.getURL());
       callback(origin !== null && origin.startsWith('https://'));
+      return;
+    }
+    if (p === 'media') {
+      if (!mediaPermissionManager) { callback(false); return; }
+      const origin = safeOrigin(wc.getURL());
+      if (!origin) { callback(false); return; }
+      if (mediaPermissionManager.isGranted(origin, profileId)) { callback(true); return; }
+      if (mediaPermissionManager.isDenied(origin, profileId)) { callback(false); return; }
+      // Sin decisión → registrar como pendiente para que aparezca el icono en la URL bar
+      const mediaTypes: Array<'video' | 'audio'> = Array.isArray(details?.mediaTypes)
+        ? details.mediaTypes as Array<'video' | 'audio'>
+        : ['video'];
+      mediaPermissionManager.registerPendingRequest(wc.id, origin, mediaTypes, callback);
       return;
     }
     if (DEFAULT_DENY_PERMISSIONS.has(permission)) {

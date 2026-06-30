@@ -526,6 +526,14 @@ const api: PreloadApi = {
     unsubscribeAll: () => call(IPC_CHANNELS.PUSH_UNSUBSCRIBE_ALL),
     getSubscription: (input) => call(IPC_CHANNELS.PUSH_GET_SUBSCRIPTION, input),
   },
+  mediaPermission: {
+    grant: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_GRANT, input),
+    deny: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_DENY, input),
+    revoke: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_REVOKE, input),
+    getAll: () => call(IPC_CHANNELS.MEDIA_PERMISSION_GET_ALL),
+    openPermissionPopup: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_OPEN_POPUP, input),
+    closePermissionPopup: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_CLOSE_POPUP, input),
+  },
   clipboard: {
     writeText: (text: string) => call(IPC_CHANNELS.CLIPBOARD_WRITE_TEXT, { text }),
   },

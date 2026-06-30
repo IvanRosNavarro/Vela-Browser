@@ -751,6 +751,7 @@ export interface PreloadApi {
   findBar: FindBarApi;
   notifications: NotificationsApi;
   push: PushSubscriptionsApi;
+  mediaPermission: MediaPermissionApi;
   defaultBrowser: DefaultBrowserApi;
   clipboard: ClipboardApi;
   translation: TranslationApi;
@@ -977,4 +978,13 @@ export interface TranslationApi {
   detectLang(input: { tabId: string }): Promise<IpcResponse<{ lang: string; status: string }>>;
   openConfirmPopup(input: { windowId: number }): Promise<IpcResponse<void>>;
   confirmExec(input: { windowId: number; tabId: string; targetLang: string }): Promise<IpcResponse<void>>;
+}
+
+export interface MediaPermissionApi {
+  grant(input: { origin: string }): Promise<IpcResponse<void>>;
+  deny(input: { origin: string }): Promise<IpcResponse<void>>;
+  revoke(input: { origin: string }): Promise<IpcResponse<void>>;
+  getAll(): Promise<IpcResponse<Array<{ origin: string; state: 'granted' | 'denied'; grantedAt?: number; deniedAt?: number }>>>;
+  openPermissionPopup(input: { windowId: number; origin: string; mediaTypes: Array<'video' | 'audio'>; anchorRect: { left: number; bottom: number } }): Promise<IpcResponse<void>>;
+  closePermissionPopup(input: { windowId: number }): Promise<IpcResponse<void>>;
 }

@@ -23,6 +23,7 @@ import { ToolsClusterButton } from './ToolsClusterButton';
 import { StatusClusterButton } from './StatusClusterButton';
 import { VaultButton } from './VaultButton';
 import { NotificationBell } from './NotificationBell';
+import { CameraPermissionButton } from './CameraPermissionButton';
 import type { AddressBarMode } from './useAddressBar';
 
 function canShowBreadcrumb(url: string): boolean {
@@ -286,6 +287,8 @@ export function AddressBar() {
         <CopyUrlButton url={ctrl.displayUrl.raw} editing={ctrl.editing} />
         {/* Translate selected text */}
         <TranslateButton editing={ctrl.editing} />
+        {/* Camera/mic permission state for current tab's origin */}
+        <CameraPermissionButton />
         {/* Notification bell — permission state for current tab's origin */}
         <NotificationBell />
         {/* Vault button — standalone in URL bar so it stays above the WCV */}

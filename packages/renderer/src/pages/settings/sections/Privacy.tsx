@@ -4,6 +4,7 @@ import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
 import { Slider } from '../components/controls/Slider';
 import { Select, type SelectOption } from '../components/controls/Select';
+import { useMediaPermissionStore } from '../../../stores/mediaPermissionStore';
 
 type DohProvider = 'cloudflare' | 'google' | 'quad9';
 type ClearRange  = 'hour' | 'day' | 'week' | 'all';
@@ -60,6 +61,8 @@ export function Privacy({ settings }: Props) {
           </button>
         </div>
       </SettingSection>
+
+      <MediaPermissionsSection />
 
       <SettingSection title="Cookies y rastreo">
         <SettingRow
@@ -188,6 +191,67 @@ export function Privacy({ settings }: Props) {
         </div>
       </SettingSection>
     </>
+  );
+}
+
+// ─── Media permissions section ───────────────────────────────────────────────
+
+function MediaPermissionsSection() {
+  const permissions = useMediaPermissionStore((s) => s.permissions);
+  const revoke = useMediaPermissionStore((s) => s.revoke);
+
+  useEffect(() => {
+    void useMediaPermissionStore.getState().hydrate();
+  }, []);
+
+  const granted = permissions.filter((p) => p.state === 'granted');
+  const denied = permissions.filter((p) => p.state === 'denied');
+
+  if (permissions.length === 0) {
+    return (
+      <SettingSection title="Cámara y micrófono">
+        <div className="px-4 py-3 text-xs text-[var(--vela-fg-muted)]">
+          Ningún sitio ha solicitado acceso a la cámara o micrófono.
+        </div>
+      </SettingSection>
+    );
+  }
+
+  return (
+    <SettingSection title="Cámara y micrófono">
+      {granted.length > 0 && (
+        <div className="flex flex-col gap-1 px-4 py-2">
+          <p className="text-xs font-medium text-[var(--vela-fg-muted)] uppercase tracking-wide mb-1">Permitidos</p>
+          {granted.map((p) => (
+            <div key={p.origin} className="flex items-center justify-between gap-2 rounded-md px-3 py-2 hover:bg-[var(--vela-bg-row-hover)]">
+              <span className="text-xs text-[var(--vela-fg)] truncate">{(() => { try { return new URL(p.origin).hostname; } catch { return p.origin; } })()}</span>
+              <button
+                onClick={() => void revoke(p.origin)}
+                className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--vela-fg-muted)] hover:text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+              >
+                Revocar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {denied.length > 0 && (
+        <div className="flex flex-col gap-1 px-4 py-2">
+          <p className="text-xs font-medium text-[var(--vela-fg-muted)] uppercase tracking-wide mb-1">Denegados</p>
+          {denied.map((p) => (
+            <div key={p.origin} className="flex items-center justify-between gap-2 rounded-md px-3 py-2 hover:bg-[var(--vela-bg-row-hover)]">
+              <span className="text-xs text-[var(--vela-fg-muted)] truncate">{(() => { try { return new URL(p.origin).hostname; } catch { return p.origin; } })()}</span>
+              <button
+                onClick={() => void revoke(p.origin)}
+                className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--vela-fg-muted)] hover:text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+              >
+                Eliminar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </SettingSection>
   );
 }
 

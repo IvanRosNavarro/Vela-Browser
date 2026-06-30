@@ -22,6 +22,7 @@ import type { NotificationManager } from '../notifications/NotificationManager';
 import type { PushSubscriptionManager } from '../notifications/PushSubscriptionManager';
 import type { PushProxyManager } from '../notifications/PushProxyManager';
 import type { CertificateManager } from '../security/CertificateManager';
+import type { MediaPermissionManager } from '../media-permissions/MediaPermissionManager';
 
 /**
  * Contexto compartido por todos los handlers IPC. Tras Fase 3 Prompt 6 los
@@ -58,6 +59,7 @@ export interface IpcContext {
   notificationManager: NotificationManager;
   pushSubscriptionManager: PushSubscriptionManager;
   pushProxyManager: PushProxyManager;
+  mediaPermissionManager: MediaPermissionManager;
   /** Un SyncManager por profileId (creado bajo demanda en sync:setup). */
   syncManagers: Map<string, SyncManager>;
   certManager: CertificateManager;

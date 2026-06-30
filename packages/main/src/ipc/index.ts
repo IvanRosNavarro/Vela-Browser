@@ -74,7 +74,9 @@ import { DownloadManager } from '../downloads/DownloadManager';
 import { NotificationManager } from '../notifications/NotificationManager';
 import { PushSubscriptionManager } from '../notifications/PushSubscriptionManager';
 import { PushProxyManager } from '../notifications/PushProxyManager';
+import { MediaPermissionManager } from '../media-permissions/MediaPermissionManager';
 import { registerNotificationHandlers } from './notifications';
+import { registerMediaPermissionHandlers } from './mediaPermission';
 import { restoreNotificationOverrides } from '../profiles/sessions';
 export { registerCommandsHandlers } from './commands';
 
@@ -182,6 +184,9 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   profileManager.setNotificationManager(notificationManager);
   notificationManagerRef = notificationManager;
 
+  const mediaPermissionManager = new MediaPermissionManager({ profileManager, events, logger });
+  profileManager.setMediaPermissionManager(mediaPermissionManager);
+
   // Capturar notificaciones de Service Workers: en Electron, los SW pueden tener
   // su propio WebContents. Adjuntamos el interceptor a todos los WC nuevos cuya
   // sesión corresponda a un perfil abierto.
@@ -249,6 +254,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     notificationManager,
     pushSubscriptionManager,
     pushProxyManager,
+    mediaPermissionManager,
     syncManagers,
     certManager,
   };
@@ -303,6 +309,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerAnalyticsDebuggerHandlers(ctx);
   registerFindHandlers(ctx);
   registerNotificationHandlers(ctx);
+  registerMediaPermissionHandlers(ctx);
   registerCertHandlers(ctx);
   registerClipboardHandlers();
   registerTranslationHandlers(ctx);

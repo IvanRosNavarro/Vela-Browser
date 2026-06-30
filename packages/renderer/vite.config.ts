@@ -45,6 +45,7 @@ export default defineConfig({
         scripts: resolve(__dirname, 'src/pages/scripts/index.html'),
         'security-popup': resolve(__dirname, 'src/pages/security-popup/index.html'),
         'notification-permission': resolve(__dirname, 'src/pages/notification-permission/index.html'),
+        'media-permission-popup': resolve(__dirname, 'src/pages/media-permission-popup/index.html'),
         'devmode-popup': resolve(__dirname, 'src/pages/devmode-popup/index.html'),
         'devtools-eyedropper': resolve(__dirname, 'src/pages/devtools-eyedropper/index.html'),
         'suggestions-popup': resolve(__dirname, 'src/pages/suggestions-popup/index.html'),

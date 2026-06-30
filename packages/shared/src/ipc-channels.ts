@@ -428,6 +428,13 @@ export const IPC_CHANNELS = {
   TRANSLATE_DETECT_LANG: 'translate:detect-lang',
   TRANSLATE_CONFIRM_OPEN: 'translate-confirm:open',
   TRANSLATE_CONFIRM_EXEC: 'translate-confirm:exec',
+  // Media permissions
+  MEDIA_PERMISSION_GRANT: 'media-permission:grant',
+  MEDIA_PERMISSION_DENY: 'media-permission:deny',
+  MEDIA_PERMISSION_REVOKE: 'media-permission:revoke',
+  MEDIA_PERMISSION_GET_ALL: 'media-permission:get-all',
+  MEDIA_PERMISSION_OPEN_POPUP: 'media-permission:open-popup',
+  MEDIA_PERMISSION_CLOSE_POPUP: 'media-permission:close-popup',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -502,6 +509,8 @@ export const IPC_EVENTS = {
   TRANSLATION_STATUS_CHANGED: 'state:translation-status-changed',
   TRANSLATION_RESULT_READY: 'state:translation-result-ready',
   TRANSLATION_ERROR: 'state:translation-error',
+  MEDIA_PERMISSION_PENDING: 'state:media-permission-pending',
+  MEDIA_PERMISSION_CHANGED: 'state:media-permission-changed',
 } as const;
 
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
@@ -613,4 +622,6 @@ export interface MainEventPayloads {
     originalText: string;
   };
   [IPC_EVENTS.TRANSLATION_ERROR]: { windowId: number; message: string };
+  [IPC_EVENTS.MEDIA_PERMISSION_PENDING]: { origin: string; windowId: number; mediaTypes: Array<'video' | 'audio'> };
+  [IPC_EVENTS.MEDIA_PERMISSION_CHANGED]: { origin: string; state: 'none' | 'pending' | 'granted' | 'denied'; windowId: number };
 }

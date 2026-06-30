@@ -83,6 +83,7 @@ export interface ProfileManagerCtx {
    */
   extensionManager?: ProfileExtensionManager;
   notificationManager?: import('../notifications/NotificationManager').NotificationManager;
+  mediaPermissionManager?: import('../media-permissions/MediaPermissionManager').MediaPermissionManager;
   onProfileSessionReady?: (profileId: string, session: Session) => void;
 }
 
@@ -266,7 +267,7 @@ export class ProfileManager {
         this.reposByProfile.set(profileId, repos);
 
         const ses = getSessionForProfile(profile.partitionId);
-        await configureSessionDefaults(ses, profileId, this.ctx.notificationManager);
+        await configureSessionDefaults(ses, profileId, this.ctx.notificationManager, this.ctx.mediaPermissionManager);
         this.sessionsByProfile.set(profileId, ses);
         this.ctx.onProfileSessionReady?.(profileId, ses);
 
@@ -355,6 +356,12 @@ export class ProfileManager {
     nm: import('../notifications/NotificationManager').NotificationManager,
   ): void {
     this.ctx.notificationManager = nm;
+  }
+
+  setMediaPermissionManager(
+    mm: import('../media-permissions/MediaPermissionManager').MediaPermissionManager,
+  ): void {
+    this.ctx.mediaPermissionManager = mm;
   }
 
   setProfileSessionReadyCallback(cb: (profileId: string, session: Session) => void): void {
