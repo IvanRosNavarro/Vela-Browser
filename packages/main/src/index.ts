@@ -307,6 +307,18 @@ app.whenReady().then(async () => {
   initStorage();
 
   ipcCtx = buildIpcContext({
+    onTabActivated: (webContents, win: BrowserWindow) => {
+      // Notificar a ECE qué tab queda activa para que chrome.tabs.query
+      // ({active:true}) de las extensiones (Bitwarden, etc.) lea la URL
+      // correcta. Las ventanas blindadas no se registran en ECE.
+      if (ipcCtx?.tabManager.isBlindedWindow(win.id)) return;
+      if (webContents.isDestroyed()) return;
+      try {
+        getOrCreateExtensions(webContents.session).selectTab(webContents);
+      } catch (err) {
+        logger.warn('[ext] selectTab falló', err);
+      }
+    },
     onTabAttached: (view: WebContentsView, win: BrowserWindow) => {
       if (!ipcCtx?.tabManager.isBlindedWindow(win.id)) {
         getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);

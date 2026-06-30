@@ -85,6 +85,9 @@ export type { MainEventBus } from './events';
 
 export interface BuildIpcContextOptions {
   onTabAttached?: TabManagerCtx['onTabAttached'];
+  /** Hook llamado al cambiar la tab activa de una ventana, para que index.ts
+   *  notifique a ECE (`selectTab`) qué tab leen las extensiones. */
+  onTabActivated?: TabManagerCtx['onTabActivated'];
   /** Crea la BrowserWindow vacía. Se inyecta para que ProfileWindowManager
    *  no dependa del módulo `window/createMainWindow`. */
   createWindow: (initState?: { sidebarWidth?: number }) => BrowserWindow;
@@ -136,6 +139,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     events,
     logger,
     ...(opts.onTabAttached ? { onTabAttached: opts.onTabAttached } : {}),
+    ...(opts.onTabActivated ? { onTabActivated: opts.onTabActivated } : {}),
     onTabViewWired: (tabId, view, windowId, profileId) => {
       mediaManagerRef?.attachToTab(tabId, view, windowId, profileId);
       notificationManagerRef?.attachToWebContents(view.webContents, profileId);

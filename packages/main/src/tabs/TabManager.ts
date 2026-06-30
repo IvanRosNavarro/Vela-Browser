@@ -70,6 +70,13 @@ export interface TabManagerCtx {
   onTabAttached?: (view: WebContentsView, window: BrowserWindow) => void;
   /** Hook llamado al terminar de cablear listeners en un WCV (media, etc.). */
   onTabViewWired?: (tabId: string, view: WebContentsView, windowId: number, profileId: string) => void;
+  /**
+   * Hook llamado cuando cambia la tab activa de una ventana, para notificar al
+   * sistema de extensiones (ECE `selectTab`). Sin esto, `chrome.tabs.query`
+   * ({active:true}) de las extensiones (Bitwarden, etc.) devuelve siempre la
+   * primera tab materializada de la ventana, no la realmente activa.
+   */
+  onTabActivated?: (webContents: WebContents, window: BrowserWindow) => void;
   /** Hook llamado al crear la sesión de una tab blindada para cargar extensiones permitidas. */
   onSecureSessionReady?: (profileId: string, repos: ProfileRepositories, secureSession: Session) => Promise<void>;
 }
@@ -1200,6 +1207,7 @@ export class TabManager {
       windowId: state.windowId,
       tabId,
     });
+    this.notifyActiveTabToExtensions(state, tabId);
   }
 
   // ---------- auto-grouping ----------
@@ -1524,6 +1532,7 @@ export class TabManager {
     const layout = this.getWindowLayoutData(windowId);
     this.ctx.events.emit(IPC_EVENTS.LAYOUT_CHANGED, { windowId, layout });
     this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, { windowId, tabId });
+    if (tabId) this.notifyActiveTabToExtensions(state, tabId);
   }
 
   async openTabInUnfocusedPanel(windowId: number, tabId: string): Promise<void> {
@@ -2412,6 +2421,25 @@ export class TabManager {
     }
   }
 
+  /**
+   * Notifica al sistema de extensiones (ECE) qué tab queda activa en la
+   * ventana, para que `chrome.tabs.query({active:true})` devuelva la tab
+   * correcta. Sin esto, ECE reporta siempre la primera tab materializada de la
+   * ventana, lo que rompe el autofill de extensiones (p.ej. Bitwarden) al
+   * activar una tab anclada. Llamar desde todas las rutas que cambian la tab
+   * activa de cara al usuario (activateInternal, softActivate, focusPanel).
+   */
+  private notifyActiveTabToExtensions(state: PerWindow, tabId: string): void {
+    if (!this.ctx.onTabActivated) return;
+    const activeWc = state.tabs.get(tabId)?.webContents;
+    if (!activeWc || activeWc.isDestroyed()) return;
+    try {
+      this.ctx.onTabActivated(activeWc, state.window);
+    } catch (err) {
+      this.ctx.logger.warn('[tabs] onTabActivated lanzó', err);
+    }
+  }
+
   private activateInternal(
     state: PerWindow,
     tabId: string,
@@ -2499,6 +2527,8 @@ export class TabManager {
       windowId: state.windowId,
       tabId,
     });
+
+    this.notifyActiveTabToExtensions(state, tabId);
   }
 
   private async analyzeReadability(
