@@ -146,6 +146,7 @@ export function App() {
       useMediaPermissionStore.getState().addPendingOrigin(info);
     });
     const offMediaPermChanged = window.api.on(IPC_EVENTS.MEDIA_PERMISSION_CHANGED, ({ origin, state }) => {
+      if (state === 'pending') return;
       useMediaPermissionStore.getState().setPermissionState(origin, state);
       useMediaPermissionStore.getState().removePendingOrigin(origin);
     });
