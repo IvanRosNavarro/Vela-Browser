@@ -116,6 +116,12 @@ const api: PreloadApi = {
     goto: (input) => call(IPC_CHANNELS.NAV_GOTO, input),
     setAddressBarEditing: (input) => call(IPC_CHANNELS.NAV_SET_ADDRESSBAR_EDITING, input),
   },
+  navHistory: {
+    open: (input) => call(IPC_CHANNELS.NAV_HISTORY_POPUP_OPEN, input),
+    close: (input) => call(IPC_CHANNELS.NAV_HISTORY_POPUP_CLOSE, input),
+    get: (input) => call(IPC_CHANNELS.NAV_HISTORY_GET, input),
+    go: (input) => call(IPC_CHANNELS.NAV_HISTORY_GO, input),
+  },
   window: {
     openUrlInNewTab: (input) =>
       call(IPC_CHANNELS.WINDOW_OPEN_URL_IN_NEW_TAB, input),

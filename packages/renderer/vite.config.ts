@@ -53,6 +53,7 @@ export default defineConfig({
         'vela-menu': resolve(__dirname, 'src/pages/vela-menu/index.html'),
         downloads: resolve(__dirname, 'src/pages/downloads/index.html'),
         'download-popup': resolve(__dirname, 'src/pages/download-popup/index.html'),
+        'nav-history-popup': resolve(__dirname, 'src/pages/nav-history-popup/index.html'),
         'workspace-dropdown': resolve(__dirname, 'src/pages/workspace-dropdown/index.html'),
         'profile-dropdown': resolve(__dirname, 'src/pages/profile-dropdown/index.html'),
         'add-node-menu': resolve(__dirname, 'src/pages/add-node-menu/index.html'),

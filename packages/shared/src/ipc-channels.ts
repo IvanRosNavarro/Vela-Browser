@@ -69,6 +69,8 @@ export const IPC_CHANNELS = {
   NAV_STOP: 'nav:stop',
   NAV_GOTO: 'nav:goto',
   NAV_SET_ADDRESSBAR_EDITING: 'nav:set-addressbar-editing',
+  NAV_HISTORY_GET: 'nav-history:get',
+  NAV_HISTORY_GO: 'nav-history:go',
 
   WINDOW_OPEN_URL_IN_NEW_TAB: 'window:open-url-in-new-tab',
   WINDOW_MINIMIZE: 'window:minimize',
@@ -354,6 +356,9 @@ export const IPC_CHANNELS = {
   SUGGESTIONS_POPUP_CLOSE: 'suggestions-popup:close',
   SUGGESTIONS_POPUP_SELECT: 'suggestions-popup:select',
   SUGGESTIONS_POPUP_GET_INITIAL_DATA: 'suggestions-popup:get-initial-data',
+
+  NAV_HISTORY_POPUP_OPEN: 'nav-history-popup:open',
+  NAV_HISTORY_POPUP_CLOSE: 'nav-history-popup:close',
 
   WORKSPACE_DROPDOWN_OPEN: 'workspace-dropdown:open',
   WORKSPACE_DROPDOWN_CLOSE: 'workspace-dropdown:close',

@@ -10,6 +10,8 @@ interface NavButtonsProps {
   onForward: () => void;
   onReload: () => void;
   onStop: () => void;
+  onBackContextMenu?: (anchorRect: { left: number; bottom: number }) => void;
+  onForwardContextMenu?: (anchorRect: { left: number; bottom: number }) => void;
 }
 
 const buttonStyle: CSSProperties = {
@@ -32,6 +34,8 @@ export function NavButtons({
   onForward,
   onReload,
   onStop,
+  onBackContextMenu,
+  onForwardContextMenu,
 }: NavButtonsProps) {
   const size = compact ? 22 : 26;
   const icon = compact ? 14 : 16;
@@ -43,6 +47,12 @@ export function NavButtons({
         aria-label="Atrás"
         title="Atrás (Alt+Left)"
         onClick={onBack}
+        onContextMenu={(e) => {
+          if (!canGoBack || !onBackContextMenu) return;
+          e.preventDefault();
+          const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+          onBackContextMenu({ left: r.left, bottom: r.bottom });
+        }}
         disabled={!canGoBack}
         style={{
           ...buttonStyle,
@@ -59,6 +69,12 @@ export function NavButtons({
         aria-label="Adelante"
         title="Adelante (Alt+Right)"
         onClick={onForward}
+        onContextMenu={(e) => {
+          if (!canGoForward || !onForwardContextMenu) return;
+          e.preventDefault();
+          const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+          onForwardContextMenu({ left: r.left, bottom: r.bottom });
+        }}
         disabled={!canGoForward}
         style={{
           ...buttonStyle,
