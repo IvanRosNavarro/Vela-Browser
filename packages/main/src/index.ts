@@ -308,15 +308,35 @@ app.whenReady().then(async () => {
 
   ipcCtx = buildIpcContext({
     onTabActivated: (webContents, win: BrowserWindow) => {
-      // Notificar a ECE qué tab queda activa para que chrome.tabs.query
-      // ({active:true}) de las extensiones (Bitwarden, etc.) lea la URL
-      // correcta. Las ventanas blindadas no se registran en ECE.
       if (ipcCtx?.tabManager.isBlindedWindow(win.id)) return;
       if (webContents.isDestroyed()) return;
       try {
-        getOrCreateExtensions(webContents.session).selectTab(webContents);
+        const ext = getOrCreateExtensions(webContents.session);
+        // selectTab emite tabs.onActivated a las extensiones pero tiene un
+        // early-exit interno: si windowToActiveTab ya apunta a este WC (lo que
+        // ocurre cuando ECE lo marcó activo en addTab→observeTab→onActivated),
+        // no actualiza el tabDetailsCache. Forzamos la actualización directa del
+        // cache para que chrome.tabs.query({active:true}) devuelva siempre el tab
+        // correcto (fix para autofill de Bitwarden en pestañas ancladas).
+        ext.selectTab(webContents);
+        type EceStore = {
+          tabs?: Set<Electron.WebContents>;
+          tabToWindow?: WeakMap<Electron.WebContents, BrowserWindow>;
+          windowToActiveTab?: WeakMap<BrowserWindow, Electron.WebContents>;
+          tabDetailsCache?: Map<number, Record<string, unknown>>;
+        };
+        const store = (ext as unknown as { ctx?: { store?: EceStore } }).ctx?.store;
+        if (store?.tabs?.has(webContents)) {
+          const eceWin = store.tabToWindow?.get(webContents);
+          if (eceWin && store.windowToActiveTab) {
+            store.windowToActiveTab.set(eceWin, webContents);
+          }
+          store.tabDetailsCache?.forEach((tabInfo, cacheTabId) => {
+            tabInfo['active'] = cacheTabId === webContents.id;
+          });
+        }
       } catch (err) {
-        logger.warn('[ext] selectTab falló', err);
+        logger.warn('[ext] selectTab/cache-update falló', err);
       }
     },
     onTabAttached: (view: WebContentsView, win: BrowserWindow) => {
