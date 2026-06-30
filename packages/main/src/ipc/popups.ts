@@ -33,6 +33,7 @@ const statusClusterPopups = new Map<number, BrowserWindow>();
 const securityPopups = new Map<number, BrowserWindow>();
 const devmodePopups = new Map<number, BrowserWindow>();
 const suggestionsPopups = new Map<number, BrowserWindow>();
+const navHistoryPopups = new Map<number, BrowserWindow>();
 const workspaceDropdownPopups = new Map<number, BrowserWindow>();
 const profileDropdownPopups = new Map<number, BrowserWindow>();
 const velaMenuPopups = new Map<number, BrowserWindow>();
@@ -311,6 +312,83 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SUGGESTIONS_POPUP_CLOSE);
+      }
+    },
+  );
+
+  // ── nav-history-popup:open ────────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.NAV_HISTORY_POPUP_OPEN,
+    async (event, payload): Promise<IpcResponse<void>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.NAV_HISTORY_POPUP_OPEN);
+        const parentWindowId = resolveWindowId(event);
+        if (parentWindowId === null) return { ok: true, data: undefined };
+        const parentWin = BrowserWindow.fromId(parentWindowId);
+        if (!parentWin) return { ok: true, data: undefined };
+
+        const existing = navHistoryPopups.get(parentWindowId);
+        if (existing && !existing.isDestroyed()) {
+          existing.close();
+          return { ok: true, data: undefined };
+        }
+
+        const { anchorRect, direction } = payload as {
+          anchorRect: { left: number; bottom: number };
+          direction: 'back' | 'forward';
+        };
+
+        // Contar entradas en la dirección pedida para dimensionar el popup.
+        const { entries, activeIndex } = ctx.tabManager.getNavHistory(parentWindowId);
+        const count = direction === 'back'
+          ? entries.filter((e) => e.index < activeIndex).length
+          : entries.filter((e) => e.index > activeIndex).length;
+        if (count === 0) return { ok: true, data: undefined };
+
+        const { profileId, repos } = getFrameContext(event, ctx);
+        const glass = readGlass(repos);
+        const POPUP_WIDTH = 320;
+        // 8px de padding vertical + 34px por entrada, hasta 5 visibles (el resto
+        // hace scroll con la barra oculta).
+        const POPUP_HEIGHT = 8 + Math.min(count, 5) * 34;
+
+        const pos = parentWin.getPosition();
+        const { x, y } = clampToDisplay(
+          pos[0]! + Math.round(anchorRect.left),
+          pos[1]! + Math.round(anchorRect.bottom) + 4,
+          POPUP_WIDTH, POPUP_HEIGHT,
+        );
+
+        const popup = createPopupWindow({ width: POPUP_WIDTH, height: POPUP_HEIGHT, x, y, ...(glass ? { glassmorphism: glass } : {}) });
+        wirePopupLifecycle(popup, { registry: navHistoryPopups, parentWindowId, profileId, ctx });
+
+        const pageUrl = new URL('vela://nav-history-popup');
+        pageUrl.searchParams.set('windowId', String(parentWindowId));
+        pageUrl.searchParams.set('direction', direction);
+        if (glass) applyGlassUrlParams(pageUrl, glass);
+
+        await popup.loadURL(pageUrl.toString());
+        popup.show();
+
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NAV_HISTORY_POPUP_OPEN);
+      }
+    },
+  );
+
+  // ── nav-history-popup:close ───────────────────────────────────────────────
+  ipcMain.handle(
+    IPC_CHANNELS.NAV_HISTORY_POPUP_CLOSE,
+    async (event, payload): Promise<IpcResponse<void>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.NAV_HISTORY_POPUP_CLOSE);
+        const { windowId } = payload as { windowId: number };
+        const popup = navHistoryPopups.get(windowId);
+        if (popup && !popup.isDestroyed()) popup.close();
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NAV_HISTORY_POPUP_CLOSE);
       }
     },
   );

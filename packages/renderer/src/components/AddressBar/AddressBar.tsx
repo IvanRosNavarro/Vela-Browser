@@ -155,6 +155,14 @@ export function AddressBar() {
         onForward={ctrl.navigate.forward}
         onReload={ctrl.navigate.reload}
         onStop={ctrl.navigate.stop}
+        onBackContextMenu={(anchorRect) => {
+          if (currentWindowId === null) return;
+          void window.api.navHistory.open({ windowId: currentWindowId, anchorRect, direction: 'back' });
+        }}
+        onForwardContextMenu={(anchorRect) => {
+          if (currentWindowId === null) return;
+          void window.api.navHistory.open({ windowId: currentWindowId, anchorRect, direction: 'forward' });
+        }}
       />
 
       <div

@@ -3,6 +3,8 @@ import {
   IPC_CHANNELS,
   navGotoInputSchema,
   navSimpleInputSchema,
+  navHistoryGetInputSchema,
+  navHistoryGoInputSchema,
   type IpcResponse,
 } from '@vela/shared';
 import type { IpcContext } from './context';
@@ -150,6 +152,42 @@ export function registerNavigationHandlers(ctx: IpcContext): void {
         return { ok: true, data: { id: parsed.data.id } };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.NAV_GOTO);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.NAV_HISTORY_GET,
+    async (
+      event,
+      payload,
+    ): Promise<IpcResponse<{ entries: { index: number; url: string; title: string }[]; activeIndex: number }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.NAV_HISTORY_GET);
+      const parsed = navHistoryGetInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        return { ok: true, data: ctx.tabManager.getNavHistory(parsed.data.windowId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NAV_HISTORY_GET);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.NAV_HISTORY_GO,
+    async (event, payload): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.NAV_HISTORY_GO);
+      const parsed = navHistoryGoInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        ctx.tabManager.goToIndex(parsed.data.windowId, parsed.data.index);
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NAV_HISTORY_GO);
       }
     },
   );

@@ -146,6 +146,15 @@ export const navSimpleInputSchema = z.object({
   id: z.string().min(1),
 });
 
+export const navHistoryGetInputSchema = z.object({
+  windowId: z.number().int(),
+});
+
+export const navHistoryGoInputSchema = z.object({
+  windowId: z.number().int(),
+  index: z.number().int().min(0),
+});
+
 export const treeGetByWorkspaceInputSchema = z.object({
   workspaceId: z.string().min(1),
 });

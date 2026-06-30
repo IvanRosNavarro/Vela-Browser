@@ -1248,6 +1248,37 @@ export class TabManager {
     if (wc?.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
   }
 
+  /**
+   * Devuelve el historial de navegación (atrás/adelante) de la pestaña activa
+   * de la ventana, junto con el índice de la entrada actual. Usado por el popup
+   * de historial que se abre al hacer clic derecho en los botones atrás/adelante.
+   */
+  getNavHistory(windowId: number): {
+    entries: { index: number; url: string; title: string }[];
+    activeIndex: number;
+  } {
+    const wc = this.activeWebContents(windowId);
+    if (!wc) return { entries: [], activeIndex: -1 };
+    const nav = wc.navigationHistory;
+    const activeIndex = nav.getActiveIndex();
+    const entries = nav.getAllEntries().map((entry, index) => ({
+      index,
+      url: entry.url,
+      title: entry.title && entry.title.length > 0 ? entry.title : entry.url,
+    }));
+    return { entries, activeIndex };
+  }
+
+  /** Navega a una entrada concreta del historial por su índice. */
+  goToIndex(windowId: number, index: number): void {
+    const wc = this.activeWebContents(windowId);
+    if (!wc) return;
+    const nav = wc.navigationHistory;
+    if (index >= 0 && index < nav.length() && index !== nav.getActiveIndex()) {
+      nav.goToIndex(index);
+    }
+  }
+
   reload(windowId: number): void {
     const wc = this.activeWebContents(windowId);
     wc?.reload();

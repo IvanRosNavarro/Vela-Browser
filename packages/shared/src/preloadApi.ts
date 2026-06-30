@@ -228,6 +228,23 @@ export interface NavApi {
   setAddressBarEditing(input: { editing: boolean }): Promise<IpcResponse<void>>;
 }
 
+export interface NavHistoryEntry {
+  index: number;
+  url: string;
+  title: string;
+}
+
+export interface NavHistoryApi {
+  open(input: {
+    windowId: number;
+    anchorRect: { left: number; bottom: number };
+    direction: 'back' | 'forward';
+  }): Promise<IpcResponse<void>>;
+  close(input: { windowId: number }): Promise<IpcResponse<void>>;
+  get(input: { windowId: number }): Promise<IpcResponse<{ entries: NavHistoryEntry[]; activeIndex: number }>>;
+  go(input: { windowId: number; index: number }): Promise<IpcResponse<void>>;
+}
+
 export interface WindowApi {
   openUrlInNewTab(
     input: WindowOpenUrlInNewTabInput,
@@ -698,6 +715,7 @@ export interface PreloadApi {
   tab: TabApi;
   tree: TreeApi;
   nav: NavApi;
+  navHistory: NavHistoryApi;
   window: WindowApi;
   layout: LayoutApi;
   runtime: RuntimeApi;

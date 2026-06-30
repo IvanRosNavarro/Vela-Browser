@@ -1,0 +1,10 @@
+/* Lista del historial: scroll vertical funcional pero con la barra oculta
+   (queda más limpio que mostrar la scrollbar nativa). */
+.nav-history-list {
+  scrollbar-width: none; /* Firefox */
+}
+
+.nav-history-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
