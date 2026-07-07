@@ -52,11 +52,31 @@ export function buildJumpList(profiles: Profile[]): void {
   app.setJumpList(categories);
 }
 
+/**
+ * Windows invoca `Vela.exe "%1"` cuando está registrado como navegador
+ * predeterminado (ver registerWindowsCapabilities), sustituyendo `%1` por la
+ * URL sobre la que el usuario hizo doble clic (enlace en otra app, .html,
+ * etc.). Ese argumento llega suelto en argv, sin flag que lo identifique.
+ */
+function extractUrlArg(argv: string[]): string | null {
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith('-')) continue;
+    try {
+      const parsed = new URL(arg);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return arg;
+    } catch {
+      // no es una URL (p.ej. la ruta del script de entrada en dev)
+    }
+  }
+  return null;
+}
+
 export function parseJumpListArgs(argv: string[]): {
   profileId: string | undefined;
   newTab: boolean;
   newWindow: boolean;
   privateWindow: boolean;
+  url: string | null;
 } {
   const profileArg = argv.find((a) => a.startsWith('--profile='));
   return {
@@ -64,5 +84,6 @@ export function parseJumpListArgs(argv: string[]): {
     newTab: argv.includes('--new-tab'),
     newWindow: argv.includes('--new-window'),
     privateWindow: argv.includes('--private-window'),
+    url: extractUrlArg(argv),
   };
 }

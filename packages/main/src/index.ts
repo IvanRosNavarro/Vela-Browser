@@ -92,8 +92,14 @@ if (!app.requestSingleInstanceLock()) {
 app.on('second-instance', (_event, argv) => {
   const args = parseJumpListArgs(argv);
   if (args.privateWindow) {
-    void ipcCtx?.profileWindowManager.openBlindedWindow().catch((err: unknown) => {
+    void ipcCtx?.profileWindowManager.openBlindedWindow(args.url ?? undefined).catch((err: unknown) => {
       logger.warn('[app] openBlindedWindow (second-instance) falló', err);
+    });
+  } else if (args.url) {
+    // Un programa/archivo externo pide abrir una URL: se añade como pestaña
+    // nueva en la última ventana activa en lugar de abrir una ventana nueva.
+    void openUrlInLastActiveWindow(args.url).catch((err: unknown) => {
+      logger.warn('[app] openUrlInLastActiveWindow (second-instance) falló', err);
     });
   } else {
     void openStartupWindow({ profileId: args.profileId });
@@ -165,6 +171,65 @@ let ipcCtx: IpcContext | null = null;
 let commandRegistry: CommandRegistry | null = null;
 let shortcutTable: ShortcutTable | null = null;
 let gestureRecognizer: GestureRecognizer | null = null;
+
+// Electron no expone "última ventana con foco cuando ninguna tiene foco ahora"
+// (p.ej. al recibir una URL externa mientras Vela está en segundo plano), así
+// que llevamos nuestro propio orden de recencia por electronId.
+const windowFocusOrder: number[] = [];
+
+function trackWindowFocus(window: BrowserWindow): void {
+  windowFocusOrder.unshift(window.id);
+  window.on('focus', () => {
+    const idx = windowFocusOrder.indexOf(window.id);
+    if (idx > 0) windowFocusOrder.splice(idx, 1);
+    if (idx !== 0) windowFocusOrder.unshift(window.id);
+  });
+  window.once('closed', () => {
+    const idx = windowFocusOrder.indexOf(window.id);
+    if (idx !== -1) windowFocusOrder.splice(idx, 1);
+  });
+}
+
+/** Ventana normal (no blindada) más recientemente activa, para reutilizarla
+ * al abrir una URL que llega desde fuera de la app (segunda instancia). */
+function getLastActiveWindow(): BrowserWindow | null {
+  for (const id of windowFocusOrder) {
+    const win = BrowserWindow.fromId(id);
+    if (win && !win.isDestroyed() && !ipcCtx?.tabManager.isBlindedWindow(win.id)) {
+      return win;
+    }
+  }
+  return (
+    BrowserWindow.getAllWindows().find(
+      (w) => !w.isDestroyed() && !ipcCtx?.tabManager.isBlindedWindow(w.id),
+    ) ?? null
+  );
+}
+
+async function openUrlInWindow(window: BrowserWindow, url: string): Promise<void> {
+  if (!ipcCtx) return;
+  const workspaceId = ipcCtx.tabManager.getWorkspaceForWindow(window.id);
+  if (!workspaceId) {
+    logger.warn(`[app] openUrlInWindow: window ${window.id} sin workspace asociado`);
+    return;
+  }
+  await ipcCtx.tabManager.createTab(window.id, { workspaceId, parentId: null, url, activate: true });
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+/** Abre `url` en una nueva pestaña de la última ventana activa; si no hay
+ * ninguna ventana abierta, arranca una ventana nueva con esa URL. */
+async function openUrlInLastActiveWindow(url: string): Promise<void> {
+  const win = getLastActiveWindow();
+  if (win) {
+    await openUrlInWindow(win, url);
+  } else {
+    await openStartupWindow({ url });
+  }
+}
+
 function loadRenderer(window: BrowserWindow): void {
   if (isDev) {
     void window.loadURL(VITE_DEV_SERVER_URL);
@@ -268,7 +333,7 @@ async function ensureBootstrapProfile(ctx: IpcContext): Promise<void> {
   await ctx.profileManager.createProfile({ name: 'Default' });
 }
 
-async function openStartupWindow(opts?: { profileId?: string }): Promise<BrowserWindow | null> {
+async function openStartupWindow(opts?: { profileId?: string; url?: string }): Promise<BrowserWindow | null> {
   if (!ipcCtx) return null;
   const profileId = opts?.profileId ?? pickStartupProfileId();
   if (!profileId) {
@@ -276,7 +341,11 @@ async function openStartupWindow(opts?: { profileId?: string }): Promise<Browser
     return null;
   }
   try {
-    return await ipcCtx.profileWindowManager.openWindow(profileId);
+    const window = await ipcCtx.profileWindowManager.openWindow(profileId);
+    if (opts?.url) {
+      await openUrlInWindow(window, opts.url);
+    }
+    return window;
   } catch (err) {
     logger.error(`[app] openWindow falló para profile=${profileId}`, err);
     return null;
@@ -363,6 +432,7 @@ app.whenReady().then(async () => {
     createWindow: (initState) => createMainWindow(initState),
     loadRenderer,
     onWindowOpened: (window) => {
+      trackWindowFocus(window);
       if (ipcCtx) {
         attachWindowShortcuts(() => shortcutTable, ipcCtx, window);
       }
@@ -462,9 +532,9 @@ app.whenReady().then(async () => {
   // Procesar args de jump list en el arranque inicial (cuando Vela no estaba abierto).
   const startupArgs = parseJumpListArgs(process.argv);
   if (startupArgs.privateWindow) {
-    await ipcCtx.profileWindowManager.openBlindedWindow();
+    await ipcCtx.profileWindowManager.openBlindedWindow(startupArgs.url ?? undefined);
   } else {
-    await openStartupWindow({ profileId: startupArgs.profileId });
+    await openStartupWindow({ profileId: startupArgs.profileId, url: startupArgs.url ?? undefined });
   }
 
   // Jump list de Windows: categoría de perfiles + tareas rápidas.
