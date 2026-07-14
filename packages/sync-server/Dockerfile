@@ -7,6 +7,9 @@ RUN apk add --no-cache python3 make g++
 
 # Contexto de workspace completo para respetar el lockfile del monorepo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# El package.json raíz declara pnpm.patchedDependencies -> pnpm hashea el .patch
+# durante el install, así que el directorio patches/ debe existir en el contexto.
+COPY patches/ ./patches/
 COPY packages/sync-server/package.json ./packages/sync-server/
 
 RUN npm install -g pnpm && \
