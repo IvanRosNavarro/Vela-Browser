@@ -6,6 +6,7 @@ import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { resolveWindowId } from './helpers';
 import { guardTrustedFrame } from './validate';
+import { logger } from '../logger';
 
 const PICKER_WIDTH  = 400;
 const PICKER_HEIGHT = 480;
@@ -55,8 +56,62 @@ function mimeFromPath(filePath: string): string {
 }
 
 // ─── File injection helper ────────────────────────────────────────────────────
+//
+// `Object.defineProperty(input, 'files', ...)` (el método legacy más abajo) solo
+// sombrea la propiedad JS del elemento: código de la página que lea
+// `input.files` lo ve, pero el estado nativo de Blink (lo que Chromium usa para
+// el envío real del formulario y para pintar la etiqueta "Ningún archivo
+// seleccionado" junto al botón) nunca se entera — de ahí que el picker de Vela
+// mostrara "Seleccionado: x" mientras el input nativo seguía vacío. La forma
+// correcta (la misma que usan Puppeteer/Playwright) es CDP `DOM.setFileInputFiles`,
+// que sí alimenta el estado interno del input como si el usuario hubiera
+// completado el diálogo nativo del SO.
+//
+// Requiere rutas de fichero reales en disco (no bytes en memoria), y un
+// `objectId` de Runtime.evaluate apuntando al propio <input>. Reutiliza el
+// mismo patrón attach/detach de `wc.debugger` que `TabManager.captureFullPageForWindow`.
+async function injectFilesIntoInputViaCDP(
+  wc: Electron.WebContents,
+  pickerIds: string[],
+  absolutePaths: string[],
+): Promise<boolean> {
+  const dbg = wc.debugger;
+  let attached = false;
+  try {
+    dbg.attach('1.3');
+    attached = true;
+  } catch {
+    // Ya hay un debugger adjunto a esta tab (p.ej. DevTools abierto): no podemos
+    // usar CDP sin desconectarlo. El llamante debe caer al fallback legacy.
+    return false;
+  }
 
-async function injectFilesIntoInput(
+  try {
+    const selector = pickerIds.map((id) => `[data-vela-picker="${id}"]`).join(',');
+    const expression = selector
+      ? `document.querySelector(${JSON.stringify(selector)})`
+      : 'window.__velaFileTarget';
+    const evalResult = await dbg.sendCommand('Runtime.evaluate', { expression }) as {
+      result?: { objectId?: string; subtype?: string };
+    };
+    const objectId = evalResult.result?.objectId;
+    if (!objectId || evalResult.result?.subtype !== 'node') return false;
+
+    await dbg.sendCommand('DOM.setFileInputFiles', { files: absolutePaths, objectId });
+    await dbg.sendCommand('Runtime.releaseObject', { objectId }).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (attached) {
+      try { dbg.detach(); } catch { /* ignorar */ }
+    }
+  }
+}
+
+/** Fallback legacy: solo sombrea `input.files` en JS. El input nativo (y por
+ *  tanto el envío real del formulario) NO se entera — usar solo si CDP falla. */
+async function injectFilesIntoInputLegacy(
   wc: Electron.WebContents,
   pickerIds: string[],
   filesData: Array<{ name: string; type: string; data: number[] }>,
@@ -79,6 +134,24 @@ async function injectFilesIntoInput(
 })();
 `;
   await wc.executeJavaScript(script).catch(() => {});
+}
+
+/** Inyecta ficheros (rutas absolutas reales) en el <input type=file> marcado
+ *  con `data-vela-picker`. Intenta CDP primero; si falla (p.ej. DevTools
+ *  abierto en esa tab) cae al hack JS legacy como mejor esfuerzo. */
+async function injectFiles(
+  wc: Electron.WebContents,
+  pickerIds: string[],
+  absolutePaths: string[],
+): Promise<void> {
+  const ok = await injectFilesIntoInputViaCDP(wc, pickerIds, absolutePaths);
+  if (ok) return;
+  logger.warn('[filepicker] DOM.setFileInputFiles falló, usando fallback JS (el input nativo no se actualizará)');
+  const filesData = await Promise.all(absolutePaths.map(async (fp) => {
+    const buf = await fs.promises.readFile(fp);
+    return { name: path.basename(fp), type: mimeFromPath(fp), data: [...buf] };
+  }));
+  await injectFilesIntoInputLegacy(wc, pickerIds, filesData);
 }
 
 async function persistRecentFiles(
@@ -115,12 +188,17 @@ function clipboardImageToDataUrl(): string | null {
   }
 }
 
-async function clipboardImageToBuffer(): Promise<{ name: string; type: string; data: number[] } | null> {
+/** CDP DOM.setFileInputFiles requiere una ruta real en disco (no bytes en
+ *  memoria), así que la imagen del portapapeles se vuelca primero a un
+ *  fichero temporal antes de inyectarla. */
+async function clipboardImageToTempFile(): Promise<string | null> {
   try {
     const img = clipboard.readImage();
     if (img.isEmpty()) return null;
     const buf = img.toPNG();
-    return { name: 'portapapeles.png', type: 'image/png', data: [...buf] };
+    const tempPath = path.join(app.getPath('temp'), `vela-clipboard-${Date.now()}-${Math.floor(Math.random() * 1e6)}.png`);
+    await fs.promises.writeFile(tempPath, buf);
+    return tempPath;
   } catch {
     return null;
   }
@@ -238,13 +316,7 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
           if (filePaths.length > 0) {
             const wc = ctx.tabManager.getActiveTabWebContents(windowId);
             if (wc && !wc.isDestroyed()) {
-              const filesData = await Promise.all(
-                filePaths.map(async (fp) => {
-                  const buf = await fs.promises.readFile(fp);
-                  return { name: path.basename(fp), type: mimeFromPath(fp), data: [...buf] };
-                }),
-              );
-              await injectFilesIntoInput(wc, [parsed.data.pickerId], filesData);
+              await injectFiles(wc, [parsed.data.pickerId], filePaths);
               await persistRecentFiles(ctx, profileId, filePaths);
             }
           }
@@ -331,22 +403,15 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
         const clipboardPaths = paths.filter((p) => p.startsWith('__clipboard__:'));
         const filePaths      = paths.filter((p) => !p.startsWith('__clipboard__:'));
 
-        const filesData: Array<{ name: string; type: string; data: number[] }> = [];
+        const absolutePaths: string[] = filePaths.filter((fp) => fs.existsSync(fp));
 
-        for (const fp of filePaths) {
-          try {
-            const buf = await fs.promises.readFile(fp);
-            filesData.push({ name: path.basename(fp), type: mimeFromPath(fp), data: [...buf] });
-          } catch { /* skip unreadable */ }
+        for (const _cp of clipboardPaths) {
+          const tempPath = await clipboardImageToTempFile();
+          if (tempPath) absolutePaths.push(tempPath);
         }
 
-        for (const cp of clipboardPaths) {
-          const clipData = await clipboardImageToBuffer();
-          if (clipData) filesData.push(clipData);
-        }
-
-        if (filesData.length > 0) {
-          await injectFilesIntoInput(wc, [pickerId], filesData);
+        if (absolutePaths.length > 0) {
+          await injectFiles(wc, [pickerId], absolutePaths);
           await persistRecentFiles(ctx, profileId, filePaths);
         }
 
@@ -385,13 +450,7 @@ export function registerFilePickerHandlers(ctx: IpcContext): void {
         if (!canceled && filePaths.length > 0) {
           const wc = ctx.tabManager.getActiveTabWebContents(windowId);
           if (wc && !wc.isDestroyed()) {
-            const filesData = await Promise.all(
-              filePaths.map(async (fp) => {
-                const buf = await fs.promises.readFile(fp);
-                return { name: path.basename(fp), type: mimeFromPath(fp), data: [...buf] };
-              }),
-            );
-            await injectFilesIntoInput(wc, [pickerId], filesData);
+            await injectFiles(wc, [pickerId], filePaths);
             await persistRecentFiles(ctx, profileId, filePaths);
           }
         }
