@@ -440,6 +440,12 @@ export const IPC_CHANNELS = {
   MEDIA_PERMISSION_GET_ALL: 'media-permission:get-all',
   MEDIA_PERMISSION_OPEN_POPUP: 'media-permission:open-popup',
   MEDIA_PERMISSION_CLOSE_POPUP: 'media-permission:close-popup',
+  // Certificados cliente (mTLS)
+  CLIENT_CERT_GET_INITIAL_DATA: 'client-cert:get-initial-data',
+  CLIENT_CERT_SELECT: 'client-cert:select',
+  CLIENT_CERT_CANCEL: 'client-cert:cancel',
+  CLIENT_CERT_GET_ALL: 'client-cert:get-all',
+  CLIENT_CERT_FORGET: 'client-cert:forget',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -516,6 +522,7 @@ export const IPC_EVENTS = {
   TRANSLATION_ERROR: 'state:translation-error',
   MEDIA_PERMISSION_PENDING: 'state:media-permission-pending',
   MEDIA_PERMISSION_CHANGED: 'state:media-permission-changed',
+  CLIENT_CERT_CHANGED: 'state:client-cert-changed',
 } as const;
 
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
@@ -629,4 +636,5 @@ export interface MainEventPayloads {
   [IPC_EVENTS.TRANSLATION_ERROR]: { windowId: number; message: string };
   [IPC_EVENTS.MEDIA_PERMISSION_PENDING]: { origin: string; windowId: number; mediaTypes: Array<'video' | 'audio'> };
   [IPC_EVENTS.MEDIA_PERMISSION_CHANGED]: { origin: string; state: 'none' | 'pending' | 'granted' | 'denied'; windowId: number };
+  [IPC_EVENTS.CLIENT_CERT_CHANGED]: { origin: string };
 }

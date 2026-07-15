@@ -62,9 +62,11 @@ import { registerDownloadHandlers } from './downloads';
 import { registerMultiWindowHandlers } from './multiWindow';
 import { registerFindHandlers } from './find';
 import { registerCertHandlers } from './cert';
+import { registerClientCertHandlers } from './clientCert';
 import { registerClipboardHandlers } from './clipboard';
 import { registerTranslationHandlers } from './translation';
 import { CertificateManager } from '../security/CertificateManager';
+import { ClientCertificateManager } from '../security/ClientCertificateManager';
 import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
 import { MediaSessionManager } from '../media/MediaSessionManager';
@@ -239,6 +241,13 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   });
   const unlockRateLimiter = new UnlockRateLimiter();
   const certManager = new CertificateManager();
+  const clientCertManager = new ClientCertificateManager({
+    tabManager,
+    profileManager,
+    profileWindowManager,
+    events,
+    logger,
+  });
   return {
     repositories,
     events,
@@ -261,6 +270,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     mediaPermissionManager,
     syncManagers,
     certManager,
+    clientCertManager,
   };
 }
 
@@ -315,6 +325,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerNotificationHandlers(ctx);
   registerMediaPermissionHandlers(ctx);
   registerCertHandlers(ctx);
+  registerClientCertHandlers(ctx);
   registerClipboardHandlers();
   registerTranslationHandlers(ctx);
 }

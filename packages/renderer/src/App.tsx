@@ -32,6 +32,7 @@ import { useAddressBarStore } from './stores/addressBarStore';
 import { useDownloadStore } from './stores/downloadStore';
 import { useNotificationsStore } from './stores/notificationsStore';
 import { useMediaPermissionStore } from './stores/mediaPermissionStore';
+import { useClientCertStore } from './stores/clientCertStore';
 import { useRuntimeStore } from './stores/runtimeStore';
 import { useWorkspacesStore } from './stores/workspacesStore';
 import { useDeviceEmulationStore } from './stores/deviceEmulationStore';
@@ -151,6 +152,10 @@ export function App() {
       useMediaPermissionStore.getState().removePendingOrigin(origin);
     });
     void useMediaPermissionStore.getState().hydrate();
+
+    const offClientCertChanged = window.api.on(IPC_EVENTS.CLIENT_CERT_CHANGED, () => {
+      void useClientCertStore.getState().hydrate();
+    });
 
     const offUpdateModalOpen = window.api.on(IPC_EVENTS.UPDATE_MODAL_OPEN, () => {
       useUpdateStore.getState().openModal();
@@ -330,6 +335,7 @@ export function App() {
       offClusterRelay();
       offNotificationsChanged(); offPermissionPending(); offPermissionChanged(); offNotificationCenterOpen();
       offMediaPermPending(); offMediaPermChanged();
+      offClientCertChanged();
       offTranslationStatus();
       offTranslationError();
       offTabNavigated();

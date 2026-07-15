@@ -770,6 +770,7 @@ export interface PreloadApi {
   notifications: NotificationsApi;
   push: PushSubscriptionsApi;
   mediaPermission: MediaPermissionApi;
+  clientCert: ClientCertApi;
   defaultBrowser: DefaultBrowserApi;
   clipboard: ClipboardApi;
   translation: TranslationApi;
@@ -1005,4 +1006,31 @@ export interface MediaPermissionApi {
   getAll(): Promise<IpcResponse<Array<{ origin: string; state: 'granted' | 'denied'; grantedAt?: number; deniedAt?: number }>>>;
   openPermissionPopup(input: { windowId: number; origin: string; mediaTypes: Array<'video' | 'audio'>; anchorRect: { left: number; bottom: number } }): Promise<IpcResponse<void>>;
   closePermissionPopup(input: { windowId: number }): Promise<IpcResponse<void>>;
+}
+
+/** Certificado cliente candidato para autenticación mTLS, tal y como lo
+ *  reporta Electron desde el almacén de certificados del SO. Nunca incluye
+ *  el DER binario (`Certificate.data`), solo metadatos para mostrar en UI. */
+export interface ClientCertificateInfo {
+  fingerprint: string;
+  subject: string;
+  issuer: string;
+  validStart?: number;
+  validExpiry?: number;
+}
+
+export interface ClientCertRememberedChoice {
+  origin: string;
+  subject: string;
+  chosenAt: number;
+}
+
+export interface ClientCertApi {
+  /** Datos del popup vela://client-cert-select, obtenidos por wcId (la tab
+   *  que disparó la petición de certificado, no la ventana). */
+  getInitialData(input: { wcId: number }): Promise<{ hostname: string; certificates: ClientCertificateInfo[] } | null>;
+  select(input: { wcId: number; fingerprint: string; remember: boolean }): Promise<IpcResponse<void>>;
+  cancel(input: { wcId: number }): Promise<IpcResponse<void>>;
+  getAll(): Promise<IpcResponse<ClientCertRememberedChoice[]>>;
+  forget(input: { origin: string }): Promise<IpcResponse<void>>;
 }
