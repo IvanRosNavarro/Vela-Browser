@@ -5,6 +5,7 @@ import { Toggle } from '../components/controls/Toggle';
 import { Slider } from '../components/controls/Slider';
 import { Select, type SelectOption } from '../components/controls/Select';
 import { useMediaPermissionStore } from '../../../stores/mediaPermissionStore';
+import { useClientCertStore } from '../../../stores/clientCertStore';
 
 type DohProvider = 'cloudflare' | 'google' | 'quad9';
 type ClearRange  = 'hour' | 'day' | 'week' | 'all';
@@ -63,6 +64,8 @@ export function Privacy({ settings }: Props) {
       </SettingSection>
 
       <MediaPermissionsSection />
+
+      <ClientCertificatesSection />
 
       <SettingSection title="Cookies y rastreo">
         <SettingRow
@@ -251,6 +254,50 @@ function MediaPermissionsSection() {
           ))}
         </div>
       )}
+    </SettingSection>
+  );
+}
+
+// ─── Certificados cliente recordados (mTLS) ──────────────────────────────────
+
+function ClientCertificatesSection() {
+  const choices = useClientCertStore((s) => s.choices);
+  const forget = useClientCertStore((s) => s.forget);
+
+  useEffect(() => {
+    void useClientCertStore.getState().hydrate();
+  }, []);
+
+  if (choices.length === 0) {
+    return (
+      <SettingSection title="Certificados cliente recordados">
+        <div className="px-4 py-3 text-xs text-[var(--vela-fg-muted)]">
+          Ningún sitio tiene un certificado de identificación recordado. Al elegir un
+          certificado para autenticarte en un sitio (sede electrónica, banca…) puedes
+          marcar &quot;Recordar esta elección&quot; para no volver a elegirlo cada vez.
+        </div>
+      </SettingSection>
+    );
+  }
+
+  return (
+    <SettingSection title="Certificados cliente recordados">
+      <div className="flex flex-col gap-1 px-4 py-2">
+        {choices.map((c) => (
+          <div key={c.origin} className="flex items-center justify-between gap-2 rounded-md px-3 py-2 hover:bg-[var(--vela-bg-row-hover)]">
+            <div className="min-w-0">
+              <p className="text-xs text-[var(--vela-fg)] truncate">{(() => { try { return new URL(c.origin).hostname; } catch { return c.origin; } })()}</p>
+              <p className="text-[11px] text-[var(--vela-fg-muted)] truncate">{c.subject}</p>
+            </div>
+            <button
+              onClick={() => void forget(c.origin)}
+              className="shrink-0 rounded px-2 py-0.5 text-xs text-[var(--vela-fg-muted)] hover:text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+            >
+              Olvidar
+            </button>
+          </div>
+        ))}
+      </div>
     </SettingSection>
   );
 }

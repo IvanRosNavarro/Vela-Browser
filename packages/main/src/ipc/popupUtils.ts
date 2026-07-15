@@ -19,6 +19,16 @@ export function clampToDisplay(x: number, y: number, w: number, h: number): { x:
   };
 }
 
+/** Centra un popup de `w`×`h` sobre `parentWin`, ajustado a la pantalla donde
+ *  esté esa ventana. Para diálogos modales (p. ej. selección de certificado
+ *  cliente), a diferencia de los popups anclados a un botón. */
+export function centerOverWindow(parentWin: BrowserWindow, w: number, h: number): { x: number; y: number } {
+  const bounds = parentWin.getBounds();
+  const x = bounds.x + Math.round((bounds.width - w) / 2);
+  const y = bounds.y + Math.round((bounds.height - h) / 2);
+  return clampToDisplay(x, y, w, h);
+}
+
 export interface GlassParams {
   blurPx: number;
   bgOpacity: number;
@@ -33,6 +43,10 @@ export interface VelaPopupOptions {
   focusable?: boolean;
   transparent?: boolean;
   parent?: BrowserWindow;
+  /** Diálogo modal sobre `parent` (requiere `parent`). No se cierra por blur;
+   *  usar cuando la decisión es puntual y no debe descartarse por un clic
+   *  accidental fuera del popup (p. ej. selección de certificado cliente). */
+  modal?: boolean;
   backgroundColor?: string;
   glassmorphism?: GlassParams;
 }
@@ -60,6 +74,7 @@ export function createPopupWindow(opts: VelaPopupOptions): BrowserWindow {
     roundedCorners = true,
     focusable = true,
     parent,
+    modal = false,
     glassmorphism,
   } = opts;
 
@@ -82,6 +97,7 @@ export function createPopupWindow(opts: VelaPopupOptions): BrowserWindow {
     ...(!focusable ? { focusable: false } : {}),
     ...(transparent ? { transparent: true } : {}),
     ...(parent ? { parent } : {}),
+    ...(modal && parent ? { modal: true } : {}),
     backgroundColor,
     webPreferences: {
       nodeIntegration: false,

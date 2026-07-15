@@ -540,6 +540,13 @@ const api: PreloadApi = {
     openPermissionPopup: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_OPEN_POPUP, input),
     closePermissionPopup: (input) => call(IPC_CHANNELS.MEDIA_PERMISSION_CLOSE_POPUP, input),
   },
+  clientCert: {
+    getInitialData: (input) => ipcRenderer.invoke(IPC_CHANNELS.CLIENT_CERT_GET_INITIAL_DATA, input) as ReturnType<PreloadApi['clientCert']['getInitialData']>,
+    select: (input) => call(IPC_CHANNELS.CLIENT_CERT_SELECT, input),
+    cancel: (input) => call(IPC_CHANNELS.CLIENT_CERT_CANCEL, input),
+    getAll: () => call(IPC_CHANNELS.CLIENT_CERT_GET_ALL),
+    forget: (input) => call(IPC_CHANNELS.CLIENT_CERT_FORGET, input),
+  },
   clipboard: {
     writeText: (text: string) => call(IPC_CHANNELS.CLIPBOARD_WRITE_TEXT, { text }),
   },

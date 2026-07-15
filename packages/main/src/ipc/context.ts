@@ -22,6 +22,7 @@ import type { NotificationManager } from '../notifications/NotificationManager';
 import type { PushSubscriptionManager } from '../notifications/PushSubscriptionManager';
 import type { PushProxyManager } from '../notifications/PushProxyManager';
 import type { CertificateManager } from '../security/CertificateManager';
+import type { ClientCertificateManager } from '../security/ClientCertificateManager';
 import type { MediaPermissionManager } from '../media-permissions/MediaPermissionManager';
 
 /**
@@ -63,4 +64,5 @@ export interface IpcContext {
   /** Un SyncManager por profileId (creado bajo demanda en sync:setup). */
   syncManagers: Map<string, SyncManager>;
   certManager: CertificateManager;
+  clientCertManager: ClientCertificateManager;
 }
