@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification as ElectronNotification } from 'electron';
+import { app, BrowserWindow, Notification as ElectronNotification } from 'electron';
 import { IPC_EVENTS } from '@vela/shared';
 import type {
   NotificationPermissionState,
@@ -39,7 +39,25 @@ export class NotificationManager {
   /** origin → pending request info (limpiar cuando el usuario decide) */
   private readonly pendingRequests = new Map<string, PendingRequest>();
 
-  constructor(private readonly ctx: NotificationManagerCtx) {}
+  /**
+   * Toasts del SO mostradas y todavía vivas, por id de notificación.
+   * En Windows, las toasts que no se descartan se quedan en el Centro de
+   * notificaciones y el sistema pinta un badge con su número sobre el icono de
+   * la barra de tareas (se confunde fácilmente con un contador de ventanas).
+   * Las cerramos en cuanto el usuario atiende la notificación dentro de Vela.
+   */
+  private readonly osToasts = new Map<
+    string,
+    { toast: ElectronNotification; profileId: string }
+  >();
+
+  constructor(private readonly ctx: NotificationManagerCtx) {
+    // Volver a Vela equivale a atender lo pendiente: no dejamos toasts vivas
+    // en el Centro de notificaciones del SO (el panel de Vela las conserva).
+    app.on('browser-window-focus', () => {
+      this.closeOsToasts();
+    });
+  }
 
   // ---------- pending requests (solicitudes en vuelo) ----------
 
@@ -218,7 +236,28 @@ export class NotificationManager {
       // Abrir el panel de notificaciones
       this.ctx.events.emit(IPC_EVENTS.NOTIFICATION_CENTER_OPEN, {});
     });
+    n.on('close', () => { this.osToasts.delete(notif.id); });
+    this.osToasts.set(notif.id, { toast: n, profileId: notif.profileId });
     n.show();
+  }
+
+  /**
+   * Cierra las toasts del SO todavía vivas, retirándolas del Centro de
+   * notificaciones (y con ellas el badge del icono en la barra de tareas).
+   * Sin argumentos cierra todas; con `id` solo esa; con `profileId` las de ese
+   * perfil.
+   */
+  private closeOsToasts(filter?: { id?: string; profileId?: string }): void {
+    for (const [id, entry] of [...this.osToasts]) {
+      if (filter?.id !== undefined && filter.id !== id) continue;
+      if (filter?.profileId !== undefined && filter.profileId !== entry.profileId) continue;
+      try {
+        entry.toast.close();
+      } catch {
+        // la toast pudo expirar por su cuenta; nada que hacer
+      }
+      this.osToasts.delete(id);
+    }
   }
 
   // ---------- captureAndStorePushSubscription ----------
@@ -347,24 +386,28 @@ export class NotificationManager {
   markAsRead(id: string, profileId: string): void {
     const repos = this.ctx.profileManager.getRepositories(profileId);
     repos.notifications.markRead(id);
+    this.closeOsToasts({ id });
     this.emitChanged(profileId);
   }
 
   markAllAsRead(profileId: string): void {
     const repos = this.ctx.profileManager.getRepositories(profileId);
     repos.notifications.markAllRead();
+    this.closeOsToasts({ profileId });
     this.emitChanged(profileId);
   }
 
   deleteNotification(id: string, profileId: string): void {
     const repos = this.ctx.profileManager.getRepositories(profileId);
     repos.notifications.delete(id);
+    this.closeOsToasts({ id });
     this.emitChanged(profileId);
   }
 
   clearAll(profileId: string): void {
     const repos = this.ctx.profileManager.getRepositories(profileId);
     repos.notifications.clear();
+    this.closeOsToasts({ profileId });
     this.emitChanged(profileId);
   }
 

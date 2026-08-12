@@ -89,6 +89,19 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ## Cerrado
 
+### Cerrados en v0.1.18
+
+- [x] Interstitial de certificado: volvía a mostrarse. El guard que evitaba
+      reemplazar la shell usaba `BrowserWindow.fromWebContents(wc) !== null`,
+      que en Electron 42 es true también para los `WebContentsView`, así que
+      descartaba todas las pestañas y la pestaña quedaba en blanco. Ahora se
+      resuelve con `tabManager.getTabIdForWebContents`.
+- [x] Descargas duplicadas: `attachToSession` se reinvocaba sobre la misma
+      `Session` al reabrir un perfil y acumulaba listeners `will-download`.
+      Guard con `WeakSet<Session>` + dedupe por `DownloadItem`, con tests.
+- [x] Badge numérico en el icono de la barra de tareas de Windows: eran las
+      toasts sin descartar en el Centro de notificaciones. Ver ADR 0094.
+
 ### Cerrados en Sub-fase 4C (v0.4.0)
 
 - [x] URL bar: modos con prefijo con chip visual (>, #, @, !).

@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, type WebContents } from 'electron';
 
 function originOf(url: string): string | null {
   try {
@@ -7,6 +7,15 @@ function originOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+export interface CertificateManagerDeps {
+  /**
+   * Devuelve true si ese WebContents es una pestaña de usuario gestionada por
+   * TabManager. Solo en esas navegamos a vela://cert-error; en la shell, popups
+   * y vistas auxiliares (glance, preview) el error se rechaza en silencio.
+   */
+  isUserTab(webContentsId: number): boolean;
 }
 
 export class CertificateManager {
@@ -24,23 +33,44 @@ export class CertificateManager {
     { fingerprint: string; origin: string; url: string }
   >();
 
-  constructor() {
+  // wcId → URL de la navegación de main frame en curso. Sirve para distinguir
+  // el fallo de certificado de la propia página (interstitial) del de un
+  // subrecurso (imagen, favicon, XHR), que solo debe fallar en silencio.
+  private readonly mainFrameNavByWc = new Map<number, string>();
+
+  constructor(private readonly deps: CertificateManagerDeps) {
+    app.on('web-contents-created', (_e, wc) => {
+      this.trackMainFrameNavigation(wc);
+    });
+
     app.on('certificate-error', (event, wc, url, error, certificate, callback) => {
-      // Si el WebContents pertenece a un BrowserWindow (shell o popup),
-      // el cert error viene de un recurso secundario (p.ej. favicon de img src).
-      // En ese caso rechazamos sin navegar: la imagen simplemente no se carga.
-      // Solo navegamos a cert-error en WebContentsViews (tabs del usuario).
-      if (BrowserWindow.fromWebContents(wc) !== null) {
+      const fp = certificate.fingerprint;
+      const origin = originOf(url);
+
+      // Huella ya aceptada por el usuario para ese origen: se acepta venga de
+      // donde venga (navegación principal, subrecurso o favicon en la shell).
+      if (origin && this.allowedByOrigin.get(origin)?.has(fp)) {
+        event.preventDefault();
+        callback(true);
+        return;
+      }
+
+      // Solo las pestañas del usuario muestran el interstitial. La shell, los
+      // popups y las vistas auxiliares comparten este evento (p. ej. al cargar
+      // un favicon de un sitio con cert inválido): ahí rechazamos sin navegar,
+      // porque cargar vela://cert-error reemplazaría la UI entera.
+      // NOTA: no se puede usar `BrowserWindow.fromWebContents(wc) !== null` para
+      // esto — desde Electron 30+ devuelve la ventana propietaria también para
+      // los WebContentsView adjuntos, así que descartaba todas las pestañas.
+      if (!this.deps.isUserTab(wc.id)) {
         callback(false);
         return;
       }
 
-      const fp = certificate.fingerprint;
-      const origin = originOf(url);
-
-      if (origin && this.allowedByOrigin.get(origin)?.has(fp)) {
-        event.preventDefault();
-        callback(true);
+      // Fallo en un subrecurso de la página, no en la navegación principal:
+      // rechazar sin interstitial (el recurso simplemente no carga).
+      if (!this.isMainFrameFailure(wc, url)) {
+        callback(false);
         return;
       }
 
@@ -65,6 +95,29 @@ export class CertificateManager {
         });
       });
     });
+  }
+
+  private trackMainFrameNavigation(wc: WebContents): void {
+    wc.on('did-start-navigation', (details) => {
+      if (!details.isMainFrame || details.isSameDocument) return;
+      this.mainFrameNavByWc.set(wc.id, details.url);
+    });
+    wc.once('destroyed', () => {
+      this.mainFrameNavByWc.delete(wc.id);
+      this.pendingByWc.delete(wc.id);
+    });
+  }
+
+  /**
+   * El error es de la navegación principal si su origen coincide con el de la
+   * URL que el main frame está cargando. Si no hay navegación registrada (el
+   * WebContents existía antes que este manager) asumimos que sí lo es, para no
+   * dejar al usuario con una pestaña en blanco sin explicación.
+   */
+  private isMainFrameFailure(wc: WebContents, url: string): boolean {
+    const navUrl = this.mainFrameNavByWc.get(wc.id);
+    if (navUrl === undefined) return true;
+    return originOf(navUrl) === originOf(url);
   }
 
   /**

@@ -41,6 +41,7 @@ import { GestureRecognizer } from './gestures/GestureRecognizer';
 import { buildJumpList, parseJumpListArgs } from './jumplist';
 import { isBlindedProfile } from './profiles/blindedProfileUtils';
 import { registerWindowsCapabilities } from './platform/windowsBrowserRegistration';
+import { clearWindowsToastHistory } from './platform/windowsToastHistory';
 
 // Debe llamarse antes de app.whenReady — protocol.handle no funciona si el
 // esquema no está registrado como privilegiado de antemano.
@@ -358,6 +359,10 @@ app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.vela.browser');
     registerWindowsCapabilities();
+    // Retira las toasts que quedaron en el Centro de notificaciones de sesiones
+    // anteriores: son las que hacen que Windows pinte un badge numérico sobre
+    // el icono de la barra de tareas.
+    clearWindowsToastHistory('com.vela.browser');
   }
 
   // Propaga el icono a cualquier BrowserWindow futura (splash, onboarding…).
