@@ -240,7 +240,9 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     ...(opts.onWindowOpened ? { onWindowOpened: opts.onWindowOpened } : {}),
   });
   const unlockRateLimiter = new UnlockRateLimiter();
-  const certManager = new CertificateManager();
+  const certManager = new CertificateManager({
+    isUserTab: (wcId) => tabManager.getTabIdForWebContents(wcId) !== null,
+  });
   const clientCertManager = new ClientCertificateManager({
     tabManager,
     profileManager,

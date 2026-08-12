@@ -16,13 +16,31 @@ export class DownloadManager {
   private readonly logger: Logger;
   private lastDownloadDir: string = app.getPath('downloads');
 
+  // Sesiones a las que ya se enganchó 'will-download'. `session.fromPartition`
+  // devuelve SIEMPRE la misma instancia para una partición dada, así que al
+  // cerrar y reabrir un perfil (cerrar su última ventana y volver a entrar)
+  // attachToSession se invoca de nuevo sobre la misma Session. Sin este guard
+  // los listeners se acumulaban y cada descarga aparecía repetida una vez por
+  // cada apertura del perfil en la sesión de la app.
+  private readonly attachedSessions = new WeakSet<Session>();
+
+  // Segunda barrera: un mismo DownloadItem nunca se registra dos veces, venga
+  // el evento de donde venga.
+  private readonly seenItems = new WeakSet<Electron.DownloadItem>();
+
   constructor(events: MainEventBus, logger: Logger) {
     this.events = events;
     this.logger = logger;
   }
 
   attachToSession(session: Session, profileId: string): void {
+    if (this.attachedSessions.has(session)) return;
+    this.attachedSessions.add(session);
+
     session.on('will-download', (_event, item) => {
+      if (this.seenItems.has(item)) return;
+      this.seenItems.add(item);
+
       const id = generateId();
 
       // Don't call setSavePath so Electron shows the OS "Save As" dialog.
