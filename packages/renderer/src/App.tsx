@@ -112,6 +112,15 @@ export function App() {
         void window.api.downloads.showInFolder(filePath);
       });
     });
+    const offLinkInWorkspace = window.api.on(
+      IPC_EVENTS.LINK_OPENED_IN_WORKSPACE,
+      ({ workspaceId, workspaceName }) => {
+        const label = workspaceName || 'otro workspace';
+        toast(`Enlace abierto en «${label}»`, 'success', () => {
+          void useWorkspacesStore.getState().setActive(workspaceId);
+        });
+      },
+    );
     const offAddNodeMenu = window.api.on(IPC_EVENTS.ADD_NODE_MENU_ACTION, ({ action, workspaceId, parentId }) => {
       if (action === 'new-tab') {
         void window.api.window.openUrlInNewTab({ url: 'vela://newtab', parentId, activate: true })
@@ -328,7 +337,7 @@ export function App() {
 
     return () => {
       offColorPicked();
-      offWorkspace(); offProfile(); offSnapshot(); offSelectionSaved(); offAddNodeMenu(); offDownloads();
+      offWorkspace(); offProfile(); offSnapshot(); offSelectionSaved(); offLinkInWorkspace(); offAddNodeMenu(); offDownloads();
       offUpdateModalOpen(); offUpdateDevMode();
       offUpdateChecking(); offUpdateAvailable(); offUpdateNotAvailable();
       offUpdateProgress(); offUpdateDownloaded(); offUpdateError();

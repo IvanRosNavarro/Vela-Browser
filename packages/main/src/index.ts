@@ -168,6 +168,73 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
   return ext;
 }
 
+/**
+ * Forma interna del store de electron-chrome-extensions. No es API pública,
+ * pero necesitamos tocarla para mantener sincronizada la tab activa: ECE marca
+ * como activa **toda** tab recién observada (`observeTab` → `onActivated`),
+ * incluidas las que Vela materializa en segundo plano.
+ */
+type EceStore = {
+  tabs?: Set<Electron.WebContents>;
+  tabToWindow?: WeakMap<Electron.WebContents, BrowserWindow>;
+  windowToActiveTab?: WeakMap<BrowserWindow, Electron.WebContents>;
+  tabDetailsCache?: Map<number, Record<string, unknown>>;
+};
+
+function getEceStore(ext: ElectronChromeExtensions): EceStore | undefined {
+  return (ext as unknown as { ctx?: { store?: EceStore } }).ctx?.store;
+}
+
+/**
+ * Declara ante ECE cuál es la tab activa de una ventana, para que
+ * `chrome.tabs.query({ active: true })` devuelva siempre la correcta (autofill
+ * de Bitwarden y similares).
+ *
+ * `selectTab` tiene un early-exit interno: si `windowToActiveTab` ya apunta a
+ * este WebContents no refresca `tabDetailsCache`, así que forzamos también la
+ * actualización del cache. Importante: solo se tocan las entradas de las tabs
+ * de **esta** ventana; marcar el resto como inactivas dejaría a las demás
+ * ventanas del mismo perfil sin ninguna tab activa.
+ */
+function applyActiveTabToExtensions(
+  webContents: Electron.WebContents,
+  win: BrowserWindow,
+): void {
+  if (webContents.isDestroyed() || win.isDestroyed()) return;
+  try {
+    const ext = getOrCreateExtensions(webContents.session);
+    ext.selectTab(webContents);
+    const store = getEceStore(ext);
+    if (!store?.tabs?.has(webContents)) return;
+    const eceWin = store.tabToWindow?.get(webContents) ?? win;
+    if (eceWin && !eceWin.isDestroyed()) {
+      store.windowToActiveTab?.set(eceWin, webContents);
+    }
+    for (const tab of store.tabs) {
+      if (tab.isDestroyed()) continue;
+      const tabWin = store.tabToWindow?.get(tab);
+      if (!tabWin || tabWin.isDestroyed() || tabWin.id !== eceWin.id) continue;
+      const details = store.tabDetailsCache?.get(tab.id);
+      if (details) details['active'] = tab.id === webContents.id;
+    }
+  } catch (err) {
+    logger.warn('[ext] selectTab/cache-update falló', err);
+  }
+}
+
+/**
+ * Reafirma ante ECE la tab activa real de una ventana. Se llama tras adjuntar
+ * una tab nueva (ECE la marca activa aunque nazca en segundo plano) y al
+ * enfocar la ventana.
+ */
+function reassertActiveTabToExtensions(win: BrowserWindow): void {
+  if (win.isDestroyed() || !ipcCtx) return;
+  if (ipcCtx.tabManager.isBlindedWindow(win.id)) return;
+  const wc = ipcCtx.tabManager.getActiveTabWebContents(win.id);
+  if (!wc || wc.isDestroyed()) return;
+  applyActiveTabToExtensions(wc, win);
+}
+
 let ipcCtx: IpcContext | null = null;
 let commandRegistry: CommandRegistry | null = null;
 let shortcutTable: ShortcutTable | null = null;
@@ -184,6 +251,10 @@ function trackWindowFocus(window: BrowserWindow): void {
     const idx = windowFocusOrder.indexOf(window.id);
     if (idx > 0) windowFocusOrder.splice(idx, 1);
     if (idx !== 0) windowFocusOrder.unshift(window.id);
+    // Al cambiar de ventana, ECE actualiza su `lastFocusedWindowId` pero no
+    // reevalúa qué tab es la activa: si el cache quedó desincronizado, las
+    // extensiones consultarían la tab equivocada.
+    reassertActiveTabToExtensions(window);
   });
   window.once('closed', () => {
     const idx = windowFocusOrder.indexOf(window.id);
@@ -384,38 +455,15 @@ app.whenReady().then(async () => {
     onTabActivated: (webContents, win: BrowserWindow) => {
       if (ipcCtx?.tabManager.isBlindedWindow(win.id)) return;
       if (webContents.isDestroyed()) return;
-      try {
-        const ext = getOrCreateExtensions(webContents.session);
-        // selectTab emite tabs.onActivated a las extensiones pero tiene un
-        // early-exit interno: si windowToActiveTab ya apunta a este WC (lo que
-        // ocurre cuando ECE lo marcó activo en addTab→observeTab→onActivated),
-        // no actualiza el tabDetailsCache. Forzamos la actualización directa del
-        // cache para que chrome.tabs.query({active:true}) devuelva siempre el tab
-        // correcto (fix para autofill de Bitwarden en pestañas ancladas).
-        ext.selectTab(webContents);
-        type EceStore = {
-          tabs?: Set<Electron.WebContents>;
-          tabToWindow?: WeakMap<Electron.WebContents, BrowserWindow>;
-          windowToActiveTab?: WeakMap<BrowserWindow, Electron.WebContents>;
-          tabDetailsCache?: Map<number, Record<string, unknown>>;
-        };
-        const store = (ext as unknown as { ctx?: { store?: EceStore } }).ctx?.store;
-        if (store?.tabs?.has(webContents)) {
-          const eceWin = store.tabToWindow?.get(webContents);
-          if (eceWin && store.windowToActiveTab) {
-            store.windowToActiveTab.set(eceWin, webContents);
-          }
-          store.tabDetailsCache?.forEach((tabInfo, cacheTabId) => {
-            tabInfo['active'] = cacheTabId === webContents.id;
-          });
-        }
-      } catch (err) {
-        logger.warn('[ext] selectTab/cache-update falló', err);
-      }
+      applyActiveTabToExtensions(webContents, win);
     },
     onTabAttached: (view: WebContentsView, win: BrowserWindow) => {
       if (!ipcCtx?.tabManager.isBlindedWindow(win.id)) {
         getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);
+        // ECE marca activa toda tab recién observada, también las que Vela
+        // materializa en segundo plano (restaurar suspendidas, panel no
+        // enfocado, restauración de sesión…). Reponemos la activa real.
+        reassertActiveTabToExtensions(win);
       }
       if (ipcCtx) attachWebContextMenu(view.webContents, win, ipcCtx);
       if (ipcCtx) {

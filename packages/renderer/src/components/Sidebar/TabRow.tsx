@@ -14,6 +14,7 @@ import { useMediaStore } from '../../stores/mediaStore';
 import { toast } from '../../stores/toastStore';
 import { call, IpcError } from '../../lib/ipc';
 import { showContextMenu } from '../../lib/contextMenu';
+import { writeToClipboard } from '../../lib/clipboard';
 import { useSidebarStore } from '../../stores/sidebarStore';
 import type { MenuItemSpec } from '@vela/shared';
 import type { ActiveDrop } from './types';
@@ -279,6 +280,12 @@ export function TabRow({
       { type: 'normal', id: 'add-to-folder', label: 'Añadir a carpeta' },
       { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
       { type: 'separator' },
+      {
+        type: 'normal',
+        id: 'copy-url',
+        label: 'Copiar enlace',
+        enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
+      },
       { type: 'normal', id: 'duplicate', label: 'Duplicar' },
       {
         type: 'normal',
@@ -341,6 +348,11 @@ export function TabRow({
       'remove-anchor': () => void window.api.tab.unanchor({ id: node.id }),
       'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
       'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
+      'copy-url': () => {
+        void writeToClipboard(node.url).then(() => {
+          toast('Enlace copiado al portapapeles', 'success');
+        });
+      },
       duplicate: () =>
         void window.api.window.openUrlInNewTab({
           url: node.url,

@@ -59,7 +59,21 @@ export function attachWebContextMenu(
         .list()
         .filter((p) => !p.archived)
         .map((p) => ({ id: p.id, name: p.name }));
-      link = { url: params.linkURL, text: params.linkText || undefined, profiles };
+      // Solo los workspaces distintos del que ya muestra la ventana: abrir en
+      // el propio workspace es justo lo que hacen los items de "nueva pestaña".
+      let workspaces: Array<{ id: string; name: string }> = [];
+      if (profileId) {
+        try {
+          workspaces = ctx.profileManager
+            .getRepositories(profileId)
+            .workspaces.list()
+            .filter((w) => w.id !== workspaceId)
+            .map((w) => ({ id: w.id, name: w.name }));
+        } catch {
+          workspaces = [];
+        }
+      }
+      link = { url: params.linkURL, text: params.linkText || undefined, profiles, workspaces };
     }
 
     let image: ContextMenuShowPayload['image'] = null;
