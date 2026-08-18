@@ -2,6 +2,8 @@ export interface ContextMenuLinkData {
   url: string;
   text?: string;
   profiles: Array<{ id: string; name: string }>;
+  /** Workspaces del perfil actual distintos del que muestra la ventana. */
+  workspaces: Array<{ id: string; name: string }>;
 }
 
 export interface ContextMenuImageData {
@@ -48,4 +50,5 @@ export type ContextMenuExecAction =
   | { type: 'page:print' }
   | { type: 'devtools:inspect'; wcvX: number; wcvY: number }
   | { type: 'link:open-window'; url: string }
-  | { type: 'link:open-profile'; url: string; profileId: string };
+  | { type: 'link:open-profile'; url: string; profileId: string }
+  | { type: 'link:open-workspace'; url: string; workspaceId: string };

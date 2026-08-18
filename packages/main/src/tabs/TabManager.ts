@@ -2191,13 +2191,16 @@ export class TabManager {
       }
 
       // Resto (target="_blank", clic central, etc.) → nueva pestaña en Vela.
+      // Chromium marca el clic central y el Ctrl+clic como 'background-tab':
+      // esas aperturas no deben robar el foco, igual que en Chrome/Firefox.
+      const activate = disposition !== 'background-tab';
       setImmediate(() => {
         if (state.workspaceId) {
           this.createTab(state.windowId, {
             workspaceId: state.workspaceId,
             parentId: null,
             url,
-            activate: true,
+            activate,
           }).catch((err) => {
             this.ctx.logger.warn('[tabs] setWindowOpenHandler createTab falló', err);
           });

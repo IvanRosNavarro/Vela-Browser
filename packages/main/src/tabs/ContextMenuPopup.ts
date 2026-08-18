@@ -268,6 +268,12 @@ function render(p) {
       );
       add.push(expandItem('Abrir enlace en perfil\\u2026', profileItems));
     }
+    if (p.link.workspaces && p.link.workspaces.length > 0) {
+      const workspaceItems = p.link.workspaces.map(ws =>
+        item(ws.name, false, { type: 'link:open-workspace', url: p.link.url, workspaceId: ws.id })
+      );
+      add.push(expandItem('Abrir enlace en el workspace\\u2026', workspaceItems));
+    }
     add.push(sep());
     add.push(item('Copiar enlace',          false, { type: 'copy', text: p.link.url }));
     if (p.link.text) {
@@ -496,6 +502,35 @@ export class ContextMenuPopup {
 
       case 'link:new-blinded-window': {
         await this.ctx.profileWindowManager.openBlindedWindow(action.url as string);
+        break;
+      }
+
+      case 'link:open-workspace': {
+        if (windowId === null) break;
+        const targetWorkspaceId = action.workspaceId as string;
+        const wsProfileId = this.ctx.tabManager.getProfileForWindow(windowId);
+        if (!wsProfileId) break;
+        let workspaceName = '';
+        try {
+          const repos = this.ctx.profileManager.getRepositories(wsProfileId);
+          workspaceName = repos.workspaces.getById(targetWorkspaceId)?.name ?? '';
+        } catch {
+          workspaceName = '';
+        }
+        // La pestaña nace en segundo plano dentro del workspace destino: no
+        // arrastramos al usuario fuera del workspace en el que está leyendo.
+        await this.ctx.tabManager.createTab(windowId, {
+          workspaceId: targetWorkspaceId,
+          parentId: null,
+          url: action.url as string,
+          activate: false,
+        });
+        if (parentWin && !parentWin.isDestroyed()) {
+          parentWin.webContents.send(IPC_EVENTS.LINK_OPENED_IN_WORKSPACE, {
+            workspaceId: targetWorkspaceId,
+            workspaceName,
+          });
+        }
         break;
       }
 

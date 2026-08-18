@@ -497,6 +497,7 @@ export const IPC_EVENTS = {
   PROFILE_MODAL_TRIGGER: 'state:profile-modal-trigger',
   BUG_SNAPSHOT_COMPLETE: 'state:bug-snapshot-complete',
   SELECTION_SAVED_TO_FILE: 'state:selection-saved-to-file',
+  LINK_OPENED_IN_WORKSPACE: 'state:link-opened-in-workspace',
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
   UPDATE_MODAL_OPEN: 'state:update-modal-open',
@@ -604,6 +605,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.PROFILE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'unlock'; profileId?: string };
   [IPC_EVENTS.BUG_SNAPSHOT_COMPLETE]: { zipPath: string };
   [IPC_EVENTS.SELECTION_SAVED_TO_FILE]: { filePath: string };
+  [IPC_EVENTS.LINK_OPENED_IN_WORKSPACE]: { workspaceId: string; workspaceName: string };
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };
   [IPC_EVENTS.UPDATE_MODAL_OPEN]: void;

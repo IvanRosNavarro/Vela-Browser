@@ -11,6 +11,8 @@ import {
   type DropZone,
 } from './dropValidation';
 import { showContextMenu } from '../../lib/contextMenu';
+import { writeToClipboard } from '../../lib/clipboard';
+import { toast } from '../../stores/toastStore';
 import type { ActiveDrop } from './types';
 
 interface PinnedTabsProps {
@@ -74,11 +76,17 @@ function PinnedTab({
     e.stopPropagation();
     const items: MenuItemSpec[] = [
       { type: 'normal', id: 'unpin', label: 'Unpin' },
+      { type: 'normal', id: 'copy-url', label: 'Copiar enlace' },
       { type: 'normal', id: 'duplicate', label: 'Duplicar' },
       { type: 'normal', id: 'close', label: 'Cerrar' },
     ];
     void showContextMenu(items, {
       unpin: () => void window.api.tab.unpin({ id: node.id }),
+      'copy-url': () => {
+        void writeToClipboard(node.url).then(() => {
+          toast('Enlace copiado al portapapeles', 'success');
+        });
+      },
       duplicate: () =>
         void window.api.window.openUrlInNewTab({
           url: node.url,

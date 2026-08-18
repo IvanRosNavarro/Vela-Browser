@@ -17,6 +17,21 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       de Chrome no añaden sus ítems al menú de Vela todavía. Revisar en futuras versiones de
       electron-chrome-extensions o implementar bridge propio.
 
+- [ ] **Dependencia de internals de ECE para la pestaña activa**: `applyActiveTabToExtensions`
+      en `packages/main/src/index.ts` escribe en `ctx.store` de electron-chrome-extensions
+      (`windowToActiveTab`, `tabDetailsCache`), que no es API pública. Revisar al subir de
+      versión de la librería; si upstream deja de marcar activa toda pestaña recién observada
+      (`TabsAPI.observeTab` → `onActivated` incondicional), este apaño puede retirarse.
+      Ver ADR 0095.
+
+### Tests
+
+- [ ] **Fixtures de tests desalineados con el esquema**: 31 tests de
+      `TreeNodeRepository` / repositorios asociados fallan con
+      `table tree_nodes has no column named is_secure` y similares. El esquema que
+      montan los tests no aplica las migraciones posteriores a Fase 5.0. Fallan
+      igual en `main` desde antes de v0.1.19; no bloquean la build ni el typecheck.
+
 ### Multimedia
 
 - [ ] **Control multimedia en iframes cross-origin**: sitios como Spotify Web o reproductores

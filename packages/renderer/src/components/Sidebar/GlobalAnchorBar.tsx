@@ -16,6 +16,8 @@ import type { MenuItemSpec, TabNode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { showContextMenu } from '../../lib/contextMenu';
+import { writeToClipboard } from '../../lib/clipboard';
+import { toast } from '../../stores/toastStore';
 import { Favicon } from './Favicon';
 import { ANCHOR_TARGET_ID, encodeDroppableId } from './dropValidation';
 import type { ActiveDrop } from './types';
@@ -68,6 +70,7 @@ function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
         ]
         : []),
       { type: 'normal' as const, id: 'rename', label: 'Renombrar' },
+      { type: 'normal' as const, id: 'copy-url', label: 'Copiar enlace' },
       { type: 'normal' as const, id: 'duplicate', label: 'Duplicar' },
       { type: 'separator' as const },
       { type: 'normal' as const, id: 'remove', label: 'Levar Ancla' },
@@ -75,6 +78,11 @@ function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
     void showContextMenu(items, {
       'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
       'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
+      'copy-url': () => {
+        void writeToClipboard(node.url).then(() => {
+          toast('Enlace copiado al portapapeles', 'success');
+        });
+      },
       duplicate: () =>
         void window.api.window.openUrlInNewTab({
           url: node.url,
