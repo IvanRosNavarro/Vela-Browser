@@ -4,11 +4,14 @@ import { useOverlayStore } from '../../../stores/overlayStore';
 import { useRuntimeStore } from '../../../stores/runtimeStore';
 import { ResourcesHeader } from './ResourcesHeader';
 import { ResourcesRow } from './ResourcesRow';
+import { ResourcesProcessRow } from './ResourcesProcessRow';
 
 export function ResourcesModal() {
   const isOpen = useResourcesStore((s) => s.isOpen);
   const resources = useResourcesStore((s) => s.resources);
+  const otherProcesses = useResourcesStore((s) => s.otherProcesses);
   const totalMemoryMb = useResourcesStore((s) => s.totalMemoryMb);
+  const processCount = useResourcesStore((s) => s.processCount);
   const close = useResourcesStore((s) => s.close);
 
   const acquire = useOverlayStore((s) => s.acquire);
@@ -42,7 +45,30 @@ export function ResourcesModal() {
     return map;
   }, [resources]);
 
-  const maxRss = useMemo(() => Math.max(...resources.map((r) => r.memoryRss), 0), [resources]);
+  // Escala compartida por ambas listas: si un proceso de fondo consume mucho
+  // más que cualquier pestaña, las barras deben reflejarlo.
+  const maxRss = useMemo(
+    () => Math.max(0, ...resources.map((r) => r.memoryRss), ...otherProcesses.map((p) => p.memoryRss)),
+    [resources, otherProcesses],
+  );
+
+  const tabsMemoryMb = useMemo(() => {
+    // Sumar por PID: varias pestañas pueden compartir un mismo renderer.
+    const seen = new Set<number>();
+    let kb = 0;
+    for (const r of resources) {
+      if (r.pid === null) continue;
+      if (seen.has(r.pid)) continue;
+      seen.add(r.pid);
+      kb += r.memoryRss;
+    }
+    return kb / 1024;
+  }, [resources]);
+
+  const otherMemoryMb = useMemo(
+    () => otherProcesses.reduce((sum, p) => sum + p.memoryRss, 0) / 1024,
+    [otherProcesses],
+  );
 
   if (!isOpen) return null;
 
@@ -64,7 +90,13 @@ export function ResourcesModal() {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <ResourcesHeader totalMemoryMb={totalMemoryMb} onClose={close} />
+        <ResourcesHeader
+          totalMemoryMb={totalMemoryMb}
+          processCount={processCount}
+          tabsMemoryMb={tabsMemoryMb}
+          otherMemoryMb={otherMemoryMb}
+          onClose={close}
+        />
 
         {/* Rows */}
         <div className="flex-1 overflow-y-auto py-1">
@@ -82,6 +114,22 @@ export function ResourcesModal() {
                 sharedPidCount={r.pid !== null ? (pidCounts.get(r.pid) ?? 1) : 1}
               />
             ))
+          )}
+
+          {otherProcesses.length > 0 && (
+            <>
+              <div className="mt-2 border-t border-[var(--vela-border)] px-4 pb-1 pt-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vela-fg-muted)]">
+                  Otros procesos
+                </h3>
+                <p className="mt-0.5 text-[10px] text-[var(--vela-fg-muted)]">
+                  Proceso principal, GPU, servicios y renderers que no son pestañas de este perfil
+                </p>
+              </div>
+              {otherProcesses.map((p) => (
+                <ResourcesProcessRow key={p.pid} process={p} maxRss={maxRss} />
+              ))}
+            </>
           )}
         </div>
       </div>

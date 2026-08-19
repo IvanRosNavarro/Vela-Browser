@@ -20,7 +20,8 @@ function barColor(pct: number): string {
 
 export function ResourcesRow({ resource, maxRss, activeTabId, sharedPidCount }: Props) {
   const pct = maxRss > 0 ? (resource.memoryRss / maxRss) * 100 : 0;
-  const mb = (resource.memoryRss / 1024).toFixed(1);
+  const mbValue = resource.memoryRss / 1024;
+  const mb = mbValue >= 1024 ? `${(mbValue / 1024).toFixed(2)} GB` : `${mbValue.toFixed(1)} MB`;
   const isDiscarded = resource.status === 'discarded';
   const isActive = resource.tabId === activeTabId;
 
@@ -83,8 +84,17 @@ export function ResourcesRow({ resource, maxRss, activeTabId, sharedPidCount }: 
               style={{ width: `${pct}%`, background: barColor(pct) }}
             />
           </div>
-          <span className="w-14 shrink-0 text-right text-[10px] text-[var(--vela-fg-muted)]">
-            {isDiscarded ? '0 MB' : `${mb} MB`}
+          <span
+            className="w-16 shrink-0 text-right text-[10px] text-[var(--vela-fg-muted)]"
+            title={
+              isDiscarded
+                ? 'Pestaña suspendida: no tiene proceso'
+                : !resource.memoryKnown
+                  ? 'Su proceso no aparece en las métricas de la aplicación'
+                  : undefined
+            }
+          >
+            {isDiscarded ? 'Suspendida' : !resource.memoryKnown ? '—' : mb}
           </span>
         </div>
       </div>

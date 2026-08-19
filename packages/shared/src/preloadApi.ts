@@ -73,7 +73,7 @@ import type { Favorite } from './types/favorite';
 import type { AdBlockerStatus } from './types/adblocker';
 import type { VaultEntry, VaultEntrySummary } from './types/vault';
 import type { UserScript, UserScriptData, UserScriptMeta } from './types/userScript';
-import type { TabResource } from './types/tabResource';
+import type { ResourcesSnapshot } from './types/tabResource';
 import type { AparejoId, AparejoStatus } from './types/aparejo';
 import type { UrlBarIconConfig } from './types/urlbar';
 import type { TitleBarIconConfig } from './types/titlebar';
@@ -799,7 +799,7 @@ export interface BugSnapshotApi {
 }
 
 export interface ResourcesApi {
-  getAll(input: { profileId: string }): Promise<IpcResponse<TabResource[]>>;
+  getAll(input: { profileId: string }): Promise<IpcResponse<ResourcesSnapshot>>;
 }
 
 export interface AparejoApi {
