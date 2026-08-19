@@ -24,6 +24,18 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       (`TabsAPI.observeTab` → `onActivated` incondicional), este apaño puede retirarse.
       Ver ADR 0095.
 
+### Rendimiento
+
+- [ ] **Renderer con fuga de memoria sin identificar**. En una sesión de v0.1.19
+      se observó un proceso renderer de Vela creciendo sin techo hasta 10,7 GB de
+      working set, con ~10.400 s de CPU acumulados y ninguna conexión TCP abierta
+      (bucle local, no descarga). Nacido 2h39m después del arranque de la
+      aplicación, con `--renderer-client-id` alto. No era una pestaña del árbol
+      del perfil, así que los candidatos son: shell, popup, página de extensión,
+      pestaña blindada, Glance o pestaña de otra ventana/perfil. Con el
+      visualizador de v0.1.20 aparecerá en "Otros procesos" con nombre y PID:
+      reproducir y anotar de qué proceso se trata antes de buscar la causa.
+
 ### Tests
 
 - [ ] **Fixtures de tests desalineados con el esquema**: 31 tests de
@@ -103,6 +115,16 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 ---
 
 ## Cerrado
+
+### Cerrados en v0.1.20
+
+- [x] El visualizador de recursos reportaba una fracción del consumo real (162,5 MB
+      frente a 11,6 GB del sistema) porque solo recorría los nodos `kind === 'tab'`
+      del perfil activo. Ahora parte de `app.getAppMetrics()` completo y lista en
+      "Otros procesos" todo lo que no es una pestaña. Ver ADR 0096.
+- [x] El total sumaba filas, contando dos veces los renderers compartidos por
+      varias pestañas. Se calcula por proceso.
+- [x] Pestaña suspendida y pestaña sin métrica se pintaban ambas como `0 MB`.
 
 ### Cerrados en v0.1.18
 
