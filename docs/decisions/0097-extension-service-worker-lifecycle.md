@@ -47,58 +47,63 @@ funciona (un content script recién inyectado responde), `document.hidden` es
 
 ## Decisión
 
-Emular el comportamiento efectivo de Chrome: **mantener en marcha el service
-worker de las extensiones que dependen de sus content scripts**.
-
-`packages/main/src/extensions/serviceWorkerKeeper.ts` escucha
-`session.serviceWorkers.on('running-status-changed')` y, cuando un worker pasa
-a `stopped`, lo vuelve a arrancar con `startWorkerForScope`. Condiciones:
-
-- Solo extensiones cuyo manifest declara `content_scripts` **y**
-  `background.service_worker`. Un gestor de cookies o un tema no pierden nada
-  por dormirse.
-- Solo con **Vela en primer plano** (`BrowserWindow.getFocusedWindow()`). Con
-  el navegador de fondo se deja dormir al worker y se reactiva al recuperar el
-  foco (`app.on('browser-window-focus')`), para no gastar CPU mientras el
-  usuario no está usando el navegador.
-- Con un mínimo de 5 s entre reactivaciones del mismo worker, como cortafuegos
-  ante un bucle de arranque/parada.
-
-El evento solo trae `versionId`, así que el scope se resuelve consultando
-`getAllRunning()` mientras el worker sigue listado (deja de estarlo al
-pararse).
-
-Además, `packages/main/src/extensions/wakeServiceWorker.ts` despierta el
-worker **bajo demanda** justo antes de usar la extensión, en dos puntos donde
-la orden nace en el proceso principal y por tanto no despertaría al worker por
-sí sola:
+Despertar el worker **bajo demanda**, justo antes de usar la extensión, en los
+dos puntos donde la orden nace en el proceso principal y por tanto no lo
+despertaría por sí sola (`packages/main/src/extensions/wakeServiceWorker.ts`):
 
 - al abrir el popup de una extensión (`extensions:open-popup`);
-- al disparar uno de sus atajos de teclado (ver ADR 0099). Un worker dormido
-  no tiene listeners registrados en el router de ECE, así que el evento se
+- al disparar uno de sus atajos de teclado (ver ADR 0099). Un worker dormido no
+  tiene listeners registrados en el router de ECE, así que el evento se
   perdería en silencio.
 
 No hace falta en los caminos que nacen en la página: un
 `chrome.runtime.sendMessage` desde un content script o desde el popup sí
-despierta al worker, igual que los eventos de pestaña que emite ECE, que
-llaman a `startWorkerForScope` antes de entregar.
+despierta al worker, igual que los eventos de pestaña que emite ECE, que llaman
+a `startWorkerForScope` antes de entregar.
+
+Al arrancar en frío, la extensión rehace su inicialización y reinyecta sus
+content scripts, y eso no es instantáneo: si el popup se abriera en ese mismo
+instante preguntaría antes de que la página volviese a responder. Por eso, y
+**solo cuando el worker estaba realmente parado**, se espera un margen de
+1,2 s antes de abrir el popup. Cuando ya corría —el caso normal— no se paga
+nada.
+
+### Lo que NO se hace: mantener el worker vivo
+
+La primera versión de este ADR (publicada en v0.1.21) mantenía el worker en
+marcha reactivándolo con `startWorkerForScope` en cuanto pasaba a `stopped`,
+emulando el efecto que en Chrome tienen los ports abiertos. **Rompía Bitwarden
+por completo** y hubo que revertirlo en v0.1.22.
+
+El motivo: reactivar no es lo mismo que prolongar. Chromium para el worker de
+todos modos, así que el resultado era un ciclo de arranque cada ~30 s, y **cada
+arranque destruye todo el estado en memoria del worker**. Bitwarden guarda ahí
+el vault descifrado y su clave de sesión, de modo que no llegaba a terminar de
+inicializarse antes del siguiente reinicio: el popup abría con la lista de
+elementos **vacía**, siempre.
+
+Medido con una extensión de prueba que guarda estado en memoria: arranque cada
+30 s exactos y pérdida completa del estado en cada uno.
+
+Regla general que queda: **nunca forzar el ciclo de vida del service worker de
+una extensión**. Reiniciarlo es destructivo para cualquier extensión con estado
+en memoria, que es justo la categoría que más nos importa que funcione.
 
 ## Consecuencias
 
-- Con Vela en primer plano, el worker de cada extensión con content scripts se
-  reinicia aproximadamente cada 30 s (medido: 5 arranques en 150 s). Cada
-  arranque hace que la extensión rehaga su inicialización; en Bitwarden eso
-  incluye reinyectar sus content scripts en las pestañas abiertas. Es el
-  precio de que el autorrelleno funcione siempre.
-- Con Vela en segundo plano el coste es cero.
-- Limitación conocida: si se abre el popup de la extensión en el primer
-  segundo tras devolverle el foco a Vela, la extensión puede no haber
-  terminado de reinicializarse y el autorrelleno fallar ese primer intento.
-- Se depende de `session.serviceWorkers.getAllRunning()` y del evento
-  `running-status-changed`, ambos API pública de Electron.
+- El worker duerme cuando debe dormir y la extensión conserva su estado entre
+  usos, como en Chrome.
+- Tras un rato largo de inactividad, el popup de una extensión tarda ~1,2 s de
+  más en abrirse la primera vez. Las siguientes son inmediatas.
+- Queda un caso sin cubrir: si el usuario interactúa con la **página** (por
+  ejemplo el menú inline de Bitwarden dentro de un campo) estando el worker
+  dormido, el primer clic solo sirve para despertarlo. Ese camino nace en el
+  content script, así que se recupera solo, pero puede requerir un segundo
+  intento.
+- Se depende de `session.serviceWorkers.getAllRunning()` y
+  `startWorkerForScope`, ambos API pública de Electron.
 - Si una versión futura de Electron hiciera que los ports prolonguen la vida
-  del worker (comportamiento de Chrome), este módulo pasa a ser innecesario y
-  puede retirarse sin tocar nada más.
+  del worker (comportamiento de Chrome), este módulo pasa a ser innecesario.
 
 ## Diagnóstico de problemas futuros
 

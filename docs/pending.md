@@ -30,17 +30,16 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       interfaz de ajustes ni se pueden reasignar. Falta listarlos junto a los comandos de
       Vela y permitir cambiarlos, con la misma persistencia por perfil.
 
-- [ ] **Popup de extensión justo tras recuperar el foco**: al volver a Vela desde otra
-      aplicación, el service worker se reactiva (ADR 0097) pero la extensión tarda en
-      reinicializarse. Si el usuario abre el popup en ese primer segundo, la acción puede
-      fallar una vez. Mitigable esperando a una señal de "extensión lista" si algún día
-      existe, o retrasando la apertura del popup solo cuando el worker acaba de arrancar.
+- [ ] **Interacción con la página estando el worker dormido**: si el usuario hace clic en
+      un campo esperando el menú inline de Bitwarden y el worker está parado, ese primer
+      clic solo sirve para despertarlo. El camino nace en el content script, así que se
+      recupera solo, pero puede requerir un segundo intento. Ver ADR 0097.
 
-- [ ] **Reinicio periódico del service worker**: con Vela en primer plano, el worker de
-      cada extensión con content scripts se reinicia cada ~30 s, y eso hace que la
-      extensión rehaga su inicialización (Bitwarden reinyecta sus content scripts en todas
-      las pestañas). Si aparece una forma de prolongar la vida del worker como hace Chrome
-      con los ports abiertos, sustituir el keeper por ella.
+- [ ] **Prolongar la vida del service worker sin reiniciarlo**: en Chrome un port abierto
+      mantiene vivo el worker de la extensión; en Electron no, y reiniciarlo por nuestra
+      cuenta destruye su estado en memoria (se intentó en v0.1.21 y rompió Bitwarden,
+      ver ADR 0097). Mientras no haya una forma de prolongarlo de verdad, el worker duerme
+      y se despierta bajo demanda. Revisar si Electron expone algo en el futuro.
 
 ### Rendimiento
 
