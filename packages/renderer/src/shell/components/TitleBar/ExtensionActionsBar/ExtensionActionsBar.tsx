@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, type CSSProperties } from 'react';
-import type { ExtensionAction, ExtensionAnchorRect } from '@vela/shared';
+import { IPC_EVENTS, type ExtensionAction, type ExtensionAnchorRect } from '@vela/shared';
 import { Settings2 } from 'lucide-react';
 import { useExtensionActionsStore } from '../../../../stores/extensionActionsStore';
 import { ExtensionActionButton } from './ExtensionActionButton';
@@ -35,6 +35,25 @@ export function ExtensionActionsBar() {
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [overflowOpen]);
+
+  // El atajo `_execute_action` de una extensión (Ctrl+Shift+Y en Bitwarden)
+  // llega desde el main: solo aquí sabemos dónde está su icono en la barra.
+  useEffect(() => {
+    const off = window.api.on(IPC_EVENTS.EXTENSION_POPUP_TRIGGER, ({ extensionId }) => {
+      const btn =
+        document.querySelector(`[data-extension-id="${extensionId}"]`) ??
+        moreButtonRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      void openPopup(extensionId, {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      });
+    });
+    return () => off();
+  }, [openPopup]);
 
   const handleOverflowItemClick = useCallback(
     (action: ExtensionAction) => {

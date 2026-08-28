@@ -18,6 +18,8 @@ import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import { createMainWindow } from './window/createMainWindow';
 import { getAppIconPath } from './window/iconPath';
 import { EXTENSIONS_DIR, loadExtensions } from './extensions/loadExtensions';
+import { registerExtensionShortcuts } from './extensions/extensionCommands';
+import { attachServiceWorkerKeeper } from './extensions/serviceWorkerKeeper';
 import { initLogger, logger, closeLogger } from './logger';
 import { initStorage, getDb, closeStorage } from './storage/db';
 import { initUpdater, shutdownUpdater } from './updater';
@@ -122,6 +124,32 @@ const extensionsBySession = new Map<Session, ElectronChromeExtensions>();
 // mapa de ECE porque la creación de ECE ocurre antes (en onProfileSessionReady)
 // mientras que la carga de bundles se difiere hasta tener contexto de ventana.
 const bundledLoadedForSession = new Set<Session>();
+// True mientras Vela le está contando a ECE cuál es la pestaña activa. Evita
+// que el hook `selectTab` rebote la activación de vuelta contra TabManager.
+let sincronizandoTabActiva = false;
+// Rehace la tabla de atajos; la asigna `app.whenReady` una vez existe el
+// registry de comandos.
+let refreshExtensionShortcuts: (() => void) | null = null;
+// Sesiones cuyos eventos de carga de extensiones ya escuchamos.
+// `session.fromPartition` devuelve siempre la misma instancia y un perfil puede
+// reabrirse, así que sin esto acumularíamos listeners.
+const shortcutRefreshAttached = new WeakSet<Session>();
+
+function attachExtensionShortcutRefresh(ses: Session): void {
+  if (shortcutRefreshAttached.has(ses)) return;
+  shortcutRefreshAttached.add(ses);
+  let pendiente: NodeJS.Timeout | null = null;
+  const refrescar = (): void => {
+    if (pendiente) clearTimeout(pendiente);
+    // Las extensiones se cargan en ráfaga al abrir un perfil: agrupamos.
+    pendiente = setTimeout(() => {
+      pendiente = null;
+      refreshExtensionShortcuts?.();
+    }, 250);
+  };
+  ses.extensions.on('extension-loaded', refrescar);
+  ses.extensions.on('extension-unloaded', refrescar);
+}
 
 function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChromeExtensions {
   let ext = extensionsBySession.get(ses);
@@ -131,8 +159,14 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
     // procesarlas retroactivamente para browserAction/popup. Para que los content
     // scripts funcionen (autofill de Bitwarden, etc.) hay que llamar a esta
     // función desde onProfileSessionReady, ANTES de loadExtensionsForProfile.
-    ext = new ElectronChromeExtensions({ license: 'GPL-3.0', session: ses });
+    ext = new ElectronChromeExtensions({
+      license: 'GPL-3.0',
+      session: ses,
+      ...buildExtensionsImpl(ses),
+    });
     extensionsBySession.set(ses, ext);
+    attachExtensionShortcutRefresh(ses);
+    attachServiceWorkerKeeper(ses);
 
     const eceAny = ext as unknown as Record<string, unknown>;
     const browserAction = (eceAny['api'] as Record<string, unknown> | undefined)?.['browserAction'] as
@@ -169,6 +203,149 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
 }
 
 /**
+ * Implementación específica de Vela para los hooks de
+ * electron-chrome-extensions. Sin ella, ECE lanza "createTab is not
+ * implemented" y las extensiones no pueden abrir pestañas ni ventanas
+ * (Bitwarden lo usa para el vault en pestaña, los popouts de reprompt de
+ * contraseña, la ayuda, etc.), y `chrome.tabs.remove`/`update({active})`
+ * manipulan el WebContents por detrás de `TabManager`, dejando pestañas
+ * fantasma en la sidebar.
+ *
+ * Todos los hooks delegan en `TabManager`, que es la fuente de verdad.
+ */
+function buildExtensionsImpl(session: Session): {
+  createTab: (
+    details: chrome.tabs.CreateProperties,
+  ) => Promise<[Electron.WebContents, Electron.BaseWindow]>;
+  selectTab: (tab: Electron.WebContents, win: Electron.BaseWindow) => void;
+  removeTab: (tab: Electron.WebContents, win: Electron.BaseWindow) => void;
+  createWindow: (details: chrome.windows.CreateData) => Promise<Electron.BaseWindow>;
+  removeWindow: (win: Electron.BaseWindow) => void;
+  assignTabDetails: (details: chrome.tabs.Tab, tab: Electron.WebContents) => void;
+} {
+  /** Perfil al que pertenece la sesión con la que se creó esta instancia. */
+  const perfilDeLaVentana = (win: BrowserWindow): string | null =>
+    ipcCtx?.profileWindowManager.getProfileForWindow(win.id) ?? null;
+
+  const esDeEstaSesion = (win: BrowserWindow): boolean => {
+    const profileId = perfilDeLaVentana(win);
+    if (!profileId || !ipcCtx) return false;
+    try {
+      return ipcCtx.profileManager.getSession(profileId) === session;
+    } catch {
+      return false;
+    }
+  };
+
+  /**
+   * Ventana normal (no blindada) del MISMO perfil donde materializar lo que
+   * pida la extensión: cada perfil tiene su sesión y su copia de la extensión,
+   * y abrir la pestaña en otro perfil la dejaría fuera de su alcance.
+   */
+  const resolveWindow = (windowId?: number): BrowserWindow | null => {
+    if (typeof windowId === 'number' && windowId >= 0) {
+      const win = BrowserWindow.fromId(windowId);
+      if (win && !win.isDestroyed() && !ipcCtx?.tabManager.isBlindedWindow(win.id) && esDeEstaSesion(win)) {
+        return win;
+      }
+    }
+    const ultima = getLastActiveWindow();
+    if (ultima && esDeEstaSesion(ultima)) return ultima;
+    return (
+      BrowserWindow.getAllWindows().find(
+        (w) => !w.isDestroyed() && !ipcCtx?.tabManager.isBlindedWindow(w.id) && esDeEstaSesion(w),
+      ) ?? null
+    );
+  };
+
+  return {
+    async createTab(details) {
+      if (!ipcCtx) throw new Error('createTab: contexto IPC no inicializado');
+      const win = resolveWindow(details.windowId);
+      if (!win) throw new Error('createTab: no hay ninguna ventana disponible');
+      const workspaceId = ipcCtx.tabManager.getWorkspaceForWindow(win.id);
+      if (!workspaceId) throw new Error(`createTab: window ${win.id} sin workspace`);
+
+      const tab = await ipcCtx.tabManager.createTab(win.id, {
+        workspaceId,
+        parentId: null,
+        url: details.url ?? 'vela://newtab',
+        // `active` por defecto es true en la API de Chrome.
+        activate: details.active !== false,
+      });
+      // Con `active: false` la pestaña nace descartada (sin WebContentsView);
+      // la API de Chrome exige devolver un WebContents, así que la
+      // materializamos sin activarla.
+      const wc =
+        ipcCtx.tabManager.getWcvForTab(tab.id)?.webContents ??
+        ipcCtx.tabManager.materializeTab(win.id, tab.id);
+      if (!wc) throw new Error('createTab: la pestaña no materializó un WebContents');
+      return [wc, win];
+    },
+
+    selectTab(tab, win) {
+      // ECE también dispara este hook cuando somos NOSOTROS los que le
+      // contamos cuál es la activa (ver `applyActiveTabToExtensions`) y
+      // cuando observa una pestaña nueva. Actuar ahí activaría en la UI
+      // pestañas que Vela acaba de materializar en segundo plano.
+      if (sincronizandoTabActiva) return;
+      if (!ipcCtx || win.isDestroyed() || tab.isDestroyed()) return;
+      const tabId = ipcCtx.tabManager.getTabIdForWebContents(tab.id);
+      if (!tabId) return;
+      // Ya es la activa: no rebotamos el evento contra TabManager.
+      if (ipcCtx.tabManager.getActiveTabWebContents(win.id)?.id === tab.id) return;
+      void ipcCtx.tabManager.activateTab(win.id, tabId).catch((err: unknown) => {
+        logger.warn('[ext] selectTab: activateTab falló', err);
+      });
+    },
+
+    removeTab(tab, win) {
+      // ECE invoca este hook en dos casos: `chrome.tabs.remove()` (hay que
+      // cerrar la pestaña en Vela) y la destrucción del WebContents (Vela ya
+      // la cerró; no hay nada que hacer).
+      if (!ipcCtx || win.isDestroyed() || tab.isDestroyed()) return;
+      const tabId = ipcCtx.tabManager.getTabIdForWebContents(tab.id);
+      if (!tabId) return;
+      void ipcCtx.tabManager.closeTab(win.id, tabId).catch((err: unknown) => {
+        logger.warn('[ext] removeTab: closeTab falló', err);
+      });
+    },
+
+    async createWindow(details) {
+      if (!ipcCtx) throw new Error('createWindow: contexto IPC no inicializado');
+      const source = resolveWindow();
+      const profileId = source ? perfilDeLaVentana(source) : null;
+      if (!profileId) throw new Error('createWindow: no hay perfil activo para esta sesión');
+      const win = await ipcCtx.profileWindowManager.openWindow(profileId);
+      const url = Array.isArray(details.url) ? details.url[0] : details.url;
+      if (url) await openUrlInWindow(win, url);
+      return win;
+    },
+
+    removeWindow(win) {
+      if (!win.isDestroyed()) win.close();
+    },
+
+    /**
+     * Completa el descriptor de tab con la verdad de `TabManager`. ECE lo
+     * deriva de su propio store, que no conoce el árbol de Vela: sin esto,
+     * `pinned` e `index` son siempre falsos y `active` depende de un cache
+     * que Vela tiene que reescribir a mano.
+     */
+    assignTabDetails(details, tab) {
+      if (!ipcCtx || tab.isDestroyed()) return;
+      const info = ipcCtx.tabManager.getExtensionTabInfo(tab.id);
+      if (!info) return;
+      details.active = info.active;
+      details.pinned = info.pinned;
+      details.index = info.index;
+      details.windowId = info.windowId;
+      details.title = info.title ?? details.title;
+    },
+  };
+}
+
+/**
  * Forma interna del store de electron-chrome-extensions. No es API pública,
  * pero necesitamos tocarla para mantener sincronizada la tab activa: ECE marca
  * como activa **toda** tab recién observada (`observeTab` → `onActivated`),
@@ -201,6 +378,7 @@ function applyActiveTabToExtensions(
   win: BrowserWindow,
 ): void {
   if (webContents.isDestroyed() || win.isDestroyed()) return;
+  sincronizandoTabActiva = true;
   try {
     const ext = getOrCreateExtensions(webContents.session);
     ext.selectTab(webContents);
@@ -210,15 +388,21 @@ function applyActiveTabToExtensions(
     if (eceWin && !eceWin.isDestroyed()) {
       store.windowToActiveTab?.set(eceWin, webContents);
     }
+    // Invalidamos el cache de las pestañas de ESTA ventana en vez de
+    // reescribirle el flag: al regenerarse pasa por `assignTabDetails`, que
+    // toma los datos de TabManager (la fuente de verdad). Solo las de esta
+    // ventana: el cache es por sesión, y vaciar el de las demás dejaría a
+    // las otras ventanas del perfil sin pestaña activa.
     for (const tab of store.tabs) {
       if (tab.isDestroyed()) continue;
       const tabWin = store.tabToWindow?.get(tab);
       if (!tabWin || tabWin.isDestroyed() || tabWin.id !== eceWin.id) continue;
-      const details = store.tabDetailsCache?.get(tab.id);
-      if (details) details['active'] = tab.id === webContents.id;
+      store.tabDetailsCache?.delete(tab.id);
     }
   } catch (err) {
-    logger.warn('[ext] selectTab/cache-update falló', err);
+    logger.warn('[ext] sincronización de tab activa falló', err);
+  } finally {
+    sincronizandoTabActiva = false;
   }
 }
 
@@ -459,7 +643,12 @@ app.whenReady().then(async () => {
     },
     onTabAttached: (view: WebContentsView, win: BrowserWindow) => {
       if (!ipcCtx?.tabManager.isBlindedWindow(win.id)) {
-        getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);
+        sincronizandoTabActiva = true;
+        try {
+          getOrCreateExtensions(view.webContents.session, win).addTab(view.webContents, win);
+        } finally {
+          sincronizandoTabActiva = false;
+        }
         // ECE marca activa toda tab recién observada, también las que Vela
         // materializa en segundo plano (restaurar suspendidas, panel no
         // enfocado, restauración de sesión…). Reponemos la activa real.
@@ -476,6 +665,16 @@ app.whenReady().then(async () => {
       }
     },
     onProfileSessionReady: (_profileId, session) => {
+      // Con VELA_DEBUG_EXT=1 se vuelca al log la consola de los service
+      // workers de las extensiones. Es la única forma de ver qué le pasa al
+      // background de una extensión (Bitwarden, uBlock…) sin abrirle DevTools
+      // a mano, y resulta imprescindible para diagnosticar fallos que solo
+      // reproduce el usuario.
+      if (process.env['VELA_DEBUG_EXT'] === '1') {
+        session.serviceWorkers.on('console-message', (_e, d: { message?: string; sourceUrl?: string }) => {
+          logger.info(`[ext-sw] ${d.sourceUrl ?? ''} :: ${d.message ?? ''}`);
+        });
+      }
       // Crear ECE para esta sesión ANTES de que ProfileManager llame a
       // loadExtensionsForProfile. Así los eventos extension-loaded de las CRX
       // del usuario (Bitwarden, etc.) son capturados por ECE y los content
@@ -556,14 +755,37 @@ app.whenReady().then(async () => {
     return val === 'ctrl' ? 'ctrl' : 'alt';
   };
 
-  shortcutTable = buildShortcutTable(commandRegistry, ipcCtx, getCustomShortcuts(), getWorkspaceModifier());
+  const buildTable = (): ShortcutTable => {
+    const table = buildShortcutTable(
+      commandRegistry!,
+      ipcCtx!,
+      getCustomShortcuts(),
+      getWorkspaceModifier(),
+    );
+    // Los atajos declarados por las extensiones van DESPUÉS de los de Vela:
+    // ante un combo ya ocupado, la extensión se queda sin atajo.
+    registerExtensionShortcuts(
+      table,
+      extensionsBySession.keys(),
+      (ses) => extensionsBySession.get(ses),
+      ipcCtx!,
+    );
+    return table;
+  };
+
+  shortcutTable = buildTable();
 
   const refreshShortcuts = (): void => {
-    shortcutTable = buildShortcutTable(commandRegistry!, ipcCtx!, getCustomShortcuts(), getWorkspaceModifier());
+    shortcutTable = buildTable();
     logger.info('[shortcuts] tabla reconstruida');
   };
 
   ipcCtx.events.on(IPC_EVENTS.SHORTCUTS_SYSTEM_CHANGED, refreshShortcuts);
+  // Las extensiones se cargan de forma asíncrona y el usuario puede instalarlas
+  // o quitarlas en caliente; `attachExtensionShortcutRefresh` rehace la tabla
+  // cuando cambia el conjunto cargado en cualquier sesión.
+  refreshExtensionShortcuts = refreshShortcuts;
+  for (const ses of extensionsBySession.keys()) attachExtensionShortcutRefresh(ses);
 
   registerShortcutsHandlers(
     ipcCtx,

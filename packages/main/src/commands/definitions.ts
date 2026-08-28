@@ -726,7 +726,10 @@ export function registerCoreCommands(
       id: 'profile.lockCurrent',
       title: 'Cerrar el perfil actual',
       category: 'profile',
-      defaultShortcut: 'Ctrl+Shift+L',
+      // Ctrl+Shift+L se deja libre a propósito: es el atajo con el que las
+      // extensiones de gestión de contraseñas (Bitwarden y compañía) declaran
+      // su autorrelleno, y los usuarios lo tienen muy interiorizado.
+      defaultShortcut: 'Ctrl+Alt+L',
       run: (ctx) => {
         if (ctx.windowId === null) return;
         const win = BrowserWindow.fromId(ctx.windowId);

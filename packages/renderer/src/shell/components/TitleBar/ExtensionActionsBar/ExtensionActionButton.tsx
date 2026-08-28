@@ -25,6 +25,7 @@ export function ExtensionActionButton({ action }: Props) {
 
   return (
     <button
+      data-extension-id={action.extensionId}
       title={action.title}
       onClick={handleClick}
       disabled={!action.enabled}

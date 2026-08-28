@@ -472,6 +472,9 @@ export const IPC_EVENTS = {
   NOTIFICATION_PERMISSION_CHANGED: 'state:notification-permission-changed',
   NOTIFICATION_CENTER_OPEN: 'state:notification-center-open',
   EXTENSION_ACTIONS_CHANGED: 'state:extension-actions-changed',
+  /** El atajo `_execute_action` de una extensión pide abrir su popup; el
+   *  renderer es quien conoce la posición del icono en la barra. */
+  EXTENSION_POPUP_TRIGGER: 'state:extension-popup-trigger',
   UI_SETTINGS_CHANGED: 'state:ui-settings-changed',
   CONTEXT_MENU_SHOW: 'state:context-menu-show',
   LAYOUT_CHANGED: 'state:layout-changed',
@@ -572,6 +575,7 @@ export interface MainEventPayloads {
   };
   [IPC_EVENTS.NOTIFICATION_CENTER_OPEN]: Record<string, never>;
   [IPC_EVENTS.EXTENSION_ACTIONS_CHANGED]: void;
+  [IPC_EVENTS.EXTENSION_POPUP_TRIGGER]: { extensionId: string };
   [IPC_EVENTS.UI_SETTINGS_CHANGED]: { key: string; value: unknown };
   [IPC_EVENTS.CONTEXT_MENU_SHOW]: ContextMenuShowPayload;
   [IPC_EVENTS.LAYOUT_CHANGED]: { windowId: number; layout: WindowLayout };

@@ -232,6 +232,72 @@ export class TabManager {
     return this.readerStateByTab.get(tabId) ?? null;
   }
 
+  /**
+   * Datos de una pestaña tal como los ve el árbol de Vela, para que
+   * electron-chrome-extensions los use en `chrome.tabs.*` (hook
+   * `assignTabDetails`). ECE los deriva de su propio store, que no conoce ni
+   * los workspaces ni el anclaje, así que sin esto `pinned` es siempre false,
+   * `index` es -1 y `active` depende de un cache que hay que reescribir a mano.
+   *
+   * `active` incluye los dos paneles cuando hay Split View: para una extensión
+   * ambos son la pestaña visible de esa ventana.
+   */
+  /**
+   * Materializa el WebContentsView de una pestaña sin activarla, y devuelve su
+   * WebContents. Vela crea descartadas las pestañas que nacen en segundo plano
+   * para ahorrar memoria, pero `chrome.tabs.create({ active: false })` obliga a
+   * devolver un WebContents real (igual que hace Chrome, que sí arranca el
+   * renderer de una pestaña abierta de fondo).
+   */
+  materializeTab(windowId: number, tabId: string): WebContents | null {
+    const state = this.windows.get(windowId);
+    if (!state) return null;
+    const existing = state.tabs.get(tabId);
+    if (existing) return existing.webContents;
+    const repos = this.reposFor(state);
+    const node = repos.treeNodes.getById(tabId);
+    if (!node || node.kind !== 'tab') return null;
+    const view = this.spawnView(state, node);
+    repos.treeNodes.update(tabId, { discarded: false });
+    return view.webContents;
+  }
+
+  getExtensionTabInfo(webContentsId: number): {
+    active: boolean;
+    pinned: boolean;
+    index: number;
+    windowId: number;
+    title: string | null;
+  } | null {
+    for (const [windowId, state] of this.windows) {
+      let found: string | null = null;
+      let index = 0;
+      let i = 0;
+      for (const [tabId, view] of state.tabs) {
+        if (view.webContents.id === webContentsId) {
+          found = tabId;
+          index = i;
+        }
+        i++;
+      }
+      if (!found) continue;
+
+      const visible = new Set<string>();
+      if (state.activeTabId) visible.add(state.activeTabId);
+      for (const tabId of state.panelTabIds.values()) visible.add(tabId);
+
+      const node = this.reposFor(state).treeNodes.getById(found);
+      return {
+        active: visible.has(found),
+        pinned: node?.kind === 'tab' ? Boolean(node.pinned) : false,
+        index,
+        windowId,
+        title: node?.kind === 'tab' ? (node.name ?? node.originalTitle ?? null) : null,
+      };
+    }
+    return null;
+  }
+
   getTabIdForWebContents(webContentsId: number): string | null {
     for (const [, state] of this.windows) {
       for (const [tabId, view] of state.tabs) {

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Session, Extension } from 'electron';
+import crypto from 'node:crypto';
 import { logger } from '../logger';
 
 export interface ExtensionLoadOk {
@@ -40,6 +41,19 @@ export async function loadExtensions(
   const entries = fs.readdirSync(EXTENSIONS_DIR, { withFileTypes: true });
   const results: ExtensionLoadResult[] = [];
 
+  // Las extensiones del perfil (`profiles/{uuid}/extensions/`) se cargan antes
+  // que estas, y la migración inicial copió ahí las bundle. Cargar las dos
+  // copias da a Electron DOS extensiones con IDs distintos: dos service
+  // workers, dos juegos de content scripts y dos backgrounds compitiendo por
+  // los mismos mensajes. Para las que llevan estado (Bitwarden) eso rompe el
+  // autofill de forma intermitente. Nos quedamos con la del perfil.
+  const yaCargadas = new Set(
+    targetSession.extensions
+      .getAllExtensions()
+      .map((e) => manifestFingerprint(path.join(e.path, 'manifest.json')))
+      .filter((k): k is string => k !== null),
+  );
+
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (BUNDLED_SKIP.has(entry.name)) {
@@ -59,6 +73,11 @@ export async function loadExtensions(
     }
 
     try {
+      const key = manifestFingerprint(manifestPath);
+      if (key && yaCargadas.has(key)) {
+        logger.info(`[ext] SKIP ${entry.name} (ya cargada desde el perfil)`);
+        continue;
+      }
       const ext: Extension = await targetSession.extensions.loadExtension(extPath, {
         allowFileAccess: true,
       });
@@ -87,4 +106,19 @@ export async function loadExtensions(
   logger.info(`[ext] Total: ${okCount} cargadas, ${failCount} fallidas`);
 
   return results;
+}
+
+/**
+ * Identidad de una extensión independiente de dónde viva en disco: el hash de
+ * su `manifest.json`. No sirve el ID de Chrome (en extensiones desempaquetadas
+ * se deriva de la ruta, así que dos copias tienen dos IDs) ni el nombre, que
+ * Electron y nosotros podríamos resolver con locales distintos si es un
+ * `__MSG_*__`. Dos copias de la misma extensión tienen el mismo manifest.
+ */
+function manifestFingerprint(manifestPath: string): string | null {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex');
+  } catch {
+    return null;
+  }
 }
