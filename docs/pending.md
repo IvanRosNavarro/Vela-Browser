@@ -10,7 +10,7 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ## Pendientes activos
 
-### Extensiones — menú contextual
+### Extensiones
 
 - [ ] **Menú contextual — hooks de extensiones**: ECE no expone `getContextMenuItems()` en la
       versión actual. Extensiones como uBlock y Bitwarden que usan la API `contextMenus`
@@ -22,7 +22,25 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       (`windowToActiveTab`, `tabDetailsCache`), que no es API pública. Revisar al subir de
       versión de la librería; si upstream deja de marcar activa toda pestaña recién observada
       (`TabsAPI.observeTab` → `onActivated` incondicional), este apaño puede retirarse.
-      Ver ADR 0095.
+      Ver ADR 0095. Nota: desde v0.1.21 el cache se **invalida** en lugar de reescribirse,
+      y los datos correctos los repone `assignTabDetails` desde `TabManager`.
+
+- [ ] **Atajos de extensión en `vela://settings#shortcuts`**: desde v0.1.21 los `commands`
+      del manifest se enganchan a la tabla central (ADR 0099), pero no aparecen en la
+      interfaz de ajustes ni se pueden reasignar. Falta listarlos junto a los comandos de
+      Vela y permitir cambiarlos, con la misma persistencia por perfil.
+
+- [ ] **Popup de extensión justo tras recuperar el foco**: al volver a Vela desde otra
+      aplicación, el service worker se reactiva (ADR 0097) pero la extensión tarda en
+      reinicializarse. Si el usuario abre el popup en ese primer segundo, la acción puede
+      fallar una vez. Mitigable esperando a una señal de "extensión lista" si algún día
+      existe, o retrasando la apertura del popup solo cuando el worker acaba de arrancar.
+
+- [ ] **Reinicio periódico del service worker**: con Vela en primer plano, el worker de
+      cada extensión con content scripts se reinicia cada ~30 s, y eso hace que la
+      extensión rehaga su inicialización (Bitwarden reinyecta sus content scripts en todas
+      las pestañas). Si aparece una forma de prolongar la vida del worker como hace Chrome
+      con los ports abiertos, sustituir el keeper por ella.
 
 ### Rendimiento
 
