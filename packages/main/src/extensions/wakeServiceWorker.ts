@@ -3,26 +3,41 @@ import { logger } from '../logger';
 
 /**
  * Arranca el service worker de una extensión MV3 si Chromium lo había
- * suspendido.
+ * suspendido, y espera a que la extensión tenga tiempo de reinicializarse.
  *
  * Por qué hace falta: Chromium duerme el service worker de una extensión tras
- * ~30 s sin actividad. En Chrome, cualquier evento de la API (`tabs.onActivated`,
- * un mensaje, abrir el popup…) lo despierta antes de entregarlo. En Electron no:
- * los mensajes que salen del proceso principal (los que emite
- * electron-chrome-extensions) llegan a un worker parado y se pierden, y mientras
- * el worker está parado la mensajería de la extensión con sus content scripts no
- * fluye. El síntoma en Bitwarden es exactamente el que reporta el usuario: el
- * popup abre, muestra las sugerencias, y al pulsar "Fill" contesta "Unable to
- * autofill the selected item on this page", porque `collectPageDetails` no
- * obtiene respuesta de la página.
+ * ~30 s sin actividad. En Chrome eso apenas se nota en extensiones como
+ * Bitwarden porque cada content script abre un `chrome.runtime.connect` y un
+ * port abierto prolonga la vida del worker; en Electron el port no lo
+ * prolonga. Al morir el worker sus ports se desconectan y los content scripts
+ * que escuchaban esa desconexión se desmontan solos: la extensión sigue viva
+ * en la barra pero ya no puede leer la página. El síntoma en Bitwarden es
+ * "Unable to autofill the selected item on this page" al pulsar "Fill".
  *
- * Se llama justo antes de usar la extensión (abrir su popup, disparar uno de sus
- * atajos). Resuelve en cuanto el worker está listo — unos 200 ms si estaba
- * parado, inmediato si ya corría.
+ * Al volver a arrancar, la extensión rehace su inicialización y reinyecta sus
+ * content scripts, pero eso no es instantáneo: si el popup se abre en ese
+ * instante, pregunta antes de que la página vuelva a responder. Por eso, y
+ * solo cuando el worker estaba realmente parado, se le da un margen.
+ *
+ * No se llama en los caminos que nacen en la página: un
+ * `chrome.runtime.sendMessage` desde un content script o desde el popup ya
+ * despierta al worker, igual que los eventos de pestaña que emite
+ * electron-chrome-extensions.
  */
+
+/** Margen para que la extensión rehaga su inicialización tras un arranque en
+ *  frío. Solo se paga cuando el worker estaba parado. */
+const MARGEN_ARRANQUE_FRIO_MS = 1_200;
+
+export interface WakeOptions {
+  /** Esperar el margen de arranque en frío si el worker estaba parado. */
+  esperarInicializacion?: boolean;
+}
+
 export async function wakeExtensionServiceWorker(
   session: Session,
   extensionId: string,
+  options: WakeOptions = {},
 ): Promise<void> {
   const ext = session.extensions
     .getAllExtensions()
@@ -33,11 +48,21 @@ export async function wakeExtensionServiceWorker(
   // Las extensiones MV2 (background page) no tienen worker que arrancar.
   if (!manifest?.background?.service_worker) return;
 
+  const scope = `chrome-extension://${extensionId}/`;
+  const running = session.serviceWorkers.getAllRunning() as unknown as Record<
+    string,
+    { scope?: string }
+  >;
+  const yaCorria = Object.values(running).some((w) => w?.scope === scope);
+
   try {
-    await session.serviceWorkers.startWorkerForScope(
-      `chrome-extension://${extensionId}/`,
-    );
+    await session.serviceWorkers.startWorkerForScope(scope);
   } catch (err) {
     logger.warn(`[ext] no se pudo arrancar el service worker de ${extensionId}`, err);
+    return;
+  }
+
+  if (!yaCorria && options.esperarInicializacion) {
+    await new Promise((resolve) => setTimeout(resolve, MARGEN_ARRANQUE_FRIO_MS));
   }
 }

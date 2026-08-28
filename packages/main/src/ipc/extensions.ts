@@ -393,8 +393,11 @@ export function registerExtensionHandlers(ctx: IpcContext): void {
 
         // Si Chromium había dormido el service worker de la extensión, su
         // popup abriría sin poder hablar con la página (en Bitwarden: "Unable
-        // to autofill the selected item on this page").
-        await wakeExtensionServiceWorker(session, extensionId);
+        // to autofill the selected item on this page"). Tras un arranque en
+        // frío se le da margen para que rehaga su inicialización.
+        await wakeExtensionServiceWorker(session, extensionId, {
+          esperarInicializacion: true,
+        });
 
         browserAction.activateClick({
           extensionId,
