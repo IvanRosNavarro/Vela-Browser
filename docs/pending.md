@@ -35,11 +35,11 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       clic solo sirve para despertarlo. El camino nace en el content script, así que se
       recupera solo, pero puede requerir un segundo intento. Ver ADR 0097.
 
-- [ ] **Prolongar la vida del service worker sin reiniciarlo**: en Chrome un port abierto
-      mantiene vivo el worker de la extensión; en Electron no, y reiniciarlo por nuestra
-      cuenta destruye su estado en memoria (se intentó en v0.1.21 y rompió Bitwarden,
-      ver ADR 0097). Mientras no haya una forma de prolongarlo de verdad, el worker duerme
-      y se despierta bajo demanda. Revisar si Electron expone algo en el futuro.
+- [ ] **`startTask()` es API experimental**: `serviceWorkerKeepAlive.ts` depende de
+      `ServiceWorkerMain.startTask()`, marcado como `@experimental` en Electron. Si cambia
+      de firma o desaparece, el autorrelleno de Bitwarden volverá a ser intermitente (la
+      llamada está en try/catch, no rompe el arranque). Revisar en cada bump de Electron.
+      Ver ADR 0097.
 
 ### Rendimiento
 
