@@ -3,7 +3,7 @@ import { logger } from '../logger';
 
 /**
  * Arranca el service worker de una extensión MV3 si Chromium lo había
- * suspendido, y espera a que la extensión tenga tiempo de reinicializarse.
+ * suspendido.
  *
  * Por qué hace falta: Chromium duerme el service worker de una extensión tras
  * ~30 s sin actividad. En Chrome eso apenas se nota en extensiones como
@@ -14,15 +14,17 @@ import { logger } from '../logger';
  * en la barra pero ya no puede leer la página. El síntoma en Bitwarden es
  * "Unable to autofill the selected item on this page" al pulsar "Fill".
  *
- * Al volver a arrancar, la extensión rehace su inicialización y reinyecta sus
- * content scripts, pero eso no es instantáneo: si el popup se abre en ese
- * instante, pregunta antes de que la página vuelva a responder. Por eso, y
- * solo cuando el worker estaba realmente parado, se le da un margen.
+ * Se usa **solo** al disparar un atajo de teclado de la extensión: ese evento
+ * nace en el proceso principal y un worker dormido no tiene listeners
+ * registrados en el router de ECE, así que se perdería en silencio. Es una
+ * operación best-effort; si falla, el atajo simplemente no llega.
  *
- * No se llama en los caminos que nacen en la página: un
- * `chrome.runtime.sendMessage` desde un content script o desde el popup ya
- * despierta al worker, igual que los eventos de pestaña que emite
- * electron-chrome-extensions.
+ * NO se usa al abrir el popup de una extensión. Se intentó en v0.1.21 y v0.1.22
+ * y dejaba el vault de Bitwarden vacío: `startWorkerForScope` fallaba de forma
+ * sistemática ("Failed to start service worker") justo antes de abrir el popup.
+ * Los caminos que nacen en la página o en el propio popup —un
+ * `chrome.runtime.sendMessage` desde un content script, los eventos de pestaña
+ * de ECE— despiertan al worker por sí solos.
  */
 
 /** Margen para que la extensión rehaga su inicialización tras un arranque en

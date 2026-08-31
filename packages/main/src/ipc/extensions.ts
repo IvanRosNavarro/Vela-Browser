@@ -16,7 +16,6 @@ import { getFrameContext } from './helpers';
 import { mapError } from './errors';
 import { EXTENSIONS_DIR } from '../extensions/loadExtensions';
 import { resolveI18nMessage } from '../extensions/manifestI18n';
-import { wakeExtensionServiceWorker } from '../extensions/wakeServiceWorker';
 
 const extensionIdSchema = z.object({ extensionId: z.string().min(1) });
 
@@ -390,14 +389,6 @@ export function registerExtensionHandlers(ctx: IpcContext): void {
         if (!activeWc) {
           return { ok: false, error: 'NO_ACTIVE_TAB', details: 'No hay pestaña activa en esta ventana' };
         }
-
-        // Si Chromium había dormido el service worker de la extensión, su
-        // popup abriría sin poder hablar con la página (en Bitwarden: "Unable
-        // to autofill the selected item on this page"). Tras un arranque en
-        // frío se le da margen para que rehaga su inicialización.
-        await wakeExtensionServiceWorker(session, extensionId, {
-          esperarInicializacion: true,
-        });
 
         browserAction.activateClick({
           extensionId,
