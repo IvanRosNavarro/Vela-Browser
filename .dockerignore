@@ -1,0 +1,8 @@
+# El contexto de build de packages/sync-server es la raíz del monorepo.
+# Sin esto se copiarían los node_modules de Windows (symlinks de pnpm que no
+# funcionan en Linux) encima de los instalados dentro de la imagen.
+**/node_modules
+**/dist
+release
+.git
+extensions
