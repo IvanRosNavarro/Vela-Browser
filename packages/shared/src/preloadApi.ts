@@ -55,7 +55,7 @@ import type {
 } from './schemas';
 import type { MainEventPayloads } from './ipc-channels';
 import type { IpcResponse } from './types/ipcResponse';
-import type { SyncStatus, DeviceInfo } from './types/sync';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile } from './types/sync';
 import type { SettingsKey } from './schemas/settings';
 import type { FolderNode, TabNode, TreeNode } from './types/treeNode';
 import type { Workspace } from './types/workspace';
@@ -820,7 +820,16 @@ export interface TitleBarConfigApi {
 
 export interface SyncApi {
   requestMagicLink(input: { email: string }): Promise<IpcResponse<void>>;
-  setup(input: { token: string; syncPassword: string }): Promise<IpcResponse<SyncStatus>>;
+  setup(input: {
+    token: string;
+    syncPassword: string;
+    /** Perfil remoto al que vincular este dispositivo. Omitido = crear uno nuevo. */
+    remoteProfileId?: string | null;
+  }): Promise<IpcResponse<SyncStatus>>;
+  listRemoteProfiles(input: {
+    token: string;
+    syncPassword: string;
+  }): Promise<IpcResponse<RemoteSyncProfile[]>>;
   getStatus(): Promise<IpcResponse<SyncStatus>>;
   syncNow(): Promise<IpcResponse<void>>;
   getDevices(): Promise<IpcResponse<DeviceInfo[]>>;

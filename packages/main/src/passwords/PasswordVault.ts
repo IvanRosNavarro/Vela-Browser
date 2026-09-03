@@ -304,6 +304,66 @@ export class PasswordVault {
     return rows.map((r) => this.rowToEntry(r, key));
   }
 
+  /**
+   * Inserta o actualiza una entrada que llega por sincronización, preservando
+   * su id y sus timestamps. Last-write-wins por `updatedAt`: una entrada
+   * remota más antigua que la local no la pisa.
+   *
+   * El vault viaja descifrado dentro del blob cifrado con la clave de sync;
+   * aquí se vuelve a cifrar con la clave de ESTE perfil, que nunca sale del
+   * dispositivo.
+   */
+  syncUpsert(entry: PasswordEntry): void {
+    const key = this.ctx.keyring.getKey(this.ctx.profileId);
+
+    const existing = this.ctx.db
+      .prepare('SELECT updated_at FROM password_vault WHERE id = ?')
+      .get(entry.id) as { updated_at: number } | undefined;
+    if (existing && existing.updated_at >= entry.updatedAt) return;
+
+    const encryptedPassword = this.encrypt(entry.password, key);
+    const encryptedNotes =
+      entry.notes != null && entry.notes.length > 0
+        ? this.encrypt(entry.notes, key)
+        : null;
+
+    this.ctx.db
+      .prepare(
+        `INSERT INTO password_vault (
+           id, domain, login_url, username, encrypted_password,
+           notes_encrypted, folder, created_at, updated_at, last_used_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           domain             = excluded.domain,
+           login_url          = excluded.login_url,
+           username           = excluded.username,
+           encrypted_password = excluded.encrypted_password,
+           notes_encrypted    = excluded.notes_encrypted,
+           folder             = excluded.folder,
+           updated_at         = excluded.updated_at`,
+      )
+      .run(
+        entry.id,
+        entry.domain,
+        entry.loginUrl ?? null,
+        entry.username,
+        encryptedPassword,
+        encryptedNotes,
+        entry.folder,
+        entry.createdAt,
+        entry.updatedAt,
+        entry.lastUsedAt ?? null,
+      );
+  }
+
+  /** Timestamp de la entrada modificada más recientemente (0 si el vault está vacío). */
+  latestUpdatedAt(): number {
+    const row = this.ctx.db
+      .prepare('SELECT MAX(updated_at) AS m FROM password_vault')
+      .get() as { m: number | null } | undefined;
+    return row?.m ?? 0;
+  }
+
   // ---- helpers de cifrado --------------------------------------------------
 
   private rowToEntry(row: PasswordRow, key: Uint8Array): PasswordEntry {

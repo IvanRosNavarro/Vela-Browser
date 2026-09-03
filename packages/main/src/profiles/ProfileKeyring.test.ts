@@ -39,7 +39,8 @@ function makeSettingsRepo(): {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE settings_profile (
     key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
+    value TEXT NOT NULL,
+    updated_at INTEGER
   )`);
   const settings = new ProfileSettingsRepository(db);
   return { db, settings };

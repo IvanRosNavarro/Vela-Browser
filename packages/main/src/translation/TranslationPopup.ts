@@ -70,7 +70,7 @@ export class TranslationPopup {
     if (existing && !existing.isDestroyed()) {
       // Recycle: send new data to the existing popup
       const url = this.buildUrl(windowId, result, glass);
-      void existing.loadURL(url);
+      void existing.loadURL(url).catch(() => { /* popup cerrado a media carga */ });
       existing.show();
       existing.focus();
       return;
@@ -107,9 +107,14 @@ export class TranslationPopup {
     });
 
     const url = this.buildUrl(windowId, result, glass);
-    void popup.loadURL(url).then(() => {
-      if (!popup.isDestroyed()) popup.show();
-    });
+    void popup
+      .loadURL(url)
+      .then(() => {
+        if (!popup.isDestroyed()) popup.show();
+      })
+      .catch(() => {
+        if (!popup.isDestroyed()) popup.close();
+      });
   }
 
   close(windowId: number): void {

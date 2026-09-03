@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useSyncStore } from '../../../stores/syncStore';
 import { useSettings } from '../lib/useSettings';
-import type { DeviceInfo } from '@vela/shared';
+import type { DeviceInfo, RemoteSyncProfile } from '@vela/shared';
 import { writeToClipboard } from '../../../lib/clipboard';
 
 export function Sync() {
@@ -16,6 +16,7 @@ export function Sync() {
   if (uiStep === 'idle') return <SyncNotConfigured />;
   if (uiStep === 'email' || uiStep === 'waiting-click') return <SyncEmailStep />;
   if (uiStep === 'password') return <SyncPasswordStep />;
+  if (uiStep === 'profile') return <SyncProfileStep />;
   if (uiStep === 'active') return <SyncActiveView settings={settings} />;
 
   return null;
@@ -226,7 +227,14 @@ function strengthLabel(pw: string): { label: string; color: string } {
 }
 
 function SyncPasswordStep() {
-  const { pendingToken, setupSync, setUiStep, setRecentPassword, status } = useSyncStore();
+  const {
+    pendingToken,
+    setupSync,
+    listRemoteProfiles,
+    setUiStep,
+    setRecentPassword,
+    status,
+  } = useSyncStore();
   const isFirstTime = !status.configured;
 
   const [password, setPassword] = useState('');
@@ -247,10 +255,33 @@ function SyncPasswordStep() {
     // Guardar la contraseña en el store ANTES de llamar a setupSync,
     // para que esté disponible en el modal de Recovery Card.
     setRecentPassword(password);
-    const ok = await setupSync(pendingToken, password);
+
+    // Antes de crear nada, mirar si el usuario ya tiene perfiles en el
+    // servidor. Vincularse al perfil correcto es lo que hace que los datos
+    // de los dos dispositivos converjan.
+    let profiles: RemoteSyncProfile[] = [];
+    try {
+      profiles = await listRemoteProfiles(pendingToken, password);
+    } catch {
+      setRecentPassword(null);
+      setError('No se pudo contactar con el servidor. Inténtalo de nuevo.');
+      setConnecting(false);
+      return;
+    }
+
+    // Si hay perfiles en el servidor, el usuario elige a cuál vincularse.
+    // También cuando ninguno es legible: pueden ser restos de una versión
+    // anterior, y el paso siguiente lo explica y deja crear uno nuevo.
+    if (profiles.length > 0) {
+      setUiStep('profile');
+      setConnecting(false);
+      return;
+    }
+
+    const ok = await setupSync(pendingToken, password, null);
     if (!ok) {
       setRecentPassword(null);
-      setError('Contraseña incorrecta. Inténtalo de nuevo.');
+      setError('No se pudo activar la sincronización. Inténtalo de nuevo.');
       setConnecting(false);
     }
   }
@@ -328,6 +359,129 @@ function SyncPasswordStep() {
           {connecting
             ? 'Conectando y descargando datos…'
             : isFirstTime ? 'Activar sincronización' : 'Conectar este dispositivo'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setRecentPassword(null); setUiStep('idle'); }}
+          className="rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-elevated)] px-4 py-2 text-sm text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)]"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Estado 3b: Elegir perfil del servidor ──────────────────────────────────
+
+function SyncProfileStep() {
+  const {
+    pendingToken,
+    remoteProfiles,
+    setupSync,
+    setUiStep,
+    setRecentPassword,
+    recentPassword,
+  } = useSyncStore();
+
+  const readable = remoteProfiles.filter((p) => p.name !== null);
+  const hasUnreadable = remoteProfiles.length > readable.length;
+  const [selected, setSelected] = useState<string | null>(readable[0]?.id ?? null);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleContinue() {
+    if (!pendingToken || !recentPassword) {
+      setError('Sesión no disponible. Vuelve a empezar.');
+      return;
+    }
+    setConnecting(true);
+    setError(null);
+    const ok = await setupSync(pendingToken, recentPassword, selected);
+    if (!ok) {
+      setError('No se pudo vincular el perfil. Inténtalo de nuevo.');
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 py-4">
+      <div>
+        <h2 className="mb-1 text-base font-semibold text-[var(--vela-fg)]">
+          ¿Con qué perfil quieres sincronizar?
+        </h2>
+        <p className="text-sm text-[var(--vela-fg-muted)]">
+          {readable.length > 0
+            ? 'Ya tienes datos sincronizados. Elige el perfil de este dispositivo para fusionarlos: lo que hay aquí se sube y lo que hay allí se descarga.'
+            : 'Tu cuenta tiene perfiles que esta contraseña no abre. Si la contraseña es la correcta, son restos de una versión anterior y hay que empezar de nuevo.'}
+        </p>
+      </div>
+
+      {hasUnreadable && readable.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-orange-400/40 bg-orange-400/10 px-4 py-3">
+          <span className="mt-0.5 text-orange-400">⚠</span>
+          <p className="text-xs text-orange-400">
+            Hay {remoteProfiles.length - readable.length} perfil(es) que esta
+            contraseña no abre. No se muestran porque no podrían leerse.
+          </p>
+        </div>
+      )}
+
+      <div className="divide-y divide-[var(--vela-border)] rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)]">
+        {readable.map((profile) => (
+          <label
+            key={profile.id}
+            className="flex cursor-pointer items-center gap-3 px-4 py-3"
+          >
+            <input
+              type="radio"
+              name="remote-profile"
+              checked={selected === profile.id}
+              onChange={() => setSelected(profile.id)}
+              className="accent-[var(--vela-accent)]"
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-sm text-[var(--vela-fg)]">
+                {profile.name}
+              </span>
+              {profile.host && (
+                <span className="block text-xs text-[var(--vela-fg-muted)]">
+                  Creado en {profile.host}
+                </span>
+              )}
+            </span>
+          </label>
+        ))}
+
+        <label className="flex cursor-pointer items-center gap-3 px-4 py-3">
+          <input
+            type="radio"
+            name="remote-profile"
+            checked={selected === null}
+            onChange={() => setSelected(null)}
+            className="accent-[var(--vela-accent)]"
+          />
+          <span>
+            <span className="block text-sm text-[var(--vela-fg)]">
+              Crear un perfil de sincronización nuevo
+            </span>
+            <span className="block text-xs text-[var(--vela-fg-muted)]">
+              Este dispositivo no compartirá datos con los anteriores.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          disabled={connecting}
+          onClick={() => void handleContinue()}
+          className="rounded-md bg-[var(--vela-accent)] px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {connecting ? 'Sincronizando…' : 'Continuar'}
         </button>
         <button
           type="button"

@@ -2,11 +2,11 @@ import { ipcMain, app, shell, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { IPC_CHANNELS, IPC_EVENTS, z, type IpcResponse } from '@vela/shared';
-import type { SyncStatus, DeviceInfo } from '@vela/shared';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getFrameContext } from './helpers';
-import { SyncManager } from '../sync/SyncManager';
+import { SyncManager, listRemoteProfiles } from '../sync/SyncManager';
 import { syncEvents } from '../sync/syncEvents';
 
 const SERVER_URL = 'https://sync.vela-browser.com';
@@ -20,6 +20,12 @@ const recoveryCardPdfSchema = z.object({ email: z.string(), date: z.string() });
 
 const requestMagicLinkSchema = z.object({ email: z.string().email() });
 const setupSchema = z.object({
+  token: z.string().min(1),
+  syncPassword: z.string().min(1),
+  /** Perfil del servidor al que engancharse. Ausente = crear uno nuevo. */
+  remoteProfileId: z.string().min(1).nullish(),
+});
+const listRemoteProfilesSchema = z.object({
   token: z.string().min(1),
   syncPassword: z.string().min(1),
 });
@@ -59,6 +65,7 @@ function getOrCreateSyncManager(profileId: string, ctx: IpcContext): SyncManager
           profileId: pid,
         });
       },
+      () => ctx.repositories.profiles.getById(profileId)?.name ?? 'Perfil',
     );
     ctx.syncManagers.set(profileId, manager);
   }
@@ -123,16 +130,33 @@ export function registerSyncHandlers(ctx: IpcContext): void {
     IPC_CHANNELS.SYNC_SETUP,
     async (event, payload): Promise<IpcResponse<SyncStatus>> => {
       try {
-        const { token, syncPassword } = setupSchema.parse(payload);
+        const { token, syncPassword, remoteProfileId } = setupSchema.parse(payload);
         const { profileId } = getFrameContext(event, ctx);
 
         const manager = getOrCreateSyncManager(profileId, ctx);
-        await manager.configure(token, syncPassword);
+        await manager.configure(token, syncPassword, remoteProfileId ?? null);
         pendingCallbackToken = null;
 
         return { ok: true, data: manager.getStatus() };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SYNC_SETUP);
+      }
+    },
+  );
+
+  // Perfiles que el usuario ya tiene en el servidor. Se consulta entre el
+  // magic link y la activación: sin esto, cada dispositivo creaba su propio
+  // perfil remoto y nunca veía los datos de los demás.
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_LIST_REMOTE_PROFILES,
+    async (event, payload): Promise<IpcResponse<RemoteSyncProfile[]>> => {
+      try {
+        const { token, syncPassword } = listRemoteProfilesSchema.parse(payload);
+        getFrameContext(event, ctx); // valida que el emisor es la shell
+        const profiles = await listRemoteProfiles(token, syncPassword);
+        return { ok: true, data: profiles };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_LIST_REMOTE_PROFILES);
       }
     },
   );
@@ -166,7 +190,9 @@ export function registerSyncHandlers(ctx: IpcContext): void {
         const { profileId } = getFrameContext(event, ctx);
         const manager = ctx.syncManagers.get(profileId);
         if (manager?.isConfigured()) {
-          await manager.pullChanges();
+          // Ciclo completo: entidades, vault y notas rápidas.
+          await manager.pushAllLocal();
+          await manager.syncAll();
         }
         return { ok: true, data: undefined };
       } catch (err) {

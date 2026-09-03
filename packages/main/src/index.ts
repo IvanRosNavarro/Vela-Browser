@@ -629,6 +629,18 @@ app.whenReady().then(async () => {
   registerPreviewProtocol();
 
   initLogger();
+
+  // Red de seguridad: sin estos manejadores, cualquier excepción o promesa
+  // rechazada que escape de un listener del main mata el proceso entero —
+  // Vela se cierra de golpe, sin traza en el log y sin crashdump. Registrarlo
+  // y seguir vivo es siempre mejor que perder la sesión del usuario.
+  process.on('uncaughtException', (err) => {
+    logger.error('[app] excepción no capturada en main:', err);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error('[app] promesa rechazada sin manejar en main:', reason);
+  });
+
   logger.info(`[app] arrancando — versión ${app.getVersion()}, electron ${process.versions['electron']}, chromium ${process.versions['chrome']}`);
 
   initStorage();

@@ -13,3 +13,17 @@ export interface DeviceInfo {
   lastSeenAt: number;
   isCurrent: boolean;
 }
+
+/**
+ * Perfil ya existente en el servidor de sync. Se ofrece al vincular un
+ * dispositivo nuevo: elegir el perfil correcto es lo que hace que los datos
+ * de ambos equipos converjan (el servidor particiona todo por este id).
+ */
+export interface RemoteSyncProfile {
+  id: string;
+  /** Nombre descifrado, o null si la contraseña de sync no lo abre. */
+  name: string | null;
+  /** Equipo donde se creó el perfil, si se conoce. */
+  host: string | null;
+  updatedAt: number;
+}

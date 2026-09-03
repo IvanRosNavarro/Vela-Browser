@@ -230,7 +230,8 @@ export class ProfileManager {
       const db = openProfileDb(getProfileDbPath(profileId));
       let unlocked = false;
       try {
-        const settings = new ProfileSettingsRepository(db);
+        // profileId para que los cambios de ajustes emitan eventos de sync.
+        const settings = new ProfileSettingsRepository(db, profileId);
         // Desbloquea el keyring antes de instanciar el resto de repositorios.
         // Si la contraseña es incorrecta, lanza InvalidMasterPasswordError y
         // dejamos la BD limpia (cerrada) en el catch — sin estado a medias.

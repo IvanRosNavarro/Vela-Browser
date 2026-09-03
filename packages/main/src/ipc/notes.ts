@@ -2,7 +2,8 @@ import { ipcMain } from 'electron';
 import { IPC_CHANNELS, type IpcResponse } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
-import { getReposForFrame } from './helpers';
+import { getReposForFrame, getFrameContext } from './helpers';
+import { loadYDocWithSync } from '../sync/yjs-sync';
 import type { QuickNote } from '../storage/repositories/QuickNotesRepository';
 import { z } from '@vela/shared';
 
@@ -30,7 +31,23 @@ export function registerNotesHandlers(ctx: IpcContext): void {
       try {
         const { workspaceId, content } = notesSaveSchema.parse(payload);
         const repos = getReposForFrame(event, ctx);
-        repos.quickNotes.upsert(workspaceId, content);
+        const { profileId } = getFrameContext(event, ctx);
+        const sync = ctx.syncManagers.get(profileId);
+
+        if (sync?.isConfigured()) {
+          // Con sync activo la nota vive en un Y.Doc: escribir ahí dispara el
+          // observer que persiste en quick_notes y sube el estado CRDT.
+          const doc = await loadYDocWithSync(profileId, workspaceId, repos, sync);
+          const text = doc.getText('content');
+          if (text.toString() !== content) {
+            doc.transact(() => {
+              text.delete(0, text.length);
+              text.insert(0, content);
+            });
+          }
+        } else {
+          repos.quickNotes.upsert(workspaceId, content);
+        }
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.NOTES_SAVE);

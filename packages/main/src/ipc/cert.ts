@@ -13,7 +13,7 @@ export function registerCertHandlers(ctx: IpcContext): void {
     if (!target) return;
     const wc = webContents.fromId(wcId);
     if (wc && !wc.isDestroyed()) {
-      setImmediate(() => { void wc.loadURL(target); });
+      setImmediate(() => { void wc.loadURL(target).catch(() => { /* navegación abortada */ }); });
     }
   });
 
@@ -37,7 +37,7 @@ export function registerCertHandlers(ctx: IpcContext): void {
     }
 
     // Fallback: no encontramos la tab, navegar a newtab
-    void wc.loadURL('vela://newtab');
+    void wc.loadURL('vela://newtab').catch(() => { /* navegación abortada */ });
   });
 
   // Canal IPC heredado (sólo accesible desde el preload compilado con velaCert).
@@ -53,7 +53,7 @@ export function registerCertHandlers(ctx: IpcContext): void {
       args.url,
     );
     if (!target) return;
-    void event.sender.loadURL(target);
+    void event.sender.loadURL(target).catch(() => { /* navegación abortada */ });
   });
 
   ipcMain.handle('cert:go-back', (event) => {
@@ -63,7 +63,7 @@ export function registerCertHandlers(ctx: IpcContext): void {
     if (wc.navigationHistory.canGoBack()) {
       wc.navigationHistory.goBack();
     } else {
-      void wc.loadURL('vela://newtab');
+      void wc.loadURL('vela://newtab').catch(() => { /* navegación abortada */ });
     }
   });
 }

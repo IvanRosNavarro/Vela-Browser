@@ -1,8 +1,29 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { syncEvents } from '../../sync/syncEvents';
 
 interface SettingsRow {
   key: string;
   value: string;
+}
+
+/**
+ * Prefijos de clave que NUNCA salen del dispositivo. Son secretos (material
+ * criptográfico, tokens de sesión) o estado intrínsecamente local (qué
+ * extensiones tiene instaladas ESTA máquina, qué certificado de cliente eligió
+ * este equipo). Sincronizarlos filtraría claves o corrompería el estado del
+ * otro dispositivo.
+ */
+const NON_SYNCABLE_PREFIXES = [
+  'sync:',        // token de sesión, salt, clave cifrada, último seq
+  'keyring:',     // clave del perfil envuelta + parámetros KDF
+  'vault:',       // metadatos del vault de contraseñas
+  'client-cert:', // elección de certificado por origen, propia del equipo
+  'push:',        // suscripciones push, ligadas a este dispositivo
+  'extensions:',  // qué extensiones hay instaladas aquí
+];
+
+function isSyncable(key: string): boolean {
+  return !NON_SYNCABLE_PREFIXES.some((p) => key.startsWith(p));
 }
 
 /**
@@ -14,7 +35,10 @@ interface SettingsRow {
  * `profile_metadata` (estado del perfil, no preferencias) sin mezclar scopes.
  */
 export class ProfileSettingsRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly profileId?: string,
+  ) {}
 
   get(key: string): string | null {
     const row = this.db
@@ -24,22 +48,26 @@ export class ProfileSettingsRepository {
   }
 
   set(key: string, value: string): void {
+    const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO settings_profile (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        `INSERT INTO settings_profile (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                                        updated_at = excluded.updated_at`,
       )
-      .run(key, value);
+      .run(key, value, now);
+    this.emitSyncChange(key, value, now);
   }
 
-  /** Upsert desde sync remoto — no emite eventos. */
+  /** Upsert desde sync remoto — no emite eventos (evita el eco al servidor). */
   syncSet(key: string, value: string): void {
     this.db
       .prepare(
-        `INSERT INTO settings_profile (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        `INSERT INTO settings_profile (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                                        updated_at = excluded.updated_at`,
       )
-      .run(key, value);
+      .run(key, value, Date.now());
   }
 
   getUpdatedAt(key: string): number | null {
@@ -58,5 +86,30 @@ export class ProfileSettingsRepository {
       .prepare('SELECT key, value FROM settings_profile')
       .all() as SettingsRow[];
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  }
+
+  /** Ajustes sincronizables con su timestamp, para el push inicial. */
+  listSyncable(): Array<{ key: string; value: string; updatedAt: number }> {
+    const rows = this.db
+      .prepare('SELECT key, value, updated_at FROM settings_profile')
+      .all() as Array<SettingsRow & { updated_at: number | null }>;
+    return rows
+      .filter((r) => isSyncable(r.key))
+      .map((r) => ({
+        key: r.key,
+        value: r.value,
+        updatedAt: r.updated_at ?? 0,
+      }));
+  }
+
+  private emitSyncChange(key: string, value: string, updatedAt: number): void {
+    if (!this.profileId || !isSyncable(key)) return;
+    syncEvents.emit('entity:changed', {
+      profileId: this.profileId,
+      type: 'setting',
+      id: key,
+      data: { id: key, key, value, updatedAt },
+      updatedAt,
+    });
   }
 }

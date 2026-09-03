@@ -275,11 +275,12 @@ export function registerDevtoolsHandlers(ctx: IpcContext): void {
           ? `${VITE_DEV_URL}/src/pages/devtools-eyedropper/index.html?windowId=${parentWindowId}`
           : new URL(`vela://devtools-eyedropper?windowId=${parentWindowId}`).toString();
 
-        if (isDev) {
-          void popup.loadURL(url);
-        } else {
-          void popup.loadURL(`vela://devtools-eyedropper?windowId=${parentWindowId}`);
-        }
+        void popup
+          .loadURL(isDev ? url : `vela://devtools-eyedropper?windowId=${parentWindowId}`)
+          .catch((err: unknown) => {
+            ctx.logger.error('[devtools] no se pudo cargar el eyedropper:', err);
+            if (!popup.isDestroyed()) popup.close();
+          });
         popup.show();
 
         return { ok: true, data: undefined };

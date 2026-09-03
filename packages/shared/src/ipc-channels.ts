@@ -333,6 +333,7 @@ export const IPC_CHANNELS = {
 
   SYNC_REQUEST_MAGIC_LINK: 'sync:request-magic-link',
   SYNC_SETUP: 'sync:setup',
+  SYNC_LIST_REMOTE_PROFILES: 'sync:list-remote-profiles',
   SYNC_GET_STATUS: 'sync:get-status',
   SYNC_NOW: 'sync:sync-now',
   SYNC_GET_DEVICES: 'sync:get-devices',

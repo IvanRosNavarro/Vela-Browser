@@ -35,7 +35,8 @@ async function setupVault(): Promise<{
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE settings_profile (
     key TEXT PRIMARY KEY NOT NULL,
-    value TEXT NOT NULL
+    value TEXT NOT NULL,
+    updated_at INTEGER
   )`);
   db.exec(`CREATE TABLE password_vault (
     id TEXT PRIMARY KEY,
@@ -44,7 +45,10 @@ async function setupVault(): Promise<{
     encrypted_password BLOB NOT NULL,
     notes_encrypted BLOB,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    folder TEXT NOT NULL DEFAULT 'General',
+    login_url TEXT,
+    last_used_at INTEGER
   )`);
   db.exec(`CREATE INDEX idx_password_vault_domain ON password_vault(domain)`);
   const profileId = 'p1';

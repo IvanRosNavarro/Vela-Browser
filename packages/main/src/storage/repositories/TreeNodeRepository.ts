@@ -164,6 +164,17 @@ export class TreeNodeRepository {
     return rows.map(rowToNode);
   }
 
+  /**
+   * Todos los nodos del perfil, para el push inicial de sincronización.
+   * Excluye las pestañas blindadas: por diseño no se persisten ni viajan.
+   */
+  listAll(): TreeNode[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tree_nodes WHERE is_secure = 0 ORDER BY workspace_id, position')
+      .all() as TreeNodeRow[];
+    return rows.map(rowToNode);
+  }
+
   getAllTabIds(): string[] {
     const rows = this.db
       .prepare("SELECT id FROM tree_nodes WHERE kind = 'tab'")
@@ -763,6 +774,10 @@ export class TreeNodeRepository {
     favicon?: string | null;
     position: string;
     pinned?: number;
+    pinnedUrl?: string | null;
+    anchored?: number;
+    anchoredUrl?: string | null;
+    collapsed?: number;
     color?: string | null;
     icon?: string | null;
     updatedAt: number;
@@ -772,9 +787,10 @@ export class TreeNodeRepository {
         .prepare(
           `INSERT INTO tree_nodes
              (id, workspace_id, parent_id, kind, position, name, color, icon,
-              collapsed, url, original_title, favicon, pinned, discarded,
+              collapsed, url, original_title, favicon, pinned, pinned_url,
+              anchored, anchored_url, discarded,
               last_active_at, created_at, updated_at)
-           VALUES (?, ?, ?, 'tab', ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, NULL, ?, ?)
+           VALUES (?, ?, ?, 'tab', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              workspace_id   = excluded.workspace_id,
              parent_id      = excluded.parent_id,
@@ -782,10 +798,14 @@ export class TreeNodeRepository {
              name           = excluded.name,
              color          = excluded.color,
              icon           = excluded.icon,
+             collapsed      = excluded.collapsed,
              url            = excluded.url,
              original_title = excluded.original_title,
              favicon        = excluded.favicon,
              pinned         = excluded.pinned,
+             pinned_url     = excluded.pinned_url,
+             anchored       = excluded.anchored,
+             anchored_url   = excluded.anchored_url,
              updated_at     = excluded.updated_at
            WHERE excluded.updated_at > tree_nodes.updated_at`,
         )
@@ -797,10 +817,14 @@ export class TreeNodeRepository {
           data.name ?? null,
           data.color ?? null,
           data.icon ?? null,
+          data.collapsed ?? 0,
           data.url ?? '',
           data.title ?? '',
           data.favicon ?? null,
           data.pinned ?? 0,
+          data.pinnedUrl ?? null,
+          data.anchored ?? 0,
+          data.anchoredUrl ?? null,
           data.updatedAt,
           data.updatedAt,
         );
@@ -811,7 +835,7 @@ export class TreeNodeRepository {
              (id, workspace_id, parent_id, kind, position, name, color, icon,
               collapsed, url, original_title, favicon, pinned, discarded,
               last_active_at, created_at, updated_at)
-           VALUES (?, ?, ?, 'folder', ?, ?, ?, ?, 0, NULL, NULL, NULL, 0, 0, NULL, ?, ?)
+           VALUES (?, ?, ?, 'folder', ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, 0, NULL, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              workspace_id = excluded.workspace_id,
              parent_id    = excluded.parent_id,
@@ -819,6 +843,7 @@ export class TreeNodeRepository {
              name         = excluded.name,
              color        = excluded.color,
              icon         = excluded.icon,
+             collapsed    = excluded.collapsed,
              updated_at   = excluded.updated_at
            WHERE excluded.updated_at > tree_nodes.updated_at`,
         )
@@ -830,6 +855,7 @@ export class TreeNodeRepository {
           data.name ?? null,
           data.color ?? null,
           data.icon ?? null,
+          data.collapsed ?? 0,
           data.updatedAt,
           data.updatedAt,
         );

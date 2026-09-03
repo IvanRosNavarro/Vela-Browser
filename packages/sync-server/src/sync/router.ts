@@ -24,6 +24,36 @@ const MAX_BLOB_B64_LEN = 1_500_000; // ydoc / vault (~1.1 MB binarios)
 // Cota de entidades por perfil para evitar agotar el disco del servidor.
 const MAX_ENTITIES_PER_PROFILE = 100_000;
 
+// ── Salt de derivación de clave ──────────────────────────────────────────────
+
+// POST /sync/key-salt  { salt } → { salt }
+//
+// Devuelve SIEMPRE el salt canónico del usuario. El cliente manda un salt
+// recién generado; si el usuario ya tenía uno, se ignora y se devuelve el
+// existente. Así el primer dispositivo lo fija y todos los demás derivan la
+// misma clave a partir de la misma contraseña.
+//
+// Nunca se sobrescribe: hacerlo dejaría ilegible todo lo ya cifrado.
+syncRouter.post('/key-salt', (req, res) => {
+  const { salt } = req.body as { salt?: string };
+  if (typeof salt !== 'string' || !/^[0-9a-f]{64}$/i.test(salt)) {
+    return res.status(400).json({ error: 'salt inválido (se espera hex de 32 bytes)' });
+  }
+
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO user_key_salts (user_id, salt, created_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO NOTHING
+  `).run(req.userId, salt.toLowerCase(), Date.now());
+
+  const row = db.prepare(
+    'SELECT salt FROM user_key_salts WHERE user_id = ?'
+  ).get(req.userId) as { salt: string } | undefined;
+
+  res.json({ salt: row?.salt ?? salt.toLowerCase() });
+});
+
 // ── Perfiles ─────────────────────────────────────────────────────────────────
 
 // POST /sync/profiles

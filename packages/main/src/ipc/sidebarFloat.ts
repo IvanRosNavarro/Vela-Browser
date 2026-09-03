@@ -128,9 +128,15 @@ function showFloatingSidebar(windowId: number, parentWin: BrowserWindow, ctx: Ip
   const pageUrl = new URL('vela://sidebar-floating');
   pageUrl.searchParams.set('windowId', String(windowId));
   pageUrl.searchParams.set('activeTabId', activeTabId);
-  void floatWin.loadURL(pageUrl.toString()).then(() => {
-    if (!floatWin.isDestroyed()) floatWin.show();
-  });
+  void floatWin
+    .loadURL(pageUrl.toString())
+    .then(() => {
+      if (!floatWin.isDestroyed()) floatWin.show();
+    })
+    .catch((err: unknown) => {
+      ctx.logger.error('[sidebar-float] no se pudo cargar vela://sidebar-floating:', err);
+      if (!floatWin.isDestroyed()) floatWin.close();
+    });
 }
 
 export function registerSidebarFloatHandler(ctx: IpcContext): void {

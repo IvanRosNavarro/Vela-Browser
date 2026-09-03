@@ -25,6 +25,22 @@ export class AdblockerExceptionsRepository {
     }
   }
 
+  /** Filas completas, para el push inicial de sincronización. */
+  listAll(): Array<{ id: string; domain: string; updatedAt: number }> {
+    try {
+      const rows = this.db
+        .prepare('SELECT id, domain, created_at, updated_at FROM adblocker_exceptions')
+        .all() as ExceptionRow[];
+      return rows.map((r) => ({
+        id: r.id,
+        domain: r.domain,
+        updatedAt: r.updated_at ?? r.created_at,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   add(domain: string): void {
     try {
       const id = crypto.randomUUID();

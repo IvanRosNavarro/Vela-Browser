@@ -420,7 +420,10 @@ const api: PreloadApi = {
   },
   sync: {
     requestMagicLink: (input: { email: string }) => call(IPC_CHANNELS.SYNC_REQUEST_MAGIC_LINK, input),
-    setup: (input: { token: string; syncPassword: string }) => call(IPC_CHANNELS.SYNC_SETUP, input),
+    setup: (input: { token: string; syncPassword: string; remoteProfileId?: string | null }) =>
+      call(IPC_CHANNELS.SYNC_SETUP, input),
+    listRemoteProfiles: (input: { token: string; syncPassword: string }) =>
+      call(IPC_CHANNELS.SYNC_LIST_REMOTE_PROFILES, input),
     getStatus: () => call(IPC_CHANNELS.SYNC_GET_STATUS),
     syncNow: () => call(IPC_CHANNELS.SYNC_NOW),
     getDevices: () => call(IPC_CHANNELS.SYNC_GET_DEVICES),

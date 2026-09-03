@@ -92,7 +92,17 @@ export class ClientCertificateManager {
   constructor(private readonly ctx: ClientCertificateManagerCtx) {
     app.on('select-client-certificate', (event, webContents, url, certificateList, callback) => {
       event.preventDefault();
-      this.handleRequest(webContents.id, url, certificateList, callback);
+      const wcId = webContents.id;
+      try {
+        this.handleRequest(wcId, url, certificateList, callback);
+      } catch (err) {
+        // Nada de lo que ocurra aquí puede escapar: una excepción en un
+        // listener de `app` no la captura nadie y tumbaría el proceso main
+        // (Vela se cerraría entera sin dejar traza).
+        this.ctx.logger.error(`[client-cert] fallo gestionando la petición de ${url}:`, err);
+        if (this.pendingByWc.has(wcId)) this.resolvePending(wcId, undefined);
+        else { try { callback(); } catch { /* wc puede estar destruido */ } }
+      }
     });
   }
 
@@ -115,20 +125,34 @@ export class ClientCertificateManager {
     const origin = originOf(url);
     const resolved = origin ? this.resolveWindowAndProfile(wcId) : null;
     if (!origin || !resolved) {
+      this.ctx.logger.warn(
+        `[client-cert] petición sin pestaña/perfil resoluble (wc=${wcId}, url=${url}); cancelada`,
+      );
       callback();
       return;
     }
     const { windowId, profileId } = resolved;
+    this.ctx.logger.info(
+      `[client-cert] ${origin} pide certificado: ${certificateList.length} candidato(s) ` +
+      `(wc=${wcId}, window=${windowId}, profile=${profileId})`,
+    );
 
-    const remembered = this.loadChoices(profileId).find((c) => c.origin === origin);
-    if (remembered) {
-      const match = certificateList.find((c) => c.fingerprint === remembered.fingerprint);
-      if (match) {
-        callback(match);
-        return;
+    // Un fallo leyendo o limpiando la elección recordada no debe impedir que
+    // se pregunte al usuario: se registra y se sigue al popup.
+    try {
+      const remembered = this.loadChoices(profileId).find((c) => c.origin === origin);
+      if (remembered) {
+        const match = certificateList.find((c) => c.fingerprint === remembered.fingerprint);
+        if (match) {
+          this.ctx.logger.info(`[client-cert] usando elección recordada para ${origin}: ${match.subjectName}`);
+          callback(match);
+          return;
+        }
+        // El cert recordado ya no está entre los candidatos (renovado/revocado): olvidar y preguntar.
+        this.forgetChoice(origin, profileId);
       }
-      // El cert recordado ya no está entre los candidatos (renovado/revocado): olvidar y preguntar.
-      this.forgetChoice(origin, profileId);
+    } catch (err) {
+      this.ctx.logger.warn(`[client-cert] no se pudo leer la elección recordada de ${origin}:`, err);
     }
 
     // Sustituye cualquier petición/popup previo pendiente para esta misma tab
@@ -156,8 +180,12 @@ export class ClientCertificateManager {
       return;
     }
 
-    const repos = this.ctx.profileManager.getRepositories(profileId);
-    const glass = readGlass(repos);
+    let glass: GlassParams | null = null;
+    try {
+      glass = readGlass(this.ctx.profileManager.getRepositories(profileId));
+    } catch (err) {
+      this.ctx.logger.warn('[client-cert] no se pudo leer la configuración de glassmorphism:', err);
+    }
     const height = Math.min(
       POPUP_HEIGHT_BASE + Math.max(certCount, 1) * POPUP_ROW_HEIGHT,
       POPUP_HEIGHT_MAX,
@@ -194,11 +222,22 @@ export class ClientCertificateManager {
     pageUrl.searchParams.set('windowId', String(windowId));
     if (glass) applyGlassUrlParams(pageUrl, glass);
 
-    void popup.loadURL(pageUrl.toString()).then(() => {
-      if (popup.isDestroyed()) return;
-      popup.show();
-      popup.focus();
-    });
+    // Sin `.catch` un fallo de carga (ERR_FAILED, ERR_ABORTED al cerrarse el
+    // popup a media carga…) queda como promesa rechazada sin manejar y tumba
+    // el proceso main. Aquí se registra, se cierra el popup y la petición de
+    // red se cancela por la vía normal ('closed' → resolvePending).
+    void popup
+      .loadURL(pageUrl.toString())
+      .then(() => {
+        if (popup.isDestroyed()) return;
+        popup.show();
+        popup.focus();
+      })
+      .catch((err: unknown) => {
+        this.ctx.logger.error('[client-cert] no se pudo cargar vela://client-cert-select:', err);
+        if (!popup.isDestroyed()) popup.close();
+        else this.resolvePending(wcId, undefined);
+      });
   }
 
   /** Datos iniciales para `vela://client-cert-select`, pedidos por la propia

@@ -62,11 +62,18 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ### Tests
 
-- [ ] **Fixtures de tests desalineados con el esquema**: 31 tests de
-      `TreeNodeRepository` / repositorios asociados fallan con
-      `table tree_nodes has no column named is_secure` y similares. El esquema que
-      montan los tests no aplica las migraciones posteriores a Fase 5.0. Fallan
-      igual en `main` desde antes de v0.1.19; no bloquean la build ni el typecheck.
+- [ ] **Fixtures de tests desalineados con el esquema**: 21 tests de
+      `TreeNodeRepository`, `AutoGroupRuleRepository` y `autoGrouping` fallan con
+      `table tree_nodes has no column named is_secure` y similares. `createTestDb`
+      aplica `storage/migrations`, que conserva copias de `workspaces`,
+      `tree_nodes` y `auto_group_rules` anteriores al multi-perfil; el esquema
+      real de esas tablas vive en `storage/profile-migrations`. Fallan igual en
+      `main` desde antes de v0.1.19; no bloquean la build ni el typecheck.
+      En v0.2.0 se arreglaron los fixtures de `ProfileKeyring` y `PasswordVault`
+      (24 tests más que también fallaban, por columnas ausentes en tablas
+      creadas a mano). **Ojo**: apuntar `createTestDb` a `profile-migrations` sin
+      más NO funciona — esas migraciones siembran un workspace por defecto y los
+      tests asumen una BD vacía; hay que adaptar también las expectativas.
 
 ### Multimedia
 
@@ -139,6 +146,22 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 ---
 
 ## Cerrado
+
+### Cerrados en v0.2.0
+
+- [x] **La sincronización no transfería nada**: `profile_id` local por
+      dispositivo, salt de derivación aleatorio y local, y ausencia de push
+      inicial. Los tres corregidos; ver ADR 0101.
+- [x] **Ajustes de perfil sin sincronizar**: `ProfileSettingsRepository` no
+      emitía `entity:changed` ni sellaba `updated_at`.
+- [x] **Notas rápidas y vault sin conectar**: `loadYDocWithSync`,
+      `pushVault` y `pullVault` no tenían ningún caller.
+- [x] **Anclas y Cargas se degradaban al sincronizar**: el serializer de
+      `treenode` no incluía `anchored`, `anchoredUrl`, `pinnedUrl` ni
+      `collapsed`.
+- [x] **Crashes silenciosos del main**: sin manejadores de
+      `uncaughtException`/`unhandledRejection` y con `loadURL` sin `.catch()`,
+      una navegación abortada cerraba Vela entera sin dejar traza.
 
 ### Cerrados en v0.1.20
 

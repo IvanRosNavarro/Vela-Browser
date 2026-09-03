@@ -1,13 +1,25 @@
 import { safeStorage } from 'electron';
+import * as os from 'node:os';
 import { encrypt, decrypt, deriveKey } from './crypto';
 import { serializers } from './serializers';
 import { syncEvents, type SyncEntityEvent } from './syncEvents';
 import type { ProfileRepositories } from '../profiles/ProfileManager';
+import type { PasswordEntry } from '../passwords/PasswordVault';
 import type { Logger } from '../logger';
 import type { MainEventBus } from '../ipc/events';
 
 const SERVER_URL = 'https://sync.vela-browser.com';
 const WS_URL = 'wss://sync.vela-browser.com';
+
+/** El servidor acepta 1000 entidades por petición; dejamos margen. */
+const PUSH_BATCH_SIZE = 200;
+
+/**
+ * Tope de payload por petición. El servidor monta `express.json({ limit:
+ * '2mb' })`, así que un lote más grande se rechazaría entero: mejor partirlo
+ * aquí. Un favicon en base64 dentro de una pestaña ya pesa lo suyo.
+ */
+const PUSH_BATCH_BYTES = 1_200_000;
 
 export interface SyncStatus {
   configured: boolean;
@@ -16,10 +28,25 @@ export interface SyncStatus {
   syncInProgress: boolean;
 }
 
+/** Un perfil ya existente en el servidor, ofrecido al vincular un dispositivo. */
+export interface RemoteProfileInfo {
+  id: string;
+  /** Nombre descifrado. null si la contraseña de sync no lo abre. */
+  name: string | null;
+  host: string | null;
+  updatedAt: number;
+}
+
 interface SyncConfig {
   sessionToken: string;
   syncKey: Buffer;
-  profileId: string;
+  /**
+   * Id del perfil EN EL SERVIDOR. No tiene por qué coincidir con el id local
+   * del perfil: cada instalación de Vela genera sus propios UUID, así que dos
+   * dispositivos del mismo usuario deben apuntar al mismo perfil remoto para
+   * verse los datos. Se elige al vincular y se persiste.
+   */
+  remoteProfileId: string;
   lastSeq: number;
 }
 
@@ -29,6 +56,72 @@ interface RemoteEntity {
   data_ct: string | null;
   updated_at: number;
   deleted: number;
+}
+
+/** Descarga (o fija, si es el primer dispositivo) el salt del usuario. */
+async function fetchCanonicalSalt(sessionToken: string): Promise<Buffer> {
+  const candidate = Buffer.from(
+    globalThis.crypto.getRandomValues(new Uint8Array(32)),
+  ).toString('hex');
+
+  const res = await fetch(`${SERVER_URL}/sync/key-salt`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ salt: candidate }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`No se pudo obtener el salt de sync: ${res.status}`);
+  }
+
+  const { salt } = (await res.json()) as { salt: string };
+  return Buffer.from(salt, 'hex');
+}
+
+/**
+ * Perfiles que el usuario ya tiene en el servidor, con el nombre descifrado
+ * cuando la contraseña es correcta. Se consulta antes de configurar: permite
+ * vincular este dispositivo a un perfil existente en vez de crear uno nuevo
+ * que nunca vería los datos de los demás.
+ */
+export async function listRemoteProfiles(
+  sessionToken: string,
+  syncPassword: string,
+): Promise<RemoteProfileInfo[]> {
+  const salt = await fetchCanonicalSalt(sessionToken);
+  const key = deriveKey(syncPassword, salt);
+
+  const res = await fetch(`${SERVER_URL}/sync/profiles`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!res.ok) throw new Error(`No se pudieron listar los perfiles: ${res.status}`);
+
+  const { profiles } = (await res.json()) as {
+    profiles: Array<{ id: string; name_ct: string; updated_at: number }>;
+  };
+
+  return profiles.map((p) => {
+    let name: string | null = null;
+    let host: string | null = null;
+    try {
+      const plain = decrypt(Buffer.from(p.name_ct, 'base64'), key).toString('utf-8');
+      // Los perfiles creados por versiones anteriores guardaban un string
+      // plano ("profile-<uuid>"); los nuevos, un JSON con nombre y equipo.
+      if (plain.startsWith('{')) {
+        const parsed = JSON.parse(plain) as { name?: string; host?: string };
+        name = parsed.name ?? null;
+        host = parsed.host ?? null;
+      } else {
+        name = plain;
+      }
+    } catch {
+      // Contraseña incorrecta o perfil cifrado con otra clave: queda ilegible.
+    }
+    return { id: p.id, name, host, updatedAt: p.updated_at };
+  });
 }
 
 export class SyncManager {
@@ -50,29 +143,45 @@ export class SyncManager {
       origin: string,
       payloadBase64: string,
     ) => void,
+    private readonly getProfileName?: () => string,
   ) { }
 
   // ── Configuración ──────────────────────────────────────────────────────────
 
-  async configure(sessionToken: string, syncPassword: string): Promise<void> {
+  /**
+   * Vincula este perfil local con un perfil del servidor.
+   *
+   * @param remoteProfileId perfil remoto al que engancharse. `null` crea uno
+   *   nuevo usando el id local. Elegir el perfil correcto es lo que hace que
+   *   dos dispositivos se vean: el servidor particiona TODO por este id.
+   */
+  async configure(
+    sessionToken: string,
+    syncPassword: string,
+    remoteProfileId: string | null = null,
+  ): Promise<void> {
     const repos = this.getRepos();
 
-    let saltHex = repos.settings.get('sync:key-salt');
-    if (!saltHex) {
-      const salt = Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(32)));
-      saltHex = salt.toString('hex');
-      repos.settings.set('sync:key-salt', saltHex);
-    }
+    // El salt lo fija el primer dispositivo y lo comparten todos: derivar con
+    // salts distintos daría claves distintas y el descifrado fallaría siempre.
+    const salt = await fetchCanonicalSalt(sessionToken);
+    repos.settings.set('sync:key-salt', salt.toString('hex'));
 
-    const lastSeqRaw = repos.settings.get('sync:last-seq');
-    const lastSeq = lastSeqRaw ? parseInt(lastSeqRaw, 10) : 0;
+    const targetProfileId = remoteProfileId ?? this.profileId;
+    const previousProfileId = repos.settings.get('sync:remote-profile-id');
+    // Cambiar de perfil remoto invalida la secuencia: hay que releerlo entero.
+    const lastSeqRaw =
+      previousProfileId === targetProfileId ? repos.settings.get('sync:last-seq') : null;
 
     this.config = {
       sessionToken,
-      syncKey: deriveKey(syncPassword, Buffer.from(saltHex, 'hex')),
-      profileId: this.profileId,
-      lastSeq,
+      syncKey: deriveKey(syncPassword, salt),
+      remoteProfileId: targetProfileId,
+      lastSeq: lastSeqRaw ? parseInt(lastSeqRaw, 10) : 0,
     };
+
+    repos.settings.set('sync:remote-profile-id', targetProfileId);
+    repos.settings.set('sync:last-seq', String(this.config.lastSeq));
 
     // Persist session token (cifrado en reposo) para que sobreviva reinicios.
     this.persistSessionToken(repos, sessionToken);
@@ -89,7 +198,13 @@ export class SyncManager {
 
     await this.registerProfile();
     this.connect();
-    await this.pullChanges();
+
+    // Orden importante: primero subimos lo que ya hay en este dispositivo y
+    // luego bajamos lo remoto. Sin el push inicial, un dispositivo con datos
+    // no aportaba nada al servidor hasta que el usuario tocaba algo, y uno
+    // recién vinculado no encontraba nada que bajar.
+    await this.pushAllLocal();
+    await this.syncAll();
   }
 
   isConfigured(): boolean {
@@ -110,16 +225,28 @@ export class SyncManager {
       const lastSeqRaw = repos.settings.get('sync:last-seq');
       const lastSeq = lastSeqRaw ? parseInt(lastSeqRaw, 10) : 0;
 
-      this.config = {
-        sessionToken,
-        syncKey,
-        profileId: this.profileId,
-        lastSeq,
-      };
+      // Vinculación anterior al arreglo del perfil remoto: cada dispositivo
+      // usaba su id local como id de perfil en el servidor y derivaba la clave
+      // con un salt propio, así que jamás llegó a sincronizar nada. Mantenerla
+      // solo sirve para que la UI diga "conectado" mientras no viaja un dato:
+      // se limpia para que el usuario vuelva a vincular y esta vez funcione.
+      const remoteProfileId = repos.settings.get('sync:remote-profile-id');
+      if (!remoteProfileId) {
+        this.logger.warn(
+          '[sync] vinculación de una versión anterior detectada — hay que volver a activar la sincronización',
+        );
+        repos.settings.delete('sync:session-token');
+        repos.settings.delete('sync:session-token-enc');
+        repos.settings.delete('sync:key-encrypted');
+        repos.settings.set('sync:last-seq', '0');
+        return false;
+      }
+
+      this.config = { sessionToken, syncKey, remoteProfileId, lastSeq };
 
       syncEvents.on('entity:changed', this.onEntityChanged);
       this.connect();
-      await this.pullChanges();
+      await this.syncAll();
       return true;
     } catch (err) {
       this.logger.warn('[sync] restoreFromStorage falló:', err);
@@ -137,11 +264,16 @@ export class SyncManager {
     repos.settings.delete('sync:session-token');
     repos.settings.delete('sync:session-token-enc');
     repos.settings.delete('sync:key-encrypted');
+    repos.settings.delete('sync:remote-profile-id');
     this.emitStatus();
   }
 
   getSessionToken(): string | null {
     return this.config?.sessionToken ?? null;
+  }
+
+  getRemoteProfileId(): string | null {
+    return this.config?.remoteProfileId ?? null;
   }
 
   /**
@@ -195,12 +327,23 @@ export class SyncManager {
       this.reconnectDelay = 1_000;
       this.ws!.send(JSON.stringify({ token: this.config!.sessionToken }));
       this.emitStatus();
+      // Al recuperar la conexión, vaciar lo que se encoló estando offline.
+      void this.flushPending();
     });
 
     this.ws.addEventListener('message', async (evt) => {
       try {
         const msg = JSON.parse(evt.data as string) as { type: string };
         if (msg.type === 'sync:changes') {
+          const changeMsg = msg as { type: string; profile_id?: string };
+          // El servidor avisa a todos los dispositivos del usuario; solo nos
+          // interesan los cambios de NUESTRO perfil remoto.
+          if (
+            changeMsg.profile_id &&
+            changeMsg.profile_id !== this.config?.remoteProfileId
+          ) {
+            return;
+          }
           if (!this.syncInProgress) {
             await this.pullChanges();
           } else {
@@ -277,35 +420,145 @@ export class SyncManager {
       return;
     }
 
-    await this.pushEntities([{
-      id: entityId,
-      entity_type: entityType,
-      data_ct: dataJson
-        ? encrypt(dataJson, this.config.syncKey).toString('base64')
-        : null,
-      updated_at: updatedAt,
-      deleted: data === null ? 1 : 0,
-    }]);
+    try {
+      await this.pushEntities([{
+        id: entityId,
+        entity_type: entityType,
+        data_ct: dataJson
+          ? encrypt(dataJson, this.config.syncKey).toString('base64')
+          : null,
+        updated_at: updatedAt,
+        deleted: data === null ? 1 : 0,
+      }]);
+    } catch (err) {
+      // Un fallo de red no puede perder la mutación: se encola para el
+      // siguiente flush, igual que si estuviéramos offline.
+      this.logger.warn(`[sync] push de ${entityType}/${entityId} falló, encolado:`, err);
+      this.getRepos().syncPending.upsert(entityType, entityId, dataJson, updatedAt);
+    }
   }
 
   private async pushEntities(entities: RemoteEntity[]): Promise<void> {
     if (!this.config || entities.length === 0) return;
 
-    const res = await fetch(`${SERVER_URL}/sync/entities`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${this.config.sessionToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ profile_id: this.config.profileId, entities }),
-    });
+    for (const batch of this.splitIntoBatches(entities)) {
+      const res = await fetch(`${SERVER_URL}/sync/entities`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${this.config.sessionToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          profile_id: this.config.remoteProfileId,
+          entities: batch,
+        }),
+      });
 
-    if (!res.ok) {
-      throw new Error(`Sync push failed: ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`Sync push failed: ${res.status}`);
+      }
     }
   }
 
+  /** Parte por número de entidades y por tamaño, lo que llegue antes. */
+  private splitIntoBatches(entities: RemoteEntity[]): RemoteEntity[][] {
+    const batches: RemoteEntity[][] = [];
+    let current: RemoteEntity[] = [];
+    let bytes = 0;
+
+    for (const entity of entities) {
+      const size = (entity.data_ct?.length ?? 0) + entity.id.length + 100;
+      if (current.length > 0 && (current.length >= PUSH_BATCH_SIZE || bytes + size > PUSH_BATCH_BYTES)) {
+        batches.push(current);
+        current = [];
+        bytes = 0;
+      }
+      current.push(entity);
+      bytes += size;
+    }
+    if (current.length > 0) batches.push(current);
+    return batches;
+  }
+
+  /**
+   * Sube el estado local completo. Se ejecuta al vincular el dispositivo, de
+   * modo que lo que ya había aquí llega al servidor y de ahí al resto de
+   * dispositivos. La fusión la resuelve el LWW por `updatedAt` de cada lado.
+   */
+  async pushAllLocal(): Promise<void> {
+    if (!this.config) return;
+    const repos = this.getRepos();
+    const key = this.config.syncKey;
+
+    const entities: RemoteEntity[] = [];
+    const add = (type: string, id: string, payload: object, updatedAt: number): void => {
+      entities.push({
+        id,
+        entity_type: type,
+        data_ct: encrypt(JSON.stringify(payload), key).toString('base64'),
+        updated_at: updatedAt,
+        deleted: 0,
+      });
+    };
+
+    try {
+      for (const ws of repos.workspaces.listAll()) {
+        const data = serializers['workspace']!.toSync(ws) as { updatedAt: number };
+        add('workspace', ws.id, data, data.updatedAt);
+      }
+
+      for (const node of repos.treeNodes.listAll()) {
+        const data = serializers['treenode']!.toSync(node) as { updatedAt: number };
+        add('treenode', node.id, data, data.updatedAt);
+      }
+
+      for (const fav of repos.favorites.list()) {
+        const data = serializers['favorite']!.toSync(fav) as { updatedAt: number };
+        add('favorite', fav.id, data, data.updatedAt);
+      }
+
+      for (const script of repos.userScripts.list()) {
+        const data = serializers['user_script']!.toSync(script) as { updatedAt: number };
+        add('user_script', script.id, data, data.updatedAt);
+      }
+
+      for (const exc of repos.adBlockerExceptions.listAll()) {
+        const data = serializers['adblocker_exception']!.toSync(exc) as { updatedAt: number };
+        add('adblocker_exception', exc.id, data, data.updatedAt);
+      }
+
+      for (const setting of repos.settings.listSyncable()) {
+        add(
+          'setting',
+          setting.key,
+          {
+            id: setting.key,
+            key: setting.key,
+            value: setting.value,
+            updatedAt: setting.updatedAt,
+          },
+          setting.updatedAt,
+        );
+      }
+
+      await this.pushEntities(entities);
+      this.logger.info(`[sync] push inicial: ${entities.length} entidades subidas`);
+    } catch (err) {
+      this.logger.warn('[sync] push inicial falló:', err);
+      return;
+    }
+
+    await this.pushVaultSnapshot();
+  }
+
   // ── Pull de cambios remotos ────────────────────────────────────────────────
+
+  /** Ciclo completo: entidades + vault + notas rápidas. */
+  async syncAll(): Promise<void> {
+    await this.pullChanges();
+    await this.pullVaultSnapshot();
+    await this.syncQuickNotes();
+  }
 
   async pullChanges(): Promise<void> {
     if (!this.config || this.syncInProgress) return;
@@ -315,13 +568,15 @@ export class SyncManager {
 
     try {
       const res = await fetch(
-        `${SERVER_URL}/sync/entities?profile_id=${this.config.profileId}&since_seq=${this.config.lastSeq}`,
+        `${SERVER_URL}/sync/entities?profile_id=${this.config.remoteProfileId}&since_seq=${this.config.lastSeq}`,
         { headers: { Authorization: `Bearer ${this.config.sessionToken}` } },
       );
 
       if (!res.ok) {
         if (res.status === 401) {
           this.events.emit('sync:session-expired' as any, { profileId: this.profileId });
+        } else {
+          this.logger.warn(`[sync] pull devolvió ${res.status}`);
         }
         return;
       }
@@ -428,8 +683,13 @@ export class SyncManager {
       deleted: p.data_json === null ? 1 : 0,
     }));
 
-    await this.pushEntities(entities);
-    this.getRepos().syncPending.clearAll();
+    try {
+      await this.pushEntities(entities);
+      this.getRepos().syncPending.clearAll();
+    } catch (err) {
+      // La cola se conserva para el siguiente intento.
+      this.logger.warn('[sync] flush de la cola offline falló:', err);
+    }
   }
 
   // ── Registro del perfil ────────────────────────────────────────────────────
@@ -437,10 +697,13 @@ export class SyncManager {
   private async registerProfile(): Promise<void> {
     if (!this.config) return;
 
-    const repos = this.getRepos();
-    // El nombre del perfil es un ajuste global; usamos un placeholder cifrado.
-    const namePlaceholder = `profile-${this.profileId}`;
-    const nameCt = encrypt(namePlaceholder, this.config.syncKey).toString('base64');
+    // El nombre viaja cifrado: el servidor no debe poder leerlo. Sirve para
+    // que al vincular un segundo dispositivo el usuario reconozca su perfil.
+    const payload = JSON.stringify({
+      name: this.getProfileName?.() ?? 'Perfil',
+      host: os.hostname(),
+    });
+    const nameCt = encrypt(payload, this.config.syncKey).toString('base64');
 
     await fetch(`${SERVER_URL}/sync/profiles`, {
       method: 'POST',
@@ -448,12 +711,10 @@ export class SyncManager {
         Authorization: `Bearer ${this.config.sessionToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ id: this.config.profileId, name_ct: nameCt }),
+      body: JSON.stringify({ id: this.config.remoteProfileId, name_ct: nameCt }),
     }).catch((err) => {
       this.logger.warn('[sync] register profile failed:', err);
     });
-
-    void repos; // evitar warning de unused
   }
 
   // ── Vault ──────────────────────────────────────────────────────────────────
@@ -470,7 +731,7 @@ export class SyncManager {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        profile_id: this.config.profileId,
+        profile_id: this.config.remoteProfileId,
         vault_ct: vaultCt,
         updated_at: updatedAt,
       }),
@@ -481,7 +742,7 @@ export class SyncManager {
     if (!this.config) return null;
 
     const res = await fetch(
-      `${SERVER_URL}/sync/vault?profile_id=${this.config.profileId}`,
+      `${SERVER_URL}/sync/vault?profile_id=${this.config.remoteProfileId}`,
       { headers: { Authorization: `Bearer ${this.config.sessionToken}` } },
     );
 
@@ -494,6 +755,47 @@ export class SyncManager {
     } catch (e) {
       this.logger.warn('[sync] vault decrypt failed:', e);
       return null;
+    }
+  }
+
+  /**
+   * Sube el vault entero como un único blob cifrado con la clave de sync.
+   * Las entradas viajan descifradas DENTRO del blob porque en cada dispositivo
+   * están cifradas con la clave de su propio perfil, que nunca sale de ahí.
+   */
+  async pushVaultSnapshot(): Promise<void> {
+    if (!this.config) return;
+    try {
+      const repos = this.getRepos();
+      const entries = repos.passwordVault.exportAll();
+      if (entries.length === 0) return;
+      await this.pushVault(
+        Buffer.from(JSON.stringify(entries), 'utf-8'),
+        repos.passwordVault.latestUpdatedAt() || Date.now(),
+      );
+    } catch (err) {
+      // Perfil bloqueado (sin clave en memoria) o red caída: no es fatal.
+      this.logger.warn('[sync] push del vault falló:', err);
+    }
+  }
+
+  /** Fusiona el vault remoto con el local, entrada a entrada y con LWW. */
+  async pullVaultSnapshot(): Promise<void> {
+    if (!this.config) return;
+    try {
+      const blob = await this.pullVault();
+      if (!blob) return;
+      const entries = JSON.parse(blob.toString('utf-8')) as PasswordEntry[];
+      const repos = this.getRepos();
+      for (const entry of entries) {
+        try {
+          repos.passwordVault.syncUpsert(entry);
+        } catch (e) {
+          this.logger.warn(`[sync] entrada de vault descartada ${entry?.id}:`, e);
+        }
+      }
+    } catch (err) {
+      this.logger.warn('[sync] pull del vault falló:', err);
     }
   }
 
@@ -511,7 +813,7 @@ export class SyncManager {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        profile_id: this.config.profileId,
+        profile_id: this.config.remoteProfileId,
         doc_ct: docCt,
         updated_at: Date.now(),
       }),
@@ -522,7 +824,7 @@ export class SyncManager {
     if (!this.config) return null;
 
     const res = await fetch(
-      `${SERVER_URL}/sync/ydocs/${workspaceId}?profile_id=${this.config.profileId}`,
+      `${SERVER_URL}/sync/ydocs/${workspaceId}?profile_id=${this.config.remoteProfileId}`,
       { headers: { Authorization: `Bearer ${this.config.sessionToken}` } },
     );
 
@@ -534,6 +836,25 @@ export class SyncManager {
       return decrypt(Buffer.from(doc_ct, 'base64'), this.config.syncKey);
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Fusiona las notas rápidas de todos los workspaces. El merge lo resuelve
+   * Yjs (CRDT), así que no hay pérdida aunque se editen en dos sitios a la vez.
+   */
+  async syncQuickNotes(): Promise<void> {
+    if (!this.config) return;
+    const repos = this.getRepos();
+    // Import diferido: yjs-sync importa este módulo para su tipo, y cargarlo
+    // arriba crearía un ciclo en tiempo de carga.
+    const { loadYDocWithSync } = await import('./yjs-sync');
+    for (const ws of repos.workspaces.listAll()) {
+      try {
+        await loadYDocWithSync(this.profileId, ws.id, repos, this);
+      } catch (err) {
+        this.logger.warn(`[sync] notas de ${ws.id} no sincronizadas:`, err);
+      }
     }
   }
 
