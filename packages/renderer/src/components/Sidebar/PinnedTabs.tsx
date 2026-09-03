@@ -1,18 +1,17 @@
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
-import type { CSSProperties } from 'react';
-import type { MenuItemSpec, SidebarMode, TabNode } from '@vela/shared';
+import { useState, type CSSProperties } from 'react';
+import type { SidebarMode, TabNode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { Favicon } from './Favicon';
+import { InlineRename } from './InlineRename';
 import { selectPinnedTabs } from './flatList';
 import {
   encodeDroppableId,
   PINNED_TARGET_ID,
   type DropZone,
 } from './dropValidation';
-import { showContextMenu } from '../../lib/contextMenu';
-import { writeToClipboard } from '../../lib/clipboard';
-import { toast } from '../../stores/toastStore';
+import { showTabContextMenu } from './tabContextMenu';
 import type { ActiveDrop } from './types';
 
 interface PinnedTabsProps {
@@ -60,7 +59,8 @@ function PinnedTab({
   });
 
   const activateTab = useRuntimeStore((s) => s.activateTab);
-  const closeTab = useRuntimeStore((s) => s.closeTab);
+  const renameNode = useTreeStore((s) => s.renameNode);
+  const [renaming, setRenaming] = useState(false);
 
   const title = node.name || node.originalTitle || node.url;
   const dropZone = activeDrop?.targetId === node.id ? activeDrop.zone : null;
@@ -74,27 +74,30 @@ function PinnedTab({
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const items: MenuItemSpec[] = [
-      { type: 'normal', id: 'unpin', label: 'Unpin' },
-      { type: 'normal', id: 'copy-url', label: 'Copiar enlace' },
-      { type: 'normal', id: 'duplicate', label: 'Duplicar' },
-      { type: 'normal', id: 'close', label: 'Cerrar' },
-    ];
-    void showContextMenu(items, {
-      unpin: () => void window.api.tab.unpin({ id: node.id }),
-      'copy-url': () => {
-        void writeToClipboard(node.url).then(() => {
-          toast('Enlace copiado al portapapeles', 'success');
-        });
-      },
-      duplicate: () =>
-        void window.api.window.openUrlInNewTab({
-          url: node.url,
-          parentId: null,
-          activate: true,
-        }),
-      close: () => closeTab(node.id),
+    void showTabContextMenu({
+      node,
+      isActive,
+      onRename: () => setRenaming(true),
     });
+  }
+
+  if (renaming) {
+    return (
+      <div
+        className="flex h-8 shrink-0 items-center"
+        style={{ width: 140 }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <InlineRename
+          initial={node.name ?? node.originalTitle ?? ''}
+          onCommit={(next) => {
+            void renameNode({ id: node.id, name: next });
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -104,6 +107,7 @@ function PinnedTab({
       {...drag.attributes}
       onClick={() => void activateTab(node.id)}
       onContextMenu={handleContextMenu}
+      onDoubleClick={(e) => { e.preventDefault(); setRenaming(true); }}
       title={title}
       className="relative flex shrink-0 cursor-default items-center justify-center rounded-md hover:bg-[var(--vela-bg-row-hover)]"
       style={{

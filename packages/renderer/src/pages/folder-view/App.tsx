@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { IPC_EVENTS, isFolderLike } from '@vela/shared';
 import type { TabNode, TreeNode } from '@vela/shared';
 import { themeManager } from '../../shared-ui/theme';
@@ -34,9 +34,123 @@ function FaviconImg({ src, fallback, size }: { src: string | null; fallback: str
   );
 }
 
+// ─── editor de nombre en línea ─────────────────────────────────────────────────
+
+const miniBtn = (primary?: boolean): React.CSSProperties => ({
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  padding: 3, borderRadius: 5, cursor: 'default', flexShrink: 0,
+  border: `1px solid ${primary ? 'var(--vela-accent)' : 'var(--vela-border)'}`,
+  background: primary ? 'var(--vela-accent)' : 'var(--vela-bg-row-hover)',
+  color: primary ? '#fff' : 'var(--vela-fg)',
+});
+
+/**
+ * Input de renombrado. Guarda con Enter, clic en ✓ o al perder el foco;
+ * cancela con Escape o clic en ✕. Un nombre vacío guarda `null`, que en las
+ * pestañas restaura el título original de la página.
+ */
+function InlineNameEditor({ value, fontSize, layout, onSave, onCancel }: {
+  value: string;
+  fontSize: number;
+  layout: 'row' | 'stack';
+  onSave: (name: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const skipBlurRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => { inputRef.current?.select(); }, []);
+
+  const commit = useCallback(() => {
+    skipBlurRef.current = true;
+    const next = draft.trim();
+    if (next === value) { onCancel(); return; }
+    onSave(next === '' ? null : next);
+  }, [draft, value, onSave, onCancel]);
+
+  const cancel = useCallback(() => {
+    skipBlurRef.current = true;
+    onCancel();
+  }, [onCancel]);
+
+  const buttons = (
+    <>
+      <button
+        type="button" title="Guardar"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => { e.stopPropagation(); commit(); }}
+        style={miniBtn(true)}
+      >
+        <IcoCheck />
+      </button>
+      <button
+        type="button" title="Cancelar"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => { e.stopPropagation(); cancel(); }}
+        style={miniBtn(false)}
+      >
+        <IcoX />
+      </button>
+    </>
+  );
+
+  const input = (
+    <input
+      ref={inputRef}
+      type="text"
+      value={draft}
+      autoFocus
+      onChange={(e) => setDraft(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      }}
+      onBlur={() => {
+        if (skipBlurRef.current) { skipBlurRef.current = false; return; }
+        commit();
+      }}
+      style={{
+        flex: layout === 'row' ? 1 : undefined,
+        width: layout === 'stack' ? '100%' : undefined,
+        minWidth: 0, boxSizing: 'border-box',
+        background: 'var(--vela-suggestion-bg)',
+        border: '1px solid var(--vela-accent)',
+        borderRadius: 5, padding: '2px 6px',
+        fontSize, fontWeight: 500, color: 'var(--vela-fg)', outline: 'none',
+      }}
+    />
+  );
+
+  if (layout === 'stack') {
+    return (
+      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+        {input}
+        <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>{buttons}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+      {input}
+      {buttons}
+    </div>
+  );
+}
+
 // ─── list item ────────────────────────────────────────────────────────────────
 
-function ListItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
+function ListItem({ node, editing, onClick, onStartEdit, onSaveName, onCancelEdit }: {
+  node: TreeNode;
+  editing: boolean;
+  onClick: () => void;
+  onStartEdit: () => void;
+  onSaveName: (name: string | null) => void;
+  onCancelEdit: () => void;
+}) {
   const [hovered, setHovered] = useState(false);
   const isFolder = isFolderLike(node);
   const tab = !isFolder && node.kind === 'tab' ? (node as TabNode) : null;
@@ -45,7 +159,7 @@ function ListItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
 
   return (
     <div
-      onClick={onClick}
+      onClick={editing ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -68,6 +182,15 @@ function ListItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
         </span>
       )}
 
+      {editing && tab ? (
+        <InlineNameEditor
+          value={tab.name ?? ''}
+          fontSize={13}
+          layout="row"
+          onSave={onSaveName}
+          onCancel={onCancelEdit}
+        />
+      ) : (
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 13, fontWeight: 500, color: 'var(--vela-fg)',
@@ -89,6 +212,18 @@ function ListItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
           </div>
         )}
       </div>
+      )}
+
+      {tab && !editing && (
+        <button
+          type="button"
+          title="Renombrar pestaña"
+          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+          style={{ ...miniBtn(false), visibility: hovered ? 'visible' : 'hidden' }}
+        >
+          <IcoPencil />
+        </button>
+      )}
 
       {isFolder && (
         <span style={{ fontSize: 14, color: 'var(--vela-fg-muted)', flexShrink: 0 }}>›</span>
@@ -99,7 +234,14 @@ function ListItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
 
 // ─── grid item ────────────────────────────────────────────────────────────────
 
-function GridItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
+function GridItem({ node, editing, onClick, onStartEdit, onSaveName, onCancelEdit }: {
+  node: TreeNode;
+  editing: boolean;
+  onClick: () => void;
+  onStartEdit: () => void;
+  onSaveName: (name: string | null) => void;
+  onCancelEdit: () => void;
+}) {
   const [hovered, setHovered] = useState(false);
   const isFolder = isFolderLike(node);
   const tab = !isFolder && node.kind === 'tab' ? (node as TabNode) : null;
@@ -108,7 +250,7 @@ function GridItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
 
   return (
     <div
-      onClick={onClick}
+      onClick={editing ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -136,7 +278,32 @@ function GridItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
           </span>
         )}
       </div>
+      {tab && !editing && (
+        <button
+          type="button"
+          title="Renombrar pestaña"
+          onClick={(e) => { e.stopPropagation(); onStartEdit(); }}
+          style={{
+            ...miniBtn(false), position: 'absolute', top: 6, right: 6,
+            background: 'var(--vela-bg-surface)',
+            visibility: hovered ? 'visible' : 'hidden',
+          }}
+        >
+          <IcoPencil />
+        </button>
+      )}
+
       <div style={{ padding: '9px 10px 8px' }}>
+        {editing && tab ? (
+          <InlineNameEditor
+            value={tab.name ?? ''}
+            fontSize={12}
+            layout="stack"
+            onSave={onSaveName}
+            onCancel={onCancelEdit}
+          />
+        ) : (
+        <>
         <div style={{
           fontSize: 12, fontWeight: 500, color: 'var(--vela-fg)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -155,6 +322,8 @@ function GridItem({ node, onClick }: { node: TreeNode; onClick: () => void }) {
           <div style={{ fontSize: 10, color: 'var(--vela-fg-muted)', marginTop: 3 }}>
             Carpeta
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
@@ -177,6 +346,31 @@ function IcoList() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
       <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+function IcoPencil() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function IcoCheck() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function IcoX() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
@@ -206,6 +400,12 @@ export function App() {
 
   const currentFolderId = folderStack[folderStack.length - 1] ?? rootFolderId;
 
+  // Edición inline del nombre de la carpeta
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const skipBlurRef = useRef(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
   // Load theme and data
   useEffect(() => {
     themeManager.initialize();
@@ -231,6 +431,36 @@ export function App() {
   const folderColor = currentFolder?.color ?? null;
   const folderName = currentFolder?.name ?? 'Carpeta';
   const folderIcon = currentFolder?.icon ?? null;
+  const canRename = !!currentFolder && isFolderLike(currentFolder);
+
+  const startEditName = useCallback(() => {
+    setNameDraft(currentFolder?.name ?? '');
+    skipBlurRef.current = false;
+    setEditingName(true);
+  }, [currentFolder?.name]);
+
+  const cancelEditName = useCallback(() => {
+    skipBlurRef.current = true;
+    setEditingName(false);
+  }, []);
+
+  const commitEditName = useCallback(async () => {
+    skipBlurRef.current = true;
+    setEditingName(false);
+    const next = nameDraft.trim();
+    if (!next || !currentFolderId || next === (currentFolder?.name ?? '')) return;
+    await window.api.node.rename({ id: currentFolderId, name: next });
+  }, [nameDraft, currentFolderId, currentFolder?.name]);
+
+  // Salir del modo edición si cambia la carpeta mostrada
+  useEffect(() => {
+    skipBlurRef.current = true;
+    setEditingName(false);
+  }, [currentFolderId]);
+
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.select();
+  }, [editingName]);
 
   const children = allNodes
     .filter((n) => n.parentId === currentFolderId)
@@ -245,6 +475,14 @@ export function App() {
       })
     : children;
 
+  // Renombrado de pestañas dentro de la carpeta
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+
+  const handleSaveNodeName = useCallback(async (id: string, name: string | null) => {
+    setEditingNodeId(null);
+    await window.api.node.rename({ id, name });
+  }, []);
+
   const handleItemClick = useCallback(async (node: TreeNode) => {
     if (node.kind === 'tab') {
       const tab = node as TabNode;
@@ -255,12 +493,14 @@ export function App() {
     } else {
       setFolderStack((prev) => [...prev, node.id]);
       setQuery('');
+      setEditingNodeId(null);
     }
   }, [workspaceId]);
 
   const handleBack = useCallback(() => {
     setFolderStack((prev) => prev.slice(0, -1));
     setQuery('');
+    setEditingNodeId(null);
   }, []);
 
   const canGoBack = folderStack.length > 1;
@@ -299,15 +539,76 @@ export function App() {
             ← Volver
           </button>
         )}
-        <h1 style={{
-          margin: 0, fontSize: 20, fontWeight: 600,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28 }}>
           {folderIcon && (
-            <span style={{ fontSize: 20, lineHeight: 1, userSelect: 'none' }}>{folderIcon}</span>
+            <span style={{ fontSize: 20, lineHeight: 1, userSelect: 'none', flexShrink: 0 }}>{folderIcon}</span>
           )}
-          {folderName}
-        </h1>
+
+          {editingName ? (
+            <>
+              <input
+                ref={nameInputRef}
+                type="text"
+                value={nameDraft}
+                autoFocus
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void commitEditName(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); cancelEditName(); }
+                }}
+                onBlur={() => {
+                  if (skipBlurRef.current) { skipBlurRef.current = false; return; }
+                  void commitEditName();
+                }}
+                style={{
+                  flex: 1, minWidth: 0,
+                  background: 'var(--vela-suggestion-bg)',
+                  border: '1px solid var(--vela-accent)',
+                  borderRadius: 6, padding: '3px 8px',
+                  fontSize: 20, fontWeight: 600, lineHeight: 1.2,
+                  color: 'var(--vela-fg)', outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                title="Guardar"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void commitEditName()}
+                style={{ ...iconBtn(true), flexShrink: 0 }}
+              >
+                <IcoCheck />
+              </button>
+              <button
+                type="button"
+                title="Cancelar"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cancelEditName}
+                style={{ ...iconBtn(false), flexShrink: 0 }}
+              >
+                <IcoX />
+              </button>
+            </>
+          ) : (
+            <>
+              <h1 style={{
+                margin: 0, fontSize: 20, fontWeight: 600, flex: 1, minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {folderName}
+              </h1>
+              {canRename && (
+                <button
+                  type="button"
+                  title="Editar nombre"
+                  onClick={startEditName}
+                  style={{ ...iconBtn(false), flexShrink: 0 }}
+                >
+                  <IcoPencil />
+                </button>
+              )}
+            </>
+          )}
+        </div>
         <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--vela-fg-muted)' }}>
           {filtered.length} {filtered.length === 1 ? 'elemento' : 'elementos'}
         </p>
@@ -352,12 +653,28 @@ export function App() {
           </div>
         ) : viewMode === 'list' ? (
           filtered.map((node) => (
-            <ListItem key={node.id} node={node} onClick={() => void handleItemClick(node)} />
+            <ListItem
+              key={node.id}
+              node={node}
+              editing={editingNodeId === node.id}
+              onClick={() => void handleItemClick(node)}
+              onStartEdit={() => setEditingNodeId(node.id)}
+              onSaveName={(name) => void handleSaveNodeName(node.id, name)}
+              onCancelEdit={() => setEditingNodeId(null)}
+            />
           ))
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, padding: 20 }}>
             {filtered.map((node) => (
-              <GridItem key={node.id} node={node} onClick={() => void handleItemClick(node)} />
+              <GridItem
+                key={node.id}
+                node={node}
+                editing={editingNodeId === node.id}
+                onClick={() => void handleItemClick(node)}
+                onStartEdit={() => setEditingNodeId(node.id)}
+                onSaveName={(name) => void handleSaveNodeName(node.id, name)}
+                onCancelEdit={() => setEditingNodeId(null)}
+              />
             ))}
           </div>
         )}

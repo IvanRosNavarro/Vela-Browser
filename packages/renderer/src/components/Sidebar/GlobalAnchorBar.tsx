@@ -12,13 +12,12 @@ import {
 import { generateKeyBetween } from 'fractional-indexing';
 import { useCallback, useState } from 'react';
 import type { CSSProperties } from 'react';
-import type { MenuItemSpec, TabNode } from '@vela/shared';
+import type { TabNode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
-import { showContextMenu } from '../../lib/contextMenu';
-import { writeToClipboard } from '../../lib/clipboard';
-import { toast } from '../../stores/toastStore';
+import { showTabContextMenu } from './tabContextMenu';
 import { Favicon } from './Favicon';
+import { InlineRename } from './InlineRename';
 import { ANCHOR_TARGET_ID, encodeDroppableId } from './dropValidation';
 import type { ActiveDrop } from './types';
 
@@ -30,7 +29,9 @@ interface AnchorItemProps {
 
 function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
   const reorderNode = useTreeStore((s) => s.reorderNode);
+  const renameNode = useTreeStore((s) => s.renameNode);
   const activateTab = useRuntimeStore((s) => s.activateTab);
+  const [renaming, setRenaming] = useState(false);
 
   const drag = useDraggable({
     id: node.id,
@@ -61,43 +62,30 @@ function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const items: MenuItemSpec[] = [
-      ...(node.anchoredUrl !== null
-        ? [
-          { type: 'normal' as const, id: 'restore-anchor', label: 'Restaurar Ancla' },
-          { type: 'normal' as const, id: 'replace-anchor', label: 'Reemplazar Ancla' },
-          { type: 'separator' as const },
-        ]
-        : []),
-      { type: 'normal' as const, id: 'rename', label: 'Renombrar' },
-      { type: 'normal' as const, id: 'copy-url', label: 'Copiar enlace' },
-      { type: 'normal' as const, id: 'duplicate', label: 'Duplicar' },
-      { type: 'separator' as const },
-      { type: 'normal' as const, id: 'remove', label: 'Levar Ancla' },
-    ];
-    void showContextMenu(items, {
-      'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
-      'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
-      'copy-url': () => {
-        void writeToClipboard(node.url).then(() => {
-          toast('Enlace copiado al portapapeles', 'success');
-        });
-      },
-      duplicate: () =>
-        void window.api.window.openUrlInNewTab({
-          url: node.url,
-          parentId: null,
-          activate: true,
-        }),
-      rename: async () => {
-        const currentTitle = node.name || node.originalTitle || '';
-        const newTitle = prompt('Nuevo nombre:', currentTitle);
-        if (newTitle !== null && newTitle !== currentTitle) {
-          await window.api.node.rename({ id: node.id, name: newTitle });
-        }
-      },
-      remove: () => void window.api.tab.unanchor({ id: node.id }),
+    void showTabContextMenu({
+      node,
+      isActive,
+      onRename: () => setRenaming(true),
     });
+  }
+
+  if (renaming) {
+    return (
+      <div
+        className="flex h-8 shrink-0 items-center"
+        style={{ width: 140 }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <InlineRename
+          initial={node.name ?? node.originalTitle ?? ''}
+          onCommit={(next) => {
+            void renameNode({ id: node.id, name: next });
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      </div>
+    );
   }
 
   const fallbackChar = (title || node.url).charAt(0) || '·';
@@ -112,6 +100,7 @@ function AnchorItem({ node, isActive, isDragTarget }: AnchorItemProps) {
       title={tooltip}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
+      onDoubleClick={(e) => { e.preventDefault(); setRenaming(true); }}
       onKeyDown={(e) => { if (e.key === 'Enter') handleClick(); }}
       className="relative flex shrink-0 cursor-default items-center justify-center rounded-md hover:bg-[var(--vela-bg-row-hover)]"
       style={{

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { generateKeyBetween } from 'fractional-indexing';
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { SidebarMode, TabNode } from '@vela/shared';
 import { useNodeDrag } from './useNodeDrag';
 import { useNodeDrop } from './useNodeDrop';
@@ -9,32 +8,12 @@ import velaIcon from '../../assets/vela-icon.png';
 import { InlineRename } from './InlineRename';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { useTreeStore } from '../../stores/treeStore';
-import { useWorkspacesStore } from '../../stores/workspacesStore';
 import { useMediaStore } from '../../stores/mediaStore';
 import { toast } from '../../stores/toastStore';
-import { call, IpcError } from '../../lib/ipc';
-import { showContextMenu } from '../../lib/contextMenu';
-import { writeToClipboard } from '../../lib/clipboard';
-import { useSidebarStore } from '../../stores/sidebarStore';
-import type { MenuItemSpec } from '@vela/shared';
+import { showTabContextMenu } from './tabContextMenu';
 import type { ActiveDrop } from './types';
 import type { DropZone } from './dropValidation';
 import { useSettings } from '../../pages/settings/lib/useSettings';
-
-async function pinWithToast(id: string): Promise<void> {
-  try {
-    await call(() => window.api.tab.pin({ id }));
-  } catch (err) {
-    if (err instanceof IpcError && err.details === 'CANNOT_PIN_NESTED_TAB') {
-      toast(
-        'No se puede fijar una pestaña dentro de una carpeta',
-        'warning',
-      );
-      return;
-    }
-    throw err;
-  }
-}
 
 interface TabRowProps {
   node: TabNode;
@@ -86,7 +65,6 @@ export function TabRow({
   const drag = useNodeDrag(node);
   const drop = useNodeDrop(node);
   const [renaming, setRenaming] = useState(false);
-  const [isPermanentlyWhitelisted, setIsPermanentlyWhitelisted] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
 
   const activateTab = useRuntimeStore((s) => s.activateTab);
@@ -101,16 +79,6 @@ export function TabRow({
     : undefined;
   const closeTab = useRuntimeStore((s) => s.closeTab);
   const renameNode = useTreeStore((s) => s.renameNode);
-  const deleteNode = useTreeStore((s) => s.deleteNode);
-  const createFolder = useTreeStore((s) => s.createFolder);
-  const moveNode = useTreeStore((s) => s.moveNode);
-  const workspaces = useWorkspacesStore((s) => s.workspaces);
-  const treeNodes = useTreeStore(
-    (s) => s.nodesByWorkspace[node.workspaceId] ?? [],
-  );
-
-  const isAnchor = useTreeStore((s) => s.anchoredTabs.some((t) => t.id === node.id));
-
   const compact = mode === 'compact';
   const title = useMemo(() => deriveTitle(node), [node]);
   const fallbackChar = title.charAt(0) || '·';
@@ -120,13 +88,6 @@ export function TabRow({
     activeDrop?.targetId === node.id && activeDrop.invalid;
 
   const opacity = drag.isDragging ? 0.4 : 1;
-
-  // Carga el estado de whitelist permanente al montar y cuando cambia el id
-  useEffect(() => {
-    void window.api.discard.getWhitelistStatus({ tabId: node.id }).then((res) => {
-      if (res.ok) setIsPermanentlyWhitelisted(res.data.permanent);
-    }).catch(() => {});
-  }, [node.id]);
 
   const rowStyle: CSSProperties = {
     height: rowHeight,
@@ -161,44 +122,6 @@ export function TabRow({
     void closeTab(node.id);
   }
 
-  async function addToNewFolder() {
-    const allNodes = useTreeStore.getState().nodesByWorkspace[node.workspaceId] ?? [];
-    const siblings = allNodes
-      .filter((n) => n.parentId === node.parentId)
-      .sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
-    const nodeIdx = siblings.findIndex((n) => n.id === node.id);
-    const nextSibling = siblings[nodeIdx + 1];
-    const folderPosition = generateKeyBetween(node.position, nextSibling?.position ?? null);
-
-    const newFolder = await createFolder({
-      workspaceId: node.workspaceId,
-      parentId: node.parentId,
-      name: 'Nueva carpeta',
-      position: folderPosition,
-    });
-
-    await moveNode({
-      id: node.id,
-      newParentId: newFolder.id,
-      newPosition: generateKeyBetween(null, null),
-    });
-
-    void activateTab(newFolder.id);
-    useSidebarStore.getState().setPendingRenameId(newFolder.id);
-  }
-
-  function siblingsOf(parentId: string | null) {
-    return treeNodes
-      .filter((n) => n.parentId === parentId && n.id !== node.id)
-      .sort((a, b) =>
-        a.position < b.position ? -1 : a.position > b.position ? 1 : 0,
-      );
-  }
-
-  function siblingTabsOf(parentId: string | null) {
-    return treeNodes.filter((n) => n.parentId === parentId && n.kind === 'tab' && n.id !== node.id);
-  }
-
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -209,186 +132,10 @@ export function TabRow({
       void window.api.tabPreview.hide({ windowId: currentWindowId });
     }
 
-    async function moveToWorkspaceRoot() {
-      const allNodes = useTreeStore.getState().nodesByWorkspace[node.workspaceId] ?? [];
-      const rootNodes = allNodes.filter((n) => n.parentId === null);
-      const lastPos = rootNodes.length > 0
-        ? rootNodes.reduce((max, n) => (n.position > max ? n.position : max), rootNodes[0]!.position)
-        : null;
-      await call(() => window.api.node.move({ id: node.id, newParentId: null, newPosition: generateKeyBetween(lastPos, null), newWorkspaceId: node.workspaceId }));
-    }
-
-    const otherWorkspaces = workspaces.filter((w) => w.id !== node.workspaceId);
-    const moveSubmenu: MenuItemSpec[] =
-      otherWorkspaces.length === 0
-        ? [{ type: 'normal', id: 'noop:no-other-workspaces', label: '(solo hay un workspace)', enabled: false }]
-        : otherWorkspaces.map((w) => ({
-            type: 'normal' as const,
-            id: `move-to-workspace:${w.id}`,
-            label: w.name,
-            enabled: true,
-          }));
-
-    const discardSection: MenuItemSpec[] = node.discarded
-      ? [
-          { type: 'separator' },
-          { type: 'normal', id: 'restore-tab', label: 'Reactivar esta pestaña' },
-          { type: 'normal', id: 'restore-workspace', label: 'Reactivar todas las pestañas del workspace' },
-        ]
-      : [
-          { type: 'separator' },
-          { type: 'normal', id: 'discard-tab', label: 'Suspender esta pestaña', enabled: !isActive },
-          ...(node.parentId
-            ? [{ type: 'normal' as const, id: 'discard-folder', label: 'Suspender todas las pestañas de esta carpeta' }]
-            : []),
-          { type: 'normal', id: 'discard-workspace', label: 'Suspender todas las pestañas del workspace' },
-          {
-            type: 'normal',
-            id: 'toggle-permanent-whitelist',
-            label: isPermanentlyWhitelisted
-              ? '✓ Mantener siempre activa'
-              : 'Mantener siempre activa',
-          },
-        ];
-
-    const items: MenuItemSpec[] = [
-      { type: 'normal', id: 'rename', label: 'Renombrar' },
-      { type: 'normal', id: 'close', label: 'Cerrar' },
-      { type: 'normal', id: 'close-others', label: 'Cerrar otras (este nivel)' },
-      { type: 'normal', id: 'close-all', label: 'Cerrar todas' },
-      { type: 'separator' },
-      ...(!node.pinned
-        ? [{ type: 'normal' as const, id: 'pin', label: 'Estibar Carga' }]
-        : []),
-      ...(node.pinned
-        ? [{ type: 'normal' as const, id: 'unpin', label: 'Desestibar Carga' }]
-        : []),
-      ...(node.pinned && node.pinnedUrl ? [
-        { type: 'normal' as const, id: 'restore-pinned', label: 'Restaurar Carga' },
-        { type: 'normal' as const, id: 'replace-pinned', label: 'Reemplazar Carga' },
-      ] : []),
-      {
-        type: 'normal',
-        id: isAnchor ? 'remove-anchor' : 'add-anchor',
-        label: isAnchor ? 'Levar Ancla' : 'Anclar Ancla',
-        enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
-      },
-      ...(isAnchor && node.anchoredUrl ? [
-        { type: 'normal' as const, id: 'restore-anchor', label: 'Restaurar Ancla' },
-        { type: 'normal' as const, id: 'replace-anchor', label: 'Reemplazar Ancla' },
-      ] : []),
-      { type: 'normal', id: 'add-to-folder', label: 'Añadir a carpeta' },
-      { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
-      { type: 'separator' },
-      {
-        type: 'normal',
-        id: 'copy-url',
-        label: 'Copiar enlace',
-        enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
-      },
-      { type: 'normal', id: 'duplicate', label: 'Duplicar' },
-      {
-        type: 'normal',
-        id: 'open-secure',
-        label: 'Abrir en pestaña fantasma',
-        enabled: node.url.startsWith('http://') || node.url.startsWith('https://'),
-      },
-      { type: 'normal', id: 'open-blinded-window', label: 'Nueva ventana fantasma' },
-      { type: 'normal', id: 'delete', label: 'Eliminar' },
-      ...discardSection,
-    ];
-
-    const moveHandlers: Record<string, () => void> = {};
-    for (const w of otherWorkspaces) {
-      moveHandlers[`move-to-workspace:${w.id}`] = () => {
-        const targetNodes = useTreeStore
-          .getState()
-          .nodesByWorkspace[w.id] ?? [];
-        const rootNodes = targetNodes.filter((n) => n.parentId === null);
-        const lastPos = rootNodes.length > 0
-          ? rootNodes.reduce((max, n) => (n.position > max ? n.position : max), rootNodes[0]!.position)
-          : null;
-        const newPosition = generateKeyBetween(lastPos, null);
-        void call(() =>
-          window.api.node.move({
-            id: node.id,
-            newParentId: null,
-            newPosition,
-            newWorkspaceId: w.id,
-          }),
-        );
-      };
-    }
-
-    void showContextMenu(items, {
-      rename: () => setRenaming(true),
-      'add-to-folder': () => void addToNewFolder(),
-      close: () => closeTab(node.id),
-      'close-others': () => {
-        for (const s of siblingsOf(node.parentId)) {
-          if (s.kind === 'tab') void closeTab(s.id);
-        }
-      },
-      'close-all': () => {
-        for (const t of treeNodes) {
-          if (t.kind === 'tab') void closeTab(t.id);
-        }
-      },
-      pin: () => void (async () => {
-        if (node.parentId !== null) await moveToWorkspaceRoot();
-        await pinWithToast(node.id);
-      })(),
-      unpin: () => void window.api.tab.unpin({ id: node.id }),
-      'restore-pinned': () => void window.api.tab.restorePinnedUrl({ id: node.id }),
-      'replace-pinned': () => void window.api.tab.replacePinnedUrl({ id: node.id }),
-      'add-anchor': () => void (async () => {
-        if (node.parentId !== null) await moveToWorkspaceRoot();
-        await call(() => window.api.tab.anchor({ id: node.id }));
-      })(),
-      'remove-anchor': () => void window.api.tab.unanchor({ id: node.id }),
-      'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
-      'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
-      'copy-url': () => {
-        void writeToClipboard(node.url).then(() => {
-          toast('Enlace copiado al portapapeles', 'success');
-        });
-      },
-      duplicate: () =>
-        void window.api.window.openUrlInNewTab({
-          url: node.url,
-          parentId: node.parentId,
-        }),
-      'open-secure': () => void window.api.tab.createSecure({ url: node.url }),
-      'open-blinded-window': () => void window.api.window.openBlindedWindow(),
-      delete: () => void deleteNode({ id: node.id }),
-      // Discard actions
-      'discard-tab': () => {
-        void call(() => window.api.discard.discardTab({ tabId: node.id })).catch((err) => {
-          // El único fallo esperado es intentar suspender la tab activa (en
-          // esta u otra ventana): el main lo rechaza con INVARIANT.
-          if (err instanceof IpcError && err.code === 'INVARIANT') {
-            toast('No se puede suspender la pestaña activa. Cambia a otra primero.', 'warning');
-            return;
-          }
-          throw err;
-        });
-      },
-      'discard-folder': () => {
-        if (node.parentId) {
-          void call(() => window.api.discard.discardFolder({ folderId: node.parentId! }));
-        }
-      },
-      'discard-workspace': () =>
-        void call(() => window.api.discard.discardWorkspace({ workspaceId: node.workspaceId })),
-      'restore-tab': () => void call(() => window.api.discard.restoreTab({ tabId: node.id })),
-      'restore-workspace': () =>
-        void call(() => window.api.discard.restoreWorkspace({ workspaceId: node.workspaceId })),
-      'toggle-permanent-whitelist': () => {
-        void call(() => window.api.discard.togglePermanentWhitelist({ tabId: node.id })).then((res) => {
-          setIsPermanentlyWhitelisted(res.whitelisted);
-        });
-      },
-      ...moveHandlers,
+    void showTabContextMenu({
+      node,
+      isActive,
+      onRename: () => setRenaming(true),
     });
   }
 

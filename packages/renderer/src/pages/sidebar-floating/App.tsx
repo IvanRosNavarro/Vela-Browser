@@ -644,59 +644,6 @@ export function App() {
     });
   }
 
-  // ── Menú contextual de Ancla ──────────────────────────────────────────────
-  function makeAnchorContextMenu(node: TabNode) {
-    return (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: MenuItemSpec[] = [
-        ...(node.anchoredUrl !== null ? [
-          { type: 'normal' as const, id: 'restore-anchor', label: 'Restaurar Ancla' },
-          { type: 'normal' as const, id: 'replace-anchor', label: 'Reemplazar Ancla' },
-          { type: 'separator' as const },
-        ] : []),
-        { type: 'normal' as const, id: 'rename', label: 'Renombrar' },
-        { type: 'separator' as const },
-        { type: 'normal' as const, id: 'remove', label: 'Levar Ancla' },
-      ];
-      void showContextMenu(items, {
-        'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
-        'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
-        rename: async () => {
-          const current = node.name ?? node.originalTitle ?? '';
-          const next = prompt('Nuevo nombre:', current);
-          if (next !== null && next !== current) {
-            await window.api.node.rename({ id: node.id, name: next });
-          }
-        },
-        remove: () => void window.api.tab.unanchor({ id: node.id }),
-      });
-    };
-  }
-
-  // ── Menú contextual de Carga ──────────────────────────────────────────────
-  function makePinnedContextMenu(node: TabNode) {
-    return (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: MenuItemSpec[] = [
-        ...(node.pinnedUrl ? [
-          { type: 'normal' as const, id: 'restore-pinned', label: 'Restaurar Carga' },
-          { type: 'normal' as const, id: 'replace-pinned', label: 'Reemplazar Carga' },
-          { type: 'separator' as const },
-        ] : []),
-        { type: 'normal' as const, id: 'unpin', label: 'Desestibar Carga' },
-        { type: 'normal' as const, id: 'close', label: 'Cerrar' },
-      ];
-      void showContextMenu(items, {
-        'restore-pinned': () => void window.api.tab.restorePinnedUrl({ id: node.id }),
-        'replace-pinned': () => void window.api.tab.replacePinnedUrl({ id: node.id }),
-        unpin: () => void window.api.tab.unpin({ id: node.id }),
-        close: () => void window.api.tab.close({ id: node.id }),
-      });
-    };
-  }
-
   // ── Menú contextual de TAB (igual que TabRow.tsx) ─────────────────────────
   function makeTabContextMenu(node: TabNode) {
     return async (e: React.MouseEvent) => {
@@ -1120,7 +1067,7 @@ export function App() {
                       node={tab}
                       dragTarget={anchorDragTarget?.id === tab.id ? { zone: anchorDragTarget.zone } : null}
                       onActivate={() => void handleActivateTab(tab.id)}
-                      onContextMenu={makeAnchorContextMenu(tab)}
+                      onContextMenu={makeTabContextMenu(tab)}
                     />
                   ))}
                 </div>
@@ -1180,7 +1127,7 @@ export function App() {
                         node={tab}
                         activeDrop={activeDrop}
                         onActivate={() => void handleActivateTab(tab.id)}
-                        onContextMenu={makePinnedContextMenu(tab)}
+                        onContextMenu={makeTabContextMenu(tab)}
                       />
                     ))}
                   </div>
