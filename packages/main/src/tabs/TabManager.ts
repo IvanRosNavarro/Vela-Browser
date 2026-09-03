@@ -440,7 +440,7 @@ export class TabManager {
     })();
 
     if (discardOnSwitch) {
-      this.discardAllTabsOf(state, { markDiscarded: true });
+      this.discardAllTabsOf(state, { markDiscarded: true, keepAnchored: true });
     } else {
       this.suspendTabsOf(state, previousWorkspaceId);
     }
@@ -530,9 +530,24 @@ export class TabManager {
     }
   }
 
+  /**
+   * IDs de las tabs ancladas (Anclas) del perfil de la ventana. Las Anclas
+   * son globales al perfil: se ven desde cualquier workspace, así que su
+   * WCV viaja con la ventana en vez de suspenderse o destruirse al cambiar
+   * de workspace. Si el perfil ya no está abierto, devuelve un set vacío.
+   */
+  private anchoredTabIdsFor(state: PerWindow): Set<string> {
+    try {
+      const repos = this.reposFor(state);
+      return new Set(repos.treeNodes.listAnchored().map((n) => n.id));
+    } catch {
+      return new Set<string>();
+    }
+  }
+
   private discardAllTabsOf(
     state: PerWindow,
-    opts: { markDiscarded: boolean },
+    opts: { markDiscarded: boolean; keepAnchored?: boolean },
   ): void {
     let repos: ProfileRepositories | null = null;
     if (opts.markDiscarded) {
@@ -543,7 +558,19 @@ export class TabManager {
         // los WCV se siguen destruyendo igual. Suficiente para detach.
       }
     }
+    // Las Anclas conservan su WCV vivo (y con él la sesión de la página)
+    // aunque el resto del workspace se descarte al cambiar de workspace.
+    const anchored = opts.keepAnchored
+      ? this.anchoredTabIdsFor(state)
+      : new Set<string>();
+    const kept = new Map<string, WebContentsView>();
+
     for (const [tabId, view] of state.tabs) {
+      if (anchored.has(tabId) && !this.secureTabs.has(tabId)) {
+        kept.set(tabId, view);
+        view.setBounds({ ...HIDDEN_BOUNDS });
+        continue;
+      }
       this.tabToWindow.delete(tabId);
       this.destroyView(state, view);
       if (repos) {
@@ -560,14 +587,31 @@ export class TabManager {
         }
       }
     }
-    state.tabs.clear();
-    state.mru.clear();
+    const keptMru = new MruStack<string>();
+    for (const tabId of [...state.mru.toArray()].reverse()) {
+      if (kept.has(tabId)) keptMru.push(tabId);
+    }
+    state.tabs = kept;
+    state.mru = keptMru;
     state.mruNav = null;
     state.activeTabId = null;
   }
 
   private suspendTabsOf(state: PerWindow, workspaceId: string): void {
+    // Las Anclas no se suspenden: su WCV sigue adjunto a la ventana (solo
+    // se oculta) para que al volver a ellas desde otro workspace se
+    // recupere la sesión viva — cookies de página, scroll, formularios a
+    // medio escribir — en vez de recargar la URL en un WCV nuevo.
+    const anchored = this.anchoredTabIdsFor(state);
+    const keptTabs = new Map<string, WebContentsView>();
+    const suspendedTabs = new Map<string, WebContentsView>();
+
     for (const [tabId, view] of state.tabs) {
+      if (anchored.has(tabId) && !this.secureTabs.has(tabId)) {
+        keptTabs.set(tabId, view);
+        view.setBounds({ ...HIDDEN_BOUNDS });
+        continue;
+      }
       this.tabToWindow.delete(tabId);
       try {
         if (!state.window.isDestroyed()) {
@@ -576,16 +620,35 @@ export class TabManager {
       } catch (err) {
         this.ctx.logger.warn('[tabs] removeChildView (suspend) falló', err);
       }
+      suspendedTabs.set(tabId, view);
     }
+
+    // toArray() devuelve most-recent-first; se reconstruye de más antigua a
+    // más reciente para conservar el orden en cada pila.
+    const keptMru = new MruStack<string>();
+    const suspendedMru = new MruStack<string>();
+    for (const tabId of [...state.mru.toArray()].reverse()) {
+      if (keptTabs.has(tabId)) keptMru.push(tabId);
+      else if (suspendedTabs.has(tabId)) suspendedMru.push(tabId);
+    }
+
     const key = `${state.windowId}:${workspaceId}`;
-    this.suspendedWorkspaces.set(key, {
-      tabs: new Map(state.tabs),
-      activeTabId: state.activeTabId,
-      mru: state.mru,
-      mruNav: state.mruNav,
-    });
-    state.tabs.clear();
-    state.mru = new MruStack<string>();
+    if (suspendedTabs.size > 0) {
+      this.suspendedWorkspaces.set(key, {
+        tabs: suspendedTabs,
+        activeTabId:
+          state.activeTabId && suspendedTabs.has(state.activeTabId)
+            ? state.activeTabId
+            : null,
+        mru: suspendedMru,
+        mruNav: null,
+      });
+    } else {
+      this.suspendedWorkspaces.delete(key);
+    }
+
+    state.tabs = keptTabs;
+    state.mru = keptMru;
     state.mruNav = null;
     state.activeTabId = null;
   }
@@ -600,33 +663,47 @@ export class TabManager {
 
     this.suspendedWorkspaces.delete(key);
 
-    const survivingTabs = new Map<string, WebContentsView>();
+    // Las Anclas nunca se suspendieron: siguen en state.tabs y deben
+    // sobrevivir a la restauración, no ser sustituidas por ella.
+    const survivingTabs = new Map<string, WebContentsView>(state.tabs);
+    let restoredCount = 0;
     for (const [tabId, view] of suspended.tabs) {
+      if (survivingTabs.has(tabId)) continue;
       if (!view.webContents || view.webContents.isDestroyed()) {
         continue;
       }
       try {
         if (!state.window.isDestroyed()) {
           state.window.contentView.addChildView(view);
-          view.setBounds({ x: -20000, y: 0, width: 1, height: 1 });
+          view.setBounds({ ...HIDDEN_BOUNDS });
         }
         survivingTabs.set(tabId, view);
         this.tabToWindow.set(tabId, windowId);
+        restoredCount++;
       } catch (err) {
         this.ctx.logger.warn('[tabs] addChildView (restore) falló', err);
       }
     }
 
-    if (survivingTabs.size === 0) return false;
+    if (restoredCount === 0) return false;
 
     state.tabs = survivingTabs;
-    state.mru = suspended.mru;
+    // Anclas primero (más antiguas) y encima la MRU del workspace que vuelve,
+    // para que Ctrl+Tab siga ofreciendo sus tabs propias antes que las Anclas.
+    const mergedMru = new MruStack<string>();
+    for (const tabId of [...state.mru.toArray()].reverse()) {
+      if (survivingTabs.has(tabId)) mergedMru.push(tabId);
+    }
+    for (const tabId of [...suspended.mru.toArray()].reverse()) {
+      if (survivingTabs.has(tabId)) mergedMru.push(tabId);
+    }
+    state.mru = mergedMru;
     state.mruNav = suspended.mruNav;
 
     const restoredActiveId =
       suspended.activeTabId && survivingTabs.has(suspended.activeTabId)
         ? suspended.activeTabId
-        : survivingTabs.keys().next().value ?? null;
+        : [...suspended.tabs.keys()].find((id) => survivingTabs.has(id)) ?? null;
     state.activeTabId = restoredActiveId;
 
     this.recalculateBounds(windowId);
@@ -1119,6 +1196,30 @@ export class TabManager {
     if (!node.anchored) return node;
 
     const updated = repos.treeNodes.setAnchored(tabId, false);
+
+    // Al dejar de ser Ancla, la tab vuelve a pertenecer solo a su workspace.
+    // Si la ventana está mirando otro workspace, su WCV ya no puede seguir
+    // colgado de ella: se destruye y la tab queda descartada (se recargará
+    // al volver a su workspace). Sin esto, el WCV acabaría suspendido bajo
+    // un workspace que no es el suyo y activarlo violaría el invariante.
+    if (updated.workspaceId !== state.workspaceId && state.tabs.has(tabId)) {
+      const view = state.tabs.get(tabId)!;
+      this.destroyView(state, view);
+      state.tabs.delete(tabId);
+      this.tabToWindow.delete(tabId);
+      state.mru.remove(tabId);
+      if (state.activeTabId === tabId) state.activeTabId = null;
+      try {
+        repos.treeNodes.update(tabId, { discarded: true });
+      } catch (err) {
+        this.ctx.logger.warn(`[tabs] unanchorTab: marcar discarded falló (tab=${tabId})`, err);
+      }
+      this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
+        windowId: state.windowId,
+        tabId: state.activeTabId,
+      });
+    }
+
     this.ctx.events.emit(IPC_EVENTS.TREE_CHANGED, { workspaceId: updated.workspaceId });
     this.emitAnchoredTabsChanged(state.profileId, repos);
     return updated;
@@ -1247,7 +1348,7 @@ export class TabManager {
     const repos = this.reposFor(state);
     const node = repos.treeNodes.getById(tabId);
     if (!node || node.kind !== 'tab') return;
-    if (node.workspaceId !== state.workspaceId) return;
+    if (node.workspaceId !== state.workspaceId && !node.anchored) return;
 
     if (!state.tabs.has(tabId)) {
       this.spawnView(state, node);
@@ -2955,9 +3056,11 @@ export class TabManager {
     if (!target) return;
 
     // Marcar las demás como discarded para que la DB refleje que no están
-    // cargadas. La que vamos a abrir queda con discarded=false.
+    // cargadas. La que vamos a abrir queda con discarded=false. Las tabs que
+    // ya tienen WCV vivo en la ventana (Anclas, que no se suspenden al
+    // cambiar de workspace) sí están cargadas y no deben marcarse.
     for (const tab of tabs) {
-      if (tab.id === target.id) {
+      if (tab.id === target.id || state.tabs.has(tab.id)) {
         if (tab.discarded) {
           repos.treeNodes.update(tab.id, { discarded: false });
         }
@@ -2966,7 +3069,12 @@ export class TabManager {
       }
     }
 
-    this.spawnView(state, target);
+    // Si el target ya tiene WCV vivo (era un Ancla que viajó con la ventana)
+    // se reutiliza: crear otro perdería la sesión, que es justo lo que las
+    // Anclas evitan.
+    if (!state.tabs.has(target.id)) {
+      this.spawnView(state, target);
+    }
     // En el arranque (y al cambiar de workspace) la activación de la última
     // tab persistida no debe alterar la pila global: queremos preservar el
     // orden tal y como se guardó. La per-window se rellena con normalidad

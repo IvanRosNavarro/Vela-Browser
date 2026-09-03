@@ -106,7 +106,10 @@ export class DiscardManager {
       for (const node of allNodes) {
         if (node.kind !== 'tab') continue;
         if (node.discarded) continue;
-        if (noPinned && node.pinned) continue;
+        // Cargas (pinned) y Anclas (anchored) comparten el mismo guard: son
+        // las tabs que el usuario mantiene abiertas a propósito y cuyo estado
+        // (sesión, formularios) no debe perderse por inactividad.
+        if (noPinned && (node.pinned || node.anchored)) continue;
         if (!node.lastActiveAt || node.lastActiveAt >= now - timeoutMs) continue;
 
         // Solo descartar tabs con WCV vivo en runtime (en ventana o suspendido).

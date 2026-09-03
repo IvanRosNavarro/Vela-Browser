@@ -214,7 +214,7 @@ export function Tabs({ settings }: Props) {
           />
         </SettingRow>
         <SettingRow
-          label="No descartar pestañas fijadas"
+          label="No descartar Cargas ni Anclas"
         >
           <Toggle
             value={get<boolean>('tabs:discard-pinned', true)}
