@@ -12,7 +12,10 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY patches/ ./patches/
 COPY packages/sync-server/package.json ./packages/sync-server/
 
-RUN npm install -g pnpm && \
+# La versión de pnpm se fija a la del campo "packageManager" del package.json raíz.
+# Con un pnpm más nuevo, este intenta autoinstalarse esa versión (@pnpm/exe.linux-x64)
+# y --frozen-lockfile lo rechaza por no estar en pnpm-lock.yaml.
+RUN npm install -g pnpm@9.12.0 && \
     pnpm install --frozen-lockfile --filter @vela/sync-server...
 
 COPY packages/sync-server ./packages/sync-server/
