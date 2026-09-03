@@ -253,23 +253,41 @@ ipcRenderer.on('media:command', (_event, command: string) => {
 });
 
 // ─── Credential detection (password manager) ─────────────────────────────────
+// El submit se comunica al main de inmediato ("provisional"). Es el main quien
+// decide si la oferta de guardado llega a mostrarse, observando la navegación
+// posterior del WebContentsView — el único indicio fiable de que el login ha
+// funcionado. Antes las credenciales se retenían aquí hasta `beforeunload`, lo
+// que hacía que la oferta llegase al renderer justo mientras este procesaba la
+// navegación post-login y la perdiese.
 
-let detectedCreds: {
-  username: string;
-  password: string;
-  loginUrl: string;
-} | null = null;
+let credConfirmPoller: ReturnType<typeof setInterval> | null = null;
 
-let credDiscardTimer: ReturnType<typeof setTimeout> | null = null;
+function stopCredConfirmPoller(): void {
+  if (credConfirmPoller) clearInterval(credConfirmPoller);
+  credConfirmPoller = null;
+}
 
-function flushDetectedCreds(): void {
-  if (!detectedCreds) return;
-  if (credDiscardTimer) {
-    clearTimeout(credDiscardTimer);
-    credDiscardTimer = null;
-  }
-  ipcRenderer.send('vault:credentials-detected', detectedCreds);
-  detectedCreds = null;
+/**
+ * Logins SPA que no navegan ni tocan el historial: no hay ninguna señal de
+ * navegación que el main pueda observar, así que confirmamos aquí cuando el
+ * campo de contraseña desaparece del DOM (o se oculta), que es lo que hacen
+ * estos formularios al autenticar correctamente.
+ */
+function watchForFormDismissal(passwordField: HTMLInputElement): void {
+  stopCredConfirmPoller();
+  let ticks = 0;
+  credConfirmPoller = setInterval(() => {
+    ticks++;
+    // Solo desaparición real: un campo vaciado también es lo que hacen muchos
+    // formularios al rechazar la contraseña.
+    const gone = !passwordField.isConnected || passwordField.offsetParent === null;
+    if (gone) {
+      stopCredConfirmPoller();
+      ipcRenderer.send('vault:credentials-confirm');
+      return;
+    }
+    if (ticks >= 8) stopCredConfirmPoller(); // ~4 s
+  }, 500);
 }
 
 document.addEventListener(
@@ -295,22 +313,37 @@ document.addEventListener(
     const usernameField = inputs[inputs.length - 1] as HTMLInputElement | undefined;
     if (!usernameField?.value) return;
 
-    detectedCreds = {
+    ipcRenderer.send('vault:credentials-detected', {
       username: usernameField.value,
       password: passwordField.value,
       loginUrl: window.location.href,
-    };
+    });
 
-    // Heurística: si 10 segundos después del submit seguimos en la misma URL,
-    // es probable que haya un error → descartamos las credenciales.
-    if (credDiscardTimer) clearTimeout(credDiscardTimer);
-    credDiscardTimer = setTimeout(() => {
-      detectedCreds = null;
-      credDiscardTimer = null;
-    }, 10000);
+    watchForFormDismissal(passwordField);
   },
   true,
 );
+
+window.addEventListener('beforeunload', stopCredConfirmPoller);
+
+/**
+ * Un documento del frame principal sin campo de contraseña es la señal de que
+ * el login anterior salió bien: cubre los sitios que responden al submit
+ * recargando la misma URL, donde el main no puede distinguir el éxito del
+ * error solo por la navegación. El main ignora el aviso si esa pestaña no
+ * tenía credenciales a la espera.
+ */
+function reportNoPasswordForm(): void {
+  if (window.top !== window) return;
+  if (document.querySelector('input[type="password"]')) return;
+  ipcRenderer.send('vault:credentials-confirm');
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', reportNoPasswordForm, { once: true });
+} else {
+  reportNoPasswordForm();
+}
 
 // ─── Dirty form tracking (auto-discard exclusion) ─────────────────────────────
 // Reports to main whether the user has typed unsent data into a form field, so
@@ -356,26 +389,6 @@ document.addEventListener(
 
 // Submitting the form sends the data, so it's no longer "unsent".
 document.addEventListener('submit', () => setFormDirty(false), true);
-
-// Full-page navigation (traditional sites)
-window.addEventListener('beforeunload', flushDetectedCreds);
-
-// SPA client-side navigation: history.pushState doesn't fire beforeunload.
-// We inject into the main world so the patch runs in the page's own JS context
-// and relay the event back via a CustomEvent on the shared document.
-const PUSHSTATE_HOOK = `(function(){
-  if(window.__VELA_PUSHSTATE_HOOKED__)return;
-  window.__VELA_PUSHSTATE_HOOKED__=true;
-  var orig=history.pushState.bind(history);
-  history.pushState=function(){
-    document.dispatchEvent(new CustomEvent('__vela_pushstate__'));
-    return orig.apply(history,arguments);
-  };
-})()`;
-
-void webFrame.executeJavaScript(PUSHSTATE_HOOK).catch(() => { });
-
-document.addEventListener('__vela_pushstate__', flushDetectedCreds);
 
 // ─── WCV Mouse Gestures ───────────────────────────────────────────────────────
 // Relays right-button drag events to GestureRecognizer in main (no visual trail).

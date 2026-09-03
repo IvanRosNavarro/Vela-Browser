@@ -42,17 +42,23 @@ export function VaultButton({ url, editing }: Props) {
   const isVisible = useUrlBarStore((s) => s.isVisible('vault'));
   const setVisible = useUrlBarStore((s) => s.setVisible);
 
+  // Invalida las consultas de estado pendiente en vuelo: un evento push es
+  // siempre más reciente que una respuesta pedida antes de que llegara.
+  const pendingReqRef = useRef(0);
+
   // Single effect: resets + fetches on every URL change
   useEffect(() => {
-    setPendingCreds(false);
     setRecentMatch(false);
     setCredCount(0);
 
-    if (!isWebUrl(url)) return;
+    if (!isWebUrl(url)) {
+      setPendingCreds(false);
+      return;
+    }
 
     let domain = '';
-    try { domain = new URL(url).hostname; } catch { return; }
-    if (!domain) return;
+    try { domain = new URL(url).hostname; } catch { setPendingCreds(false); return; }
+    if (!domain) { setPendingCreds(false); return; }
 
     void window.api.vault.countForDomain({ domain }).then((res) => {
       if (!res.ok) return;
@@ -65,13 +71,34 @@ export function VaultButton({ url, editing }: Props) {
     });
   }, [url]);
 
+  // La oferta de guardado nace justo con la navegación post-login, así que el
+  // main es su fuente de verdad: se relee en cada cambio de URL o de pestaña en
+  // lugar de depender solo del evento push, que llegaría durante ese cambio.
+  useEffect(() => {
+    if (currentWindowId === null) return;
+    const reqId = ++pendingReqRef.current;
+    void window.api.vault.getPending({ windowId: currentWindowId }).then((res) => {
+      if (reqId !== pendingReqRef.current) return;
+      const info = res.ok ? res.data : null;
+      setPendingCreds(!!info && info.tabId === activeTabId);
+    });
+  }, [url, activeTabId, currentWindowId]);
+
   // Listen for newly detected credentials (form submit flow)
   useEffect(() => {
-    const unsub = window.api.on(IPC_EVENTS.VAULT_CREDENTIALS_PENDING, (payload) => {
-      if (payload.windowId === currentWindowId) setPendingCreds(true);
+    const unsubPending = window.api.on(IPC_EVENTS.VAULT_CREDENTIALS_PENDING, (payload) => {
+      if (payload.windowId !== currentWindowId) return;
+      if (payload.tabId !== activeTabId) return;
+      pendingReqRef.current++;
+      setPendingCreds(true);
     });
-    return unsub;
-  }, [currentWindowId]);
+    const unsubCleared = window.api.on(IPC_EVENTS.VAULT_PENDING_CLEARED, (payload) => {
+      if (payload.windowId !== currentWindowId) return;
+      pendingReqRef.current++;
+      setPendingCreds(false);
+    });
+    return () => { unsubPending(); unsubCleared(); };
+  }, [currentWindowId, activeTabId]);
 
   const handleClick = useCallback(async () => {
     if (!currentWindowId) return;

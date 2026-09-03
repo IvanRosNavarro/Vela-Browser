@@ -71,7 +71,7 @@ import type { RecentlyClosedTab } from './types/recentlyClosedTab';
 import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat } from './types/quickNote';
 import type { Favorite } from './types/favorite';
 import type { AdBlockerStatus } from './types/adblocker';
-import type { VaultEntry, VaultEntrySummary } from './types/vault';
+import type { VaultEntry, VaultEntrySummary, VaultPendingInfo } from './types/vault';
 import type { UserScript, UserScriptData, UserScriptMeta } from './types/userScript';
 import type { ResourcesSnapshot } from './types/tabResource';
 import type { AparejoId, AparejoStatus } from './types/aparejo';
@@ -654,7 +654,7 @@ export interface VaultApi {
   fill(input: { tabId: string; username: string; password: string }): Promise<IpcResponse<void>>;
   markUsed(input: { id: string }): Promise<IpcResponse<void>>;
   openSaveModal(input: { windowId: number; domain: string; loginUrl: string; username: string; password: string; hasExisting: boolean; existingId: string | null }): Promise<IpcResponse<void>>;
-  closeSaveModal(input: { windowId: number }): Promise<IpcResponse<void>>;
+  closeSaveModal(input: { windowId: number; decided?: boolean }): Promise<IpcResponse<void>>;
   openAutofillModal(input: { windowId: number; tabId: string; domain: string; anchorRect: { right: number; bottom: number } }): Promise<IpcResponse<void>>;
   closeAutofillModal(input: { windowId: number }): Promise<IpcResponse<void>>;
   isUnlocked(): Promise<IpcResponse<{ unlocked: boolean }>>;
@@ -665,6 +665,7 @@ export interface VaultApi {
   openManager(input: { windowId: number }): Promise<IpcResponse<void>>;
   openAndFill(input: { windowId: number; loginUrl: string; username: string; password: string }): Promise<IpcResponse<void>>;
   countForDomain(input: { domain: string }): Promise<IpcResponse<{ count: number }>>;
+  getPending(input: { windowId: number }): Promise<IpcResponse<VaultPendingInfo | null>>;
 }
 
 export interface HistoryApi {

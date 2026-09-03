@@ -298,6 +298,7 @@ export const IPC_CHANNELS = {
   VAULT_OPEN_MANAGER: 'vault:open-manager',
   VAULT_OPEN_AND_FILL: 'vault:open-and-fill',
   VAULT_COUNT_FOR_DOMAIN: 'vault:count-for-domain',
+  VAULT_GET_PENDING: 'vault:get-pending',
 
   SCRIPTS_LIST: 'scripts:list',
   SCRIPTS_ADD: 'scripts:add',
@@ -486,6 +487,7 @@ export const IPC_EVENTS = {
   ANCHORED_TABS_CHANGED: 'anchored-tabs-changed',
   ADBLOCKER_COUNT_UPDATED: 'state:adblocker-count-updated',
   VAULT_CREDENTIALS_PENDING: 'state:vault-credentials-pending',
+  VAULT_PENDING_CLEARED: 'state:vault-pending-cleared',
   SCRIPT_ERROR: 'state:script-error',
   APAREJOS_CHANGED: 'state:aparejos-changed',
   URLBAR_CONFIG_CHANGED: 'state:urlbar-config-changed',
@@ -595,6 +597,7 @@ export interface MainEventPayloads {
     hasExisting: boolean;
     existingId: string | null;
   };
+  [IPC_EVENTS.VAULT_PENDING_CLEARED]: { windowId: number };
   [IPC_EVENTS.SCRIPT_ERROR]: ScriptError;
   [IPC_EVENTS.APAREJOS_CHANGED]: { aparejos: AparejoStatus[] };
   [IPC_EVENTS.URLBAR_CONFIG_CHANGED]: { config: UrlBarIconConfig[] };

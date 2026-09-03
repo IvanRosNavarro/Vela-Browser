@@ -372,6 +372,7 @@ const api: PreloadApi = {
     openManager: (input) => call(IPC_CHANNELS.VAULT_OPEN_MANAGER, input),
     openAndFill: (input) => call(IPC_CHANNELS.VAULT_OPEN_AND_FILL, input),
     countForDomain: (input) => call(IPC_CHANNELS.VAULT_COUNT_FOR_DOMAIN, input),
+    getPending: (input) => call(IPC_CHANNELS.VAULT_GET_PENDING, input),
   },
   scripts: {
     list: () => call(IPC_CHANNELS.SCRIPTS_LIST),

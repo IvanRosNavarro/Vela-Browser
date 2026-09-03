@@ -8,6 +8,7 @@ import {
   type IpcResponse,
   type VaultEntry,
   type VaultEntrySummary,
+  type VaultPendingInfo,
 } from '@vela/shared';
 import type { IpcContext } from './context';
 import { getFrameContext, resolveWindowId } from './helpers';
@@ -40,6 +41,7 @@ const activeAutofillModals = new Map<number, BrowserWindow>();
 
 // Credenciales pendientes de guardar por ventana (en memoria).
 const pendingCredentials = new Map<number, {
+  tabId: string;
   domain: string;
   loginUrl: string;
   username: string;
@@ -48,7 +50,40 @@ const pendingCredentials = new Map<number, {
   existingId: string | null;
 }>();
 
+// Credenciales recién enviadas por un formulario, aún sin confirmar. No se
+// ofrecen al usuario hasta que la pestaña navega (o su formulario desaparece):
+// una contraseña rechazada no debe acabar en el vault.
+interface ProvisionalCredentials {
+  username: string;
+  password: string;
+  loginUrl: string;
+  dispose: () => void;
+}
+const provisionalCredentials = new Map<number, ProvisionalCredentials>();
+
+const PROVISIONAL_TTL_MS = 20_000;
+
+/** Compara origen + ruta: el query y el hash cambian en los redirects de error. */
+function samePage(a: string, b: string): boolean {
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    return ua.origin === ub.origin && ua.pathname === ub.pathname;
+  } catch {
+    return false;
+  }
+}
+
 export function registerVaultHandlers(ctx: IpcContext): void {
+
+  /** Descarta la oferta de guardado de una ventana y avisa a su renderer. */
+  function clearPending(windowId: number): void {
+    if (!pendingCredentials.delete(windowId)) return;
+    const win = BrowserWindow.fromId(windowId);
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC_EVENTS.VAULT_PENDING_CLEARED, { windowId });
+    }
+  }
 
   // ── vault:is-unlocked ──────────────────────────────────────────────────────
   ipcMain.handle(
@@ -318,7 +353,9 @@ export function registerVaultHandlers(ctx: IpcContext): void {
 
         const { profileId, repos } = getFrameContext(event, ctx);
         const glass = readGlass(repos);
-        pendingCredentials.set(parentWindowId, { domain, loginUrl, username, password, hasExisting, existingId });
+        const originTabId = ctx.tabManager.getActiveTabId(parentWindowId);
+        if (!originTabId) return { ok: true, data: undefined };
+        pendingCredentials.set(parentWindowId, { tabId: originTabId, domain, loginUrl, username, password, hasExisting, existingId });
 
         // Posición: esquina inferior derecha de la ventana padre
         const pos = parentWin.getBounds();
@@ -376,7 +413,6 @@ export function registerVaultHandlers(ctx: IpcContext): void {
           ctx.profileWindowManager.unregisterAuxiliaryWindow(modalWin.id);
           if (activeSaveModals.get(parentWindowId) === modalWin) {
             activeSaveModals.delete(parentWindowId);
-            pendingCredentials.delete(parentWindowId);
           }
         });
 
@@ -393,7 +429,10 @@ export function registerVaultHandlers(ctx: IpcContext): void {
     async (event, payload): Promise<IpcResponse<void>> => {
       try {
         guardTrustedFrame(event, IPC_CHANNELS.VAULT_CLOSE_SAVE_MODAL);
-        const { windowId } = payload as { windowId: number };
+        const { windowId, decided } = payload as { windowId: number; decided?: boolean };
+        // Solo una decisión explícita (guardar / no guardar) retira la oferta;
+        // si la modal se cierra por perder el foco, el icono la sigue ofreciendo.
+        if (decided) clearPending(windowId);
         const win = activeSaveModals.get(windowId);
         if (win && !win.isDestroyed()) win.close();
         return { ok: true, data: undefined };
@@ -613,47 +652,139 @@ export function registerVaultHandlers(ctx: IpcContext): void {
   );
 
   // ── vault:credentials-detected (from webTab preload, ipcMain.on) ───────────
-  // Solo almacena las credenciales pendientes y emite el evento al renderer.
-  // El usuario debe hacer clic en el icono de llave para abrir la modal.
+  // Llega en cuanto el usuario envía un formulario con contraseña. Todavía no
+  // sabemos si el login ha funcionado, así que la oferta queda en suspenso
+  // hasta que la pestaña navegue a otra página (o su formulario desaparezca,
+  // caso de los logins SPA que avisa `vault:credentials-confirm`).
   ipcMain.on('vault:credentials-detected', (event, payload: unknown) => {
     const data = payload as { username: string; password: string; loginUrl: string } | null;
     if (!data?.username || !data?.password || !data?.loginUrl) return;
 
-    const tabId = ctx.tabManager.getTabIdForWebContents(event.sender.id);
-    if (!tabId) return;
+    const wc = event.sender;
+    const wcId = wc.id;
 
-    const windowId = ctx.tabManager.getWindowIdForTab(tabId);
-    if (windowId === null) return;
+    // Un formulario nuevo reemplaza al anterior de la misma pestaña.
+    provisionalCredentials.get(wcId)?.dispose();
 
-    const profileId = ctx.profileWindowManager.getProfileForWindow(windowId);
-    if (!profileId) return;
+    const onNavigate = (_e: unknown, url: string): void => {
+      // Seguir en la misma página suele significar credenciales rechazadas;
+      // esperamos a una navegación real dentro del TTL.
+      if (samePage(url, data.loginUrl)) return;
+      confirmCredentials(wcId);
+    };
+    const onDestroyed = (): void => {
+      provisionalCredentials.get(wcId)?.dispose();
+    };
 
-    let domain = '';
-    try { domain = new URL(data.loginUrl).hostname; } catch { return; }
+    const timer = setTimeout(() => {
+      provisionalCredentials.get(wcId)?.dispose();
+    }, PROVISIONAL_TTL_MS);
 
-    const repos = ctx.profileManager.getRepositories(profileId);
-    const existing = repos.passwordVault.listForDomain(domain);
-    const match = existing.find((e) => e.username === data.username);
-
-    pendingCredentials.set(windowId, {
-      domain,
-      loginUrl: data.loginUrl,
+    provisionalCredentials.set(wcId, {
       username: data.username,
       password: data.password,
-      hasExisting: !!match,
-      existingId: match?.id ?? null,
+      loginUrl: data.loginUrl,
+      dispose: () => {
+        clearTimeout(timer);
+        provisionalCredentials.delete(wcId);
+        if (!wc.isDestroyed()) {
+          wc.off('did-navigate', onNavigate);
+          wc.off('did-navigate-in-page', onNavigate);
+          wc.off('destroyed', onDestroyed);
+        }
+      },
     });
 
-    ctx.events.emit(IPC_EVENTS.VAULT_CREDENTIALS_PENDING, {
-      windowId,
-      tabId,
-      domain,
-      loginUrl: data.loginUrl,
-      username: data.username,
-      hasExisting: !!match,
-      existingId: match?.id ?? null,
-    });
+    wc.on('did-navigate', onNavigate);
+    wc.on('did-navigate-in-page', onNavigate);
+    wc.once('destroyed', onDestroyed);
   });
+
+  // ── vault:credentials-confirm (from webTab preload, ipcMain.on) ────────────
+  // El formulario de login desapareció sin navegación: login SPA correcto.
+  ipcMain.on('vault:credentials-confirm', (event) => {
+    confirmCredentials(event.sender.id);
+  });
+
+  /**
+   * Convierte las credenciales provisionales de una pestaña en una oferta de
+   * guardado visible en la barra de direcciones.
+   */
+  function confirmCredentials(wcId: number): void {
+    const provisional = provisionalCredentials.get(wcId);
+    if (!provisional) return;
+    provisional.dispose();
+
+    try {
+      const tabId = ctx.tabManager.getTabIdForWebContents(wcId);
+      if (!tabId) return;
+
+      const windowId = ctx.tabManager.getWindowIdForTab(tabId);
+      if (windowId === null) return;
+
+      const profileId = ctx.profileWindowManager.getProfileForWindow(windowId);
+      if (!profileId) return;
+
+      let domain = '';
+      try { domain = new URL(provisional.loginUrl).hostname; } catch { return; }
+
+      const repos = ctx.profileManager.getRepositories(profileId);
+      const existing = repos.passwordVault.listForDomain(domain);
+      const match = existing.find((e) => e.username === provisional.username);
+
+      pendingCredentials.set(windowId, {
+        tabId,
+        domain,
+        loginUrl: provisional.loginUrl,
+        username: provisional.username,
+        password: provisional.password,
+        hasExisting: !!match,
+        existingId: match?.id ?? null,
+      });
+
+      ctx.events.emit(IPC_EVENTS.VAULT_CREDENTIALS_PENDING, {
+        windowId,
+        tabId,
+        domain,
+        loginUrl: provisional.loginUrl,
+        username: provisional.username,
+        hasExisting: !!match,
+        existingId: match?.id ?? null,
+      });
+    } catch {
+      // Perfil bloqueado o pestaña ya cerrada: no hay oferta que mostrar.
+    }
+  }
+
+  // ── vault:get-pending ─────────────────────────────────────────────────────
+  // El evento push llega durante la navegación post-login, justo cuando el
+  // renderer reinicia el estado del icono de llave por el cambio de URL. El
+  // botón lo vuelve a consultar en cada navegación para no perder la oferta.
+  ipcMain.handle(
+    IPC_CHANNELS.VAULT_GET_PENDING,
+    async (event, payload): Promise<IpcResponse<VaultPendingInfo | null>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.VAULT_GET_PENDING);
+        const { windowId } = payload as { windowId: unknown };
+        if (typeof windowId !== 'number') return { ok: true, data: null };
+        const creds = pendingCredentials.get(windowId);
+        if (!creds) return { ok: true, data: null };
+        return {
+          ok: true,
+          data: {
+            tabId: creds.tabId,
+            domain: creds.domain,
+            loginUrl: creds.loginUrl,
+            username: creds.username,
+            hasExisting: creds.hasExisting,
+            existingId: creds.existingId,
+          },
+        };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.VAULT_GET_PENDING);
+      }
+    },
+  );
 
   // ── vault:open-pending-save-modal ─────────────────────────────────────────
   // Abre la modal de guardado usando las credenciales pendientes almacenadas.
@@ -738,7 +869,6 @@ export function registerVaultHandlers(ctx: IpcContext): void {
           ctx.profileWindowManager.unregisterAuxiliaryWindow(modalWin.id);
           if (activeSaveModals.get(parentWindowId) === modalWin) {
             activeSaveModals.delete(parentWindowId);
-            pendingCredentials.delete(parentWindowId);
           }
         });
 

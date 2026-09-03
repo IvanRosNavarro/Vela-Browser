@@ -19,7 +19,6 @@ import { createMainWindow } from './window/createMainWindow';
 import { getAppIconPath } from './window/iconPath';
 import { EXTENSIONS_DIR, loadExtensions } from './extensions/loadExtensions';
 import { registerExtensionShortcuts } from './extensions/extensionCommands';
-import { attachServiceWorkerKeepAlive } from './extensions/serviceWorkerKeepAlive';
 import { initLogger, logger, closeLogger } from './logger';
 import { initStorage, getDb, closeStorage } from './storage/db';
 import { initUpdater, shutdownUpdater } from './updater';
@@ -166,7 +165,6 @@ function getOrCreateExtensions(ses: Session, win?: BrowserWindow): ElectronChrom
     });
     extensionsBySession.set(ses, ext);
     attachExtensionShortcutRefresh(ses);
-    attachServiceWorkerKeepAlive(ses);
 
     const eceAny = ext as unknown as Record<string, unknown>;
     const browserAction = (eceAny['api'] as Record<string, unknown> | undefined)?.['browserAction'] as

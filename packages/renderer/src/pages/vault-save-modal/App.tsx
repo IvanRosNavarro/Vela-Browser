@@ -34,11 +34,11 @@ export function App() {
     } else {
       await window.api.vault.save({ domain, loginUrl, username: currentUsername, password, folder });
     }
-    await window.api.vault.closeSaveModal({ windowId });
+    await window.api.vault.closeSaveModal({ windowId, decided: true });
   }, [currentUsername, password, folder, hasExisting, existingId]);
 
   const handleDismiss = useCallback(async () => {
-    await window.api.vault.closeSaveModal({ windowId });
+    await window.api.vault.closeSaveModal({ windowId, decided: true });
   }, []);
 
   const favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
@@ -132,7 +132,7 @@ export function App() {
           type="button"
           onMouseDown={(e) => { e.preventDefault(); }}
           onClick={() => void handleSave()}
-          disabled={saving}
+          disabled={saving || password === ''}
           style={btnPrimaryStyle}
         >
           {hasExisting ? 'Actualizar' : 'Guardar'}
