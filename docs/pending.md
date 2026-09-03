@@ -35,11 +35,18 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       clic solo sirve para despertarlo. El camino nace en el content script, así que se
       recupera solo, pero puede requerir un segundo intento. Ver ADR 0097.
 
-- [ ] **`startTask()` es API experimental**: `serviceWorkerKeepAlive.ts` depende de
-      `ServiceWorkerMain.startTask()`, marcado como `@experimental` en Electron. Si cambia
-      de firma o desaparece, el autorrelleno de Bitwarden volverá a ser intermitente (la
-      llamada está en try/catch, no rompe el arranque). Revisar en cada bump de Electron.
-      Ver ADR 0097.
+- [ ] **Autorrelleno de Bitwarden tras inactividad** (sin resolver). Chromium duerme el
+      service worker de la extensión a los ~30 s; en Chrome un port abierto prolonga su
+      vida, en Electron no. Al morir, los content scripts se desmontan y Bitwarden ya no
+      puede leer la página: "Unable to autofill the selected item on this page". Los tres
+      intentos de arreglarlo (v0.1.21 reactivar al pararse, v0.1.22 despertar antes del
+      popup, v0.1.23 `startTask()`) dejaron el popup con la lista vacía en la instalación
+      del usuario pese a funcionar en desarrollo, y se revirtieron. Ver ADR 0097.
+      Preguntas abiertas: por qué `startWorkerForScope` falla ("Failed to start service
+      worker") en unas instalaciones y no en otras, y por qué `startTask()` retiene el
+      worker (el log lo confirma) sin que el popup recupere los datos.
+      **Cualquier intento futuro debe verificarse contra una instalación real de Bitwarden
+      con sesión iniciada antes de publicarse.**
 
 ### Rendimiento
 
