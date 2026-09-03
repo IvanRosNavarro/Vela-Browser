@@ -278,3 +278,19 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 - [x] Onboarding controlado por `'onboarding:completed'` en `app_metadata`.
 - [x] Multi-ventana coordinado: WindowRegistry, window_state, broadcast. ADRs 0088-0091.
 - [x] Sync de lista de orígenes con permiso push entre dispositivos. ADR 0016.
+
+### Cerrados en v0.1.26
+
+- [x] Las Anclas conservan su WebContentsView (y con él la sesión viva de la
+      página) al cambiar de workspace. Antes se suspendían con el workspace
+      saliente y volver a ellas creaba un WCV nuevo. ADR 0100.
+- [x] `DiscardManager` exceptúa las Anclas bajo el guard `tabs:discard-pinned`.
+
+### Abiertos
+
+- [ ] Borrar un workspace destruye los WCV de Anclas de otros workspaces que
+      estuvieran vivos en una ventana que mirase al workspace borrado
+      (`cleanupWorkspaceTabs`). Aceptado en ADR 0100; la pestaña se recarga.
+- [ ] Multi-ventana: un Ancla viva en la ventana A se materializa como WCV
+      aparte al pulsarla en la ventana B (`tabToWindow` es una pestaña, una
+      ventana). Preexistente, fuera del alcance de ADR 0100.
