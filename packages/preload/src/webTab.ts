@@ -253,12 +253,16 @@ ipcRenderer.on('media:command', (_event, command: string) => {
 });
 
 // ─── Credential detection (password manager) ─────────────────────────────────
-// El submit se comunica al main de inmediato ("provisional"). Es el main quien
+// El envío se comunica al main de inmediato ("provisional"). Es el main quien
 // decide si la oferta de guardado llega a mostrarse, observando la navegación
 // posterior del WebContentsView — el único indicio fiable de que el login ha
-// funcionado. Antes las credenciales se retenían aquí hasta `beforeunload`, lo
-// que hacía que la oferta llegase al renderer justo mientras este procesaba la
-// navegación post-login y la perdiese.
+// funcionado.
+//
+// La señal de envío no puede ser solo el evento `submit`: la mayoría de logins
+// modernos son un botón con un handler de click que hace fetch y nunca envían
+// un <form>, así que ese evento no llega nunca y la oferta no aparecía. Aquí se
+// escuchan además el clic sobre el botón de envío y el Enter en el campo de
+// contraseña, y el identificador se busca esté o no dentro de un <form>.
 
 let credConfirmPoller: ReturnType<typeof setInterval> | null = null;
 
@@ -290,36 +294,105 @@ function watchForFormDismissal(passwordField: HTMLInputElement): void {
   }, 500);
 }
 
+/** Campos de texto rellenos que pueden ser el identificador del usuario. */
+function isUsernameCandidate(el: HTMLInputElement): boolean {
+  const t = el.type;
+  return (
+    t !== 'hidden' && t !== 'password' && t !== 'submit' && t !== 'button' &&
+    t !== 'checkbox' && t !== 'radio' && t !== 'reset' && t !== 'file' &&
+    el.value.trim().length > 0
+  );
+}
+
+/**
+ * Identificador asociado a un campo de contraseña: el último campo de texto
+ * relleno que lo precede en el documento. Se busca dentro del <form> si lo hay
+ * y, si no, en todo el documento — los logins sin <form> son la norma.
+ */
+function findUsernameFor(passwordField: HTMLInputElement): string | null {
+  const scope: ParentNode = passwordField.form ?? document;
+  const candidates = Array.from(scope.querySelectorAll('input')).filter(isUsernameCandidate);
+  let preceding: HTMLInputElement | null = null;
+  for (const input of candidates) {
+    const pos = passwordField.compareDocumentPosition(input);
+    if (pos & Node.DOCUMENT_POSITION_PRECEDING) preceding = input;
+  }
+  // Si ninguno precede al campo (formularios que piden el correo después),
+  // vale el primero relleno que haya.
+  const chosen = preceding ?? candidates[0] ?? null;
+  const value = chosen?.value.trim();
+  return value ? value : null;
+}
+
+// Último par notificado, para no repetir el mismo envío en cada pulsación. Se
+// reintenta pasados unos segundos: un login rechazado se vuelve a probar con
+// las mismas credenciales y esa segunda vez sí puede acertar.
+let lastSent = '';
+let lastSentAt = 0;
+const RESEND_AFTER_MS = 3_000;
+
+function reportCredentials(passwordField: HTMLInputElement): void {
+  const password = passwordField.value;
+  if (!password) return;
+  const username = findUsernameFor(passwordField);
+  if (!username) return;
+
+  const loginUrl = window.location.href;
+  const fingerprint = `${loginUrl}\u0000${username}\u0000${password}`;
+  const now = Date.now();
+  if (fingerprint === lastSent && now - lastSentAt < RESEND_AFTER_MS) return;
+  lastSent = fingerprint;
+  lastSentAt = now;
+
+  ipcRenderer.send('vault:credentials-detected', { username, password, loginUrl });
+  watchForFormDismissal(passwordField);
+}
+
+/** Campo de contraseña relleno más cercano al elemento pulsado. */
+function passwordFieldNear(el: Element): HTMLInputElement | null {
+  const form = el.closest('form');
+  const scope: ParentNode = form ?? document;
+  const fields = Array.from(
+    scope.querySelectorAll('input[type="password"]'),
+  ) as HTMLInputElement[];
+  return fields.find((f) => f.value.length > 0) ?? null;
+}
+
+// Formulario clásico.
 document.addEventListener(
   'submit',
   (e: SubmitEvent) => {
     const form = e.target as HTMLFormElement | null;
-    if (!form) return;
+    const field = form?.querySelector('input[type="password"]') as HTMLInputElement | null;
+    if (field?.value) reportCredentials(field);
+  },
+  true,
+);
 
-    const passwordField = form.querySelector('input[type="password"]') as HTMLInputElement | null;
-    if (!passwordField?.value) return;
-
-    // Look for the user/email field: last text-like input before the password field.
-    // Exclude checkbox/radio (they have .value but are not user identifiers).
-    const inputs = Array.from(form.querySelectorAll('input')).filter(
-      (i) =>
-        i.type !== 'hidden' &&
-        i.type !== 'password' &&
-        i.type !== 'submit' &&
-        i.type !== 'button' &&
-        i.type !== 'checkbox' &&
-        i.type !== 'radio',
+// Botón de login sin <form>: el clic es la única señal de envío que existe.
+document.addEventListener(
+  'click',
+  (e: MouseEvent) => {
+    const target = e.target as Element | null;
+    if (!target || typeof target.closest !== 'function') return;
+    const trigger = target.closest(
+      'button, input[type="submit"], input[type="button"], [role="button"], a[href="#"]',
     );
-    const usernameField = inputs[inputs.length - 1] as HTMLInputElement | undefined;
-    if (!usernameField?.value) return;
+    if (!trigger) return;
+    const field = passwordFieldNear(trigger);
+    if (field) reportCredentials(field);
+  },
+  true,
+);
 
-    ipcRenderer.send('vault:credentials-detected', {
-      username: usernameField.value,
-      password: passwordField.value,
-      loginUrl: window.location.href,
-    });
-
-    watchForFormDismissal(passwordField);
+// Enter sobre el campo de contraseña.
+document.addEventListener(
+  'keydown',
+  (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLInputElement | null;
+    if (!target || target.type !== 'password' || !target.value) return;
+    reportCredentials(target);
   },
   true,
 );

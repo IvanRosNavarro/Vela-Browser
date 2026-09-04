@@ -13,6 +13,17 @@ const SERVER_URL = 'https://sync.vela-browser.com';
 const WS_URL = 'wss://sync.vela-browser.com';
 
 /** El servidor acepta 1000 entidades por petición; dejamos margen. */
+/**
+ * Vueltas máximas de una misma llamada a `pullChanges`. Cada una es una página
+ * del servidor o un aviso que llegó mientras bajábamos la anterior; el tope
+ * evita que un servidor que siempre responda "hay más" deje al proceso main
+ * girando sin atender nada más.
+ */
+const MAX_PULL_ROUNDS = 50;
+
+/** Espera antes de atender un aviso del servidor, para agrupar las ráfagas. */
+const PULL_DEBOUNCE_MS = 250;
+
 const PUSH_BATCH_SIZE = 200;
 
 /**
@@ -130,6 +141,7 @@ export class SyncManager {
   private ws: WebSocket | null = null;
   private syncInProgress = false;
   private pendingSync = false;
+  private pullDebounce: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1_000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSyncAt: number | null = null;
@@ -345,11 +357,7 @@ export class SyncManager {
           ) {
             return;
           }
-          if (!this.syncInProgress) {
-            await this.pullChanges();
-          } else {
-            this.pendingSync = true;
-          }
+          this.schedulePull();
         } else if (msg.type === 'push:notification') {
           const pushMsg = msg as { type: string; origin: string; payload_b64: string };
           if (this.onPushNotification && pushMsg.origin && pushMsg.payload_b64) {
@@ -379,6 +387,10 @@ export class SyncManager {
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.pullDebounce !== null) {
+      clearTimeout(this.pullDebounce);
+      this.pullDebounce = null;
     }
     if (this.ws) {
       this.ws.onclose = null;
@@ -637,11 +649,59 @@ export class SyncManager {
     await this.syncQuickNotes();
   }
 
+  /**
+   * Agrupa los avisos del servidor: uno solo dispara el pull, y los que lleguen
+   * mientras baja se atienden en la misma tanda. Sin esta coalescencia una
+   * ráfaga de avisos se traducía en un pull por aviso, cada uno con su fetch,
+   * su descifrado y su escritura SQLite síncrona en el proceso main.
+   */
+  private schedulePull(): void {
+    if (this.syncInProgress) {
+      this.pendingSync = true;
+      return;
+    }
+    if (this.pullDebounce !== null) return;
+    this.pullDebounce = setTimeout(() => {
+      this.pullDebounce = null;
+      void this.pullChanges();
+    }, PULL_DEBOUNCE_MS);
+    if (typeof this.pullDebounce.unref === 'function') this.pullDebounce.unref();
+  }
+
+  /**
+   * Baja los cambios remotos. Encadena en un bucle —nunca por recursión— las
+   * vueltas que hagan falta: las páginas que el servidor no pudo entregar de
+   * una vez y los avisos que hayan llegado mientras estábamos ocupados. La
+   * versión recursiva anterior anidaba una llamada por aviso y con un flujo
+   * sostenido crecía la pila hasta desbordarla.
+   */
   async pullChanges(): Promise<void> {
     if (!this.config || this.syncInProgress) return;
 
     this.syncInProgress = true;
     this.emitStatus();
+    try {
+      let guard = 0;
+      // Cota dura: un servidor que siempre dijera "hay más" no puede dejar al
+      // proceso main girando indefinidamente sin atender nada más.
+      while (guard++ < MAX_PULL_ROUNDS) {
+        const hasMore = await this.pullOnce();
+        if (hasMore) continue;
+        if (!this.pendingSync) break;
+        this.pendingSync = false;
+      }
+    } finally {
+      this.syncInProgress = false;
+      this.pendingSync = false;
+      this.emitStatus();
+    }
+  }
+
+  /** Una vuelta de pull. Devuelve `true` si el servidor dejó cambios sin enviar. */
+  private async pullOnce(): Promise<boolean> {
+    if (!this.config) return false;
+
+    let hasMore = false;
 
     try {
       this.rewindIfCategoryReenabled(this.disabledCategories());
@@ -657,10 +717,16 @@ export class SyncManager {
         } else {
           this.logger.warn(`[sync] pull devolvió ${res.status}`);
         }
-        return;
+        return false;
       }
 
-      const body = await res.json() as { entities: RemoteEntity[]; current_seq: number };
+      const body = await res.json() as {
+        entities: RemoteEntity[];
+        current_seq: number;
+        has_more?: boolean;
+      };
+
+      hasMore = body.has_more === true;
 
       for (const entity of body.entities) {
         try {
@@ -683,14 +749,10 @@ export class SyncManager {
 
     } catch (err) {
       this.logger.warn('[sync] pull failed:', err);
-    } finally {
-      this.syncInProgress = false;
-      this.emitStatus();
-      if (this.pendingSync) {
-        this.pendingSync = false;
-        await this.pullChanges();
-      }
+      return false;
     }
+
+    return hasMore;
   }
 
   private async applyRemoteEntity(entity: RemoteEntity): Promise<void> {

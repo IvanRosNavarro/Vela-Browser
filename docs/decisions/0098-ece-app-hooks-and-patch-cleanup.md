@@ -1,7 +1,15 @@
 # 0098 — Integración de Vela con electron-chrome-extensions: hooks de aplicación y limpieza del parche
 
 Fecha: 2026-08-28
-Estado: aceptado
+Estado: aceptado, con la limpieza del parche revertida en el ADR 0103
+
+> **Revisión (2026-09-04)**: la parte de este ADR que desmontaba el parche de
+> `electron-chrome-extensions` queda revertida. El parche no era solo una
+> reimplementación de APIs que Electron 42 ya trae: contenía un apaño
+> deliberado (`tabs.sendMessage` devolviendo `undefined`) que empujaba a
+> Bitwarden a usar `scripting.executeScript`. Sin él, su popup se queda con la
+> lista de elementos vacía. Los hooks de `ChromeExtensionImpl` que describe el
+> resto del documento siguen vigentes. Ver ADR 0103.
 
 ## Contexto
 

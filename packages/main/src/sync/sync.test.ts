@@ -74,10 +74,19 @@ describe('ProfileSettingsRepository — emisión de sync', () => {
   });
 
   it('syncSet no reenvía al servidor lo que acaba de llegar de él', () => {
-    repo.syncSet('theme:active', 'aurora');
+    repo.syncSet('theme:active', 'aurora', 1_700_000_000_000);
 
     expect(captured).toHaveLength(0);
     expect(repo.get('theme:active')).toBe('aurora');
+  });
+
+  it('syncSet conserva el timestamp remoto, no la hora de llegada', () => {
+    const remoteTs = 1_700_000_000_000;
+    repo.syncSet('theme:active', 'aurora', remoteTs);
+
+    // Con Date.now() el valor recibido ganaría el last-write-wins contra
+    // cualquier cambio local anterior a este instante.
+    expect(repo.getUpdatedAt('theme:active')).toBe(remoteTs);
   });
 
   it('sin profileId (repos de arranque) no emite nada', () => {

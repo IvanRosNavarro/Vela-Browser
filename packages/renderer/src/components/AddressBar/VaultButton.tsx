@@ -88,9 +88,21 @@ export function VaultButton({ url, editing }: Props) {
   useEffect(() => {
     const unsubPending = window.api.on(IPC_EVENTS.VAULT_CREDENTIALS_PENDING, (payload) => {
       if (payload.windowId !== currentWindowId) return;
-      if (payload.tabId !== activeTabId) return;
-      pendingReqRef.current++;
-      setPendingCreds(true);
+      if (payload.tabId === activeTabId) {
+        pendingReqRef.current++;
+        setPendingCreds(true);
+        return;
+      }
+      // El aviso puede adelantar al cambio de pestaña activa que el renderer
+      // aún está procesando. En vez de descartarlo —un login SPA no cambia la
+      // URL, así que no habría segunda oportunidad de releerlo— se confirma
+      // contra el main, que es la fuente de verdad de la oferta pendiente.
+      const reqId = ++pendingReqRef.current;
+      void window.api.vault.getPending({ windowId: currentWindowId }).then((res) => {
+        if (reqId !== pendingReqRef.current) return;
+        const info = res.ok ? res.data : null;
+        setPendingCreds(!!info);
+      });
     });
     const unsubCleared = window.api.on(IPC_EVENTS.VAULT_PENDING_CLEARED, (payload) => {
       if (payload.windowId !== currentWindowId) return;
@@ -101,7 +113,7 @@ export function VaultButton({ url, editing }: Props) {
   }, [currentWindowId, activeTabId]);
 
   const handleClick = useCallback(async () => {
-    if (!currentWindowId) return;
+    if (currentWindowId === null) return;
     setRecentMatch(false);
 
     if (pendingCreds) {

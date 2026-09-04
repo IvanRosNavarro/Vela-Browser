@@ -154,7 +154,7 @@ export const serializers: Record<string, EntitySerializer> = {
       updatedAt: s.updatedAt ?? Date.now(),
     }),
     applyUpsert: async (data: any, repos) => {
-      repos.settings.syncSet(data.key, data.value);
+      repos.settings.syncSet(data.key, data.value, data.updatedAt);
     },
     applyDelete: async (_id, _repos) => {
       // Settings no se eliminan — solo se actualizan.

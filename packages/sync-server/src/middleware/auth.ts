@@ -7,7 +7,12 @@ declare global {
   namespace Express {
     interface Request {
       userId: string;
-      ws?: import('ws').WebSocket;
+      /**
+       * Token de sesión del dispositivo que hace la petición. Se usa para no
+       * notificarle por WebSocket un cambio que acaba de escribir él mismo:
+       * sin esto cada push se provocaba su propio pull y el ciclo se realimenta.
+       */
+      deviceToken: string;
     }
   }
 }
@@ -41,5 +46,6 @@ export function requireAuth(
   `).run(Date.now(), Date.now() + SESSION_TTL_MS, token);
 
   req.userId = session.user_id;
+  req.deviceToken = token;
   next();
 }

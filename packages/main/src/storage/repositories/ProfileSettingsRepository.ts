@@ -59,15 +59,23 @@ export class ProfileSettingsRepository {
     this.emitSyncChange(key, value, now);
   }
 
-  /** Upsert desde sync remoto — no emite eventos (evita el eco al servidor). */
-  syncSet(key: string, value: string): void {
+  /**
+   * Upsert desde sync remoto — no emite eventos (evita el eco al servidor).
+   *
+   * Sella el `updated_at` que traía el valor remoto, NUNCA la hora actual: con
+   * `Date.now()` todo ajuste recibido quedaba marcado como recién modificado y
+   * ganaba el last-write-wins contra cambios locales posteriores, así que un
+   * valor viejo de otro dispositivo revertía lo que el usuario acababa de
+   * tocar aquí.
+   */
+  syncSet(key: string, value: string, updatedAt: number): void {
     this.db
       .prepare(
         `INSERT INTO settings_profile (key, value, updated_at) VALUES (?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value,
                                         updated_at = excluded.updated_at`,
       )
-      .run(key, value, Date.now());
+      .run(key, value, updatedAt);
   }
 
   getUpdatedAt(key: string): number | null {

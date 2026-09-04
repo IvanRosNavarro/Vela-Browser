@@ -46,7 +46,20 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       worker") en unas instalaciones y no en otras, y por qué `startTask()` retiene el
       worker (el log lo confirma) sin que el popup recupere los datos.
       **Cualquier intento futuro debe verificarse contra una instalación real de Bitwarden
-      con sesión iniciada antes de publicarse.**
+      con sesión iniciada antes de publicarse.** En v0.2.2 se descubrió que el desmontaje
+      del parche de ECE (ADR 0098) provocaba el MISMO síntoma —popup con la lista vacía—
+      por una vía distinta a los tres intentos de keep-alive, y se confundió con ellos.
+      Al diagnosticar este fallo, descartar primero si el parche está completo.
+
+- [ ] **Emisor del bucle de sincronización sin identificar**: en v0.2.2 se midieron ~45
+      escrituras por segundo contra el servidor en un perfil sin que cambiara ninguna
+      tabla local. La auto-notificación (`notifyPeers` sin excluir al emisor) explica que
+      el ciclo se realimente y está corregida (ADR 0104), pero no se llegó a observar en
+      vivo qué petición lo arrancaba. Si `sync:last-seq` vuelve a dispararse solo, hay que
+      instrumentar `pushChange` / `pushYDoc` / `pushVault` y el handler del WebSocket.
+
+- [ ] **Verificar el guardado de contraseñas y el popup de Bitwarden en v0.2.2**: los
+      cambios de ADR 0103 y 0105 se publicaron sin probarse contra la instalación real.
 
 ### Rendimiento
 

@@ -5,6 +5,10 @@ import { getDb } from '../db/database';
 // userId → Set de conexiones activas.
 const connections = new Map<string, Set<WebSocket>>();
 
+// Token de sesión con el que se autenticó cada conexión. Permite no reenviarle
+// a un dispositivo el aviso de un cambio que acaba de escribir él mismo.
+const connectionTokens = new WeakMap<WebSocket, string>();
+
 export function setupWebSocket(server: Server): void {
   // maxPayload acotado: el único mensaje entrante esperado es {token}. Sin esto
   // el default son 100 MB, lo que permitiría a un cliente enviar un frame enorme.
@@ -44,6 +48,7 @@ export function setupWebSocket(server: Server): void {
           connections.set(userId, new Set());
         }
         connections.get(userId)!.add(ws);
+        connectionTokens.set(ws, token);
 
         ws.send(JSON.stringify({ type: 'connected' }));
       } catch {
@@ -96,9 +101,17 @@ export function broadcastPush(
   }
 }
 
+/**
+ * Avisa a los dispositivos del usuario de que hay cambios que bajar.
+ *
+ * `excludeToken` es el token del dispositivo que ha escrito: se le excluye
+ * porque ya tiene el cambio. Notificárselo hacía que cada push disparase su
+ * propio pull, y con varios perfiles de la misma cuenta abiertos a la vez el
+ * ciclo no paraba nunca.
+ */
 export function notifyPeers(
   userId: string,
-  excludeWs: WebSocket | null,
+  excludeToken: string | null,
   payload: { profile_id: string; server_seq: number }
 ): void {
   const userConns = connections.get(userId);
@@ -111,7 +124,8 @@ export function notifyPeers(
   });
 
   for (const ws of userConns) {
-    if (ws !== excludeWs && ws.readyState === WebSocket.OPEN) {
+    if (excludeToken !== null && connectionTokens.get(ws) === excludeToken) continue;
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(msg);
     }
   }

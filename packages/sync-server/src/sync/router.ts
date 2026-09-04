@@ -100,6 +100,9 @@ syncRouter.get('/profiles', (req, res) => {
   res.json({ profiles });
 });
 
+/** Tope de entidades por respuesta de GET /sync/entities. */
+const ENTITIES_PAGE_SIZE = 1000;
+
 // ── Entidades ─────────────────────────────────────────────────────────────────
 
 // GET /sync/entities?profile_id=X&since_seq=N
@@ -127,17 +130,27 @@ syncRouter.get('/entities', (req, res) => {
     FROM sync_entities
     WHERE profile_id = ? AND server_seq > ?
     ORDER BY server_seq ASC
-    LIMIT 1000
-  `).all(profile_id, sinceSeq);
+    LIMIT ?
+  `).all(profile_id, sinceSeq, ENTITIES_PAGE_SIZE);
 
   const seqRow = db.prepare(`
     SELECT last_seq FROM profile_sequences
     WHERE profile_id = ?
   `).get(profile_id) as { last_seq: number } | undefined;
 
+  // El cliente guarda `current_seq` como su nuevo punto de partida. Si el lote
+  // ha llegado al LIMIT hay más entidades pendientes, así que solo puede
+  // avanzar hasta la última entregada: devolverle el `last_seq` del perfil le
+  // haría saltarse en silencio todo lo que no cupo.
+  const truncated = entities.length >= ENTITIES_PAGE_SIZE;
+  const lastDelivered = truncated
+    ? (entities[entities.length - 1] as { server_seq: number }).server_seq
+    : null;
+
   res.json({
     entities,
-    current_seq: seqRow?.last_seq ?? 0,
+    current_seq: lastDelivered ?? seqRow?.last_seq ?? 0,
+    has_more: truncated,
   });
 });
 
@@ -239,7 +252,7 @@ syncRouter.put('/entities', (req, res) => {
 
   insertMany();
 
-  notifyPeers(req.userId, req.ws ?? null, {
+  notifyPeers(req.userId, req.deviceToken, {
     profile_id,
     server_seq: maxSeq,
   });
@@ -317,7 +330,7 @@ syncRouter.put('/ydocs/:workspace_id', (req, res) => {
       server_seq = excluded.server_seq
   `).run(workspace_id, profile_id, doc_ct, updated_at ?? Date.now(), seq);
 
-  notifyPeers(req.userId, null, { profile_id, server_seq: seq });
+  notifyPeers(req.userId, req.deviceToken, { profile_id, server_seq: seq });
 
   res.json({ ok: true, server_seq: seq });
 });
@@ -388,7 +401,7 @@ syncRouter.put('/vault', (req, res) => {
       server_seq = excluded.server_seq
   `).run(profile_id, vault_ct, updated_at ?? Date.now(), seq);
 
-  notifyPeers(req.userId, null, { profile_id, server_seq: seq });
+  notifyPeers(req.userId, req.deviceToken, { profile_id, server_seq: seq });
 
   res.json({ ok: true, server_seq: seq });
 });
