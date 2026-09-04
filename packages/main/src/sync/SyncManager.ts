@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron';
+import { SYNC_TYPE_TO_CATEGORY, type SyncCategory } from '@vela/shared';
 import * as os from 'node:os';
 import { encrypt, decrypt, deriveKey } from './crypto';
 import { serializers } from './serializers';
@@ -398,10 +399,84 @@ export class SyncManager {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  // ── Categorías activas ─────────────────────────────────────────────────────
+
+  /**
+   * Categorías que el usuario ha desactivado en `vela://settings#sync`.
+   *
+   * Vive en `sync:disabled-categories`, que por el prefijo `sync:` NO se
+   * sincroniza: la elección es de este dispositivo. Sincronizarla crearía
+   * paradojas (desactivar "Configuración del perfil" impediría que viajara la
+   * propia lista de exclusiones).
+   *
+   * Se lee del store en cada operación en vez de cachearse: son lecturas de
+   * SQLite en memoria y así un cambio en los ajustes surte efecto en el
+   * siguiente ciclo sin invalidaciones que mantener.
+   */
+  private disabledCategories(): Set<SyncCategory> {
+    try {
+      const raw = this.getRepos().settings.get('sync:disabled-categories');
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((c): c is SyncCategory => typeof c === 'string'));
+    } catch {
+      // Ajuste corrupto: mejor sincronizar de más que dejar de sincronizar.
+      return new Set();
+    }
+  }
+
+  /**
+   * Si el usuario ha vuelto a activar una categoría, rebobina la secuencia
+   * para releer el historial completo del servidor.
+   *
+   * Mientras una categoría está desactivada sus entidades se descartan en
+   * `mergeEntity`, pero el lote avanza `lastSeq` igual. Sin este rebobinado,
+   * al reactivarla no llegaría nada hasta que el otro dispositivo volviera a
+   * tocar esas entidades. El re-pull es idempotente: el LWW descarta lo que ya
+   * esté al día.
+   */
+  private rewindIfCategoryReenabled(disabled: Set<SyncCategory>): void {
+    if (!this.config) return;
+    const repos = this.getRepos();
+    const previousRaw = repos.settings.get('sync:last-disabled-categories');
+
+    let previous: string[] = [];
+    if (previousRaw) {
+      try {
+        const parsed = JSON.parse(previousRaw) as unknown;
+        if (Array.isArray(parsed)) previous = parsed.filter((c) => typeof c === 'string');
+      } catch { /* valor corrupto: se trata como lista vacía */ }
+    }
+
+    const current = [...disabled].sort();
+    if (previousRaw !== null && previous.some((c) => !disabled.has(c as SyncCategory))) {
+      this.logger.info('[sync] categoría reactivada — releyendo el historial remoto');
+      this.config.lastSeq = 0;
+      repos.settings.set('sync:last-seq', '0');
+    }
+
+    if (JSON.stringify(current) !== JSON.stringify(previous.sort())) {
+      repos.settings.set('sync:last-disabled-categories', JSON.stringify(current));
+    }
+  }
+
+  /**
+   * Filtra por categoría. Se aplica en los DOS sentidos: si solo se filtrara
+   * al enviar, el otro dispositivo seguiría metiendo aquí sus workspaces.
+   */
+  private isTypeEnabled(entityType: string, disabled: Set<SyncCategory>): boolean {
+    const category = SYNC_TYPE_TO_CATEGORY[entityType];
+    // Un tipo sin categoría conocida se sincroniza: no dejamos datos fuera por
+    // haber olvidado registrarlo.
+    return category === undefined || !disabled.has(category);
+  }
+
   // ── Push de cambios locales ────────────────────────────────────────────────
 
   private readonly onEntityChanged = async (evt: SyncEntityEvent): Promise<void> => {
     if (evt.profileId !== this.profileId) return;
+    if (!this.isTypeEnabled(evt.type, this.disabledCategories())) return;
     await this.pushChange(evt.type, evt.id, evt.data, evt.updatedAt);
   };
 
@@ -490,8 +565,10 @@ export class SyncManager {
     const repos = this.getRepos();
     const key = this.config.syncKey;
 
+    const disabled = this.disabledCategories();
     const entities: RemoteEntity[] = [];
     const add = (type: string, id: string, payload: object, updatedAt: number): void => {
+      if (!this.isTypeEnabled(type, disabled)) return;
       entities.push({
         id,
         entity_type: type,
@@ -567,6 +644,8 @@ export class SyncManager {
     this.emitStatus();
 
     try {
+      this.rewindIfCategoryReenabled(this.disabledCategories());
+
       const res = await fetch(
         `${SERVER_URL}/sync/entities?profile_id=${this.config.remoteProfileId}&since_seq=${this.config.lastSeq}`,
         { headers: { Authorization: `Bearer ${this.config.sessionToken}` } },
@@ -647,6 +726,8 @@ export class SyncManager {
     deleted: boolean,
   ): Promise<void> {
     const repos = this.getRepos();
+    if (!this.isTypeEnabled(type, this.disabledCategories())) return;
+
     const s = serializers[type];
     if (!s) {
       this.logger.warn(`[sync] no serializer for type: ${type}`);
@@ -673,15 +754,19 @@ export class SyncManager {
     const pending = this.getRepos().syncPending.listAll();
     if (pending.length === 0) return;
 
-    const entities: RemoteEntity[] = pending.map((p) => ({
-      id: p.entity_id,
-      entity_type: p.entity_type,
-      data_ct: p.data_json
-        ? encrypt(p.data_json, this.config!.syncKey).toString('base64')
-        : null,
-      updated_at: p.updated_at,
-      deleted: p.data_json === null ? 1 : 0,
-    }));
+    // Lo encolado antes de desactivar una categoría tampoco debe salir.
+    const disabled = this.disabledCategories();
+    const entities: RemoteEntity[] = pending
+      .filter((p) => this.isTypeEnabled(p.entity_type, disabled))
+      .map((p) => ({
+        id: p.entity_id,
+        entity_type: p.entity_type,
+        data_ct: p.data_json
+          ? encrypt(p.data_json, this.config!.syncKey).toString('base64')
+          : null,
+        updated_at: p.updated_at,
+        deleted: p.data_json === null ? 1 : 0,
+      }));
 
     try {
       await this.pushEntities(entities);
@@ -765,6 +850,7 @@ export class SyncManager {
    */
   async pushVaultSnapshot(): Promise<void> {
     if (!this.config) return;
+    if (this.disabledCategories().has('passwords')) return;
     try {
       const repos = this.getRepos();
       const entries = repos.passwordVault.exportAll();
@@ -782,6 +868,7 @@ export class SyncManager {
   /** Fusiona el vault remoto con el local, entrada a entrada y con LWW. */
   async pullVaultSnapshot(): Promise<void> {
     if (!this.config) return;
+    if (this.disabledCategories().has('passwords')) return;
     try {
       const blob = await this.pullVault();
       if (!blob) return;
@@ -803,6 +890,7 @@ export class SyncManager {
 
   async pushYDoc(workspaceId: string, state: Buffer): Promise<void> {
     if (!this.config) return;
+    if (this.disabledCategories().has('notes')) return;
 
     const docCt = encrypt(state, this.config.syncKey).toString('base64');
 
@@ -822,6 +910,7 @@ export class SyncManager {
 
   async pullYDoc(workspaceId: string): Promise<Buffer | null> {
     if (!this.config) return null;
+    if (this.disabledCategories().has('notes')) return null;
 
     const res = await fetch(
       `${SERVER_URL}/sync/ydocs/${workspaceId}?profile_id=${this.config.remoteProfileId}`,
@@ -845,6 +934,7 @@ export class SyncManager {
    */
   async syncQuickNotes(): Promise<void> {
     if (!this.config) return;
+    if (this.disabledCategories().has('notes')) return;
     const repos = this.getRepos();
     // Import diferido: yjs-sync importa este módulo para su tipo, y cargarlo
     // arriba crearía un ciclo en tiempo de carga.

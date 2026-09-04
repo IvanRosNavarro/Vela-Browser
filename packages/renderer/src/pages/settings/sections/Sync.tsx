@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useSyncStore } from '../../../stores/syncStore';
 import { useSettings } from '../lib/useSettings';
-import type { DeviceInfo, RemoteSyncProfile } from '@vela/shared';
+import type { DeviceInfo, RemoteSyncProfile, SyncCategory } from '@vela/shared';
+import { SYNC_CATEGORIES } from '@vela/shared';
 import { writeToClipboard } from '../../../lib/clipboard';
 
 export function Sync() {
@@ -46,19 +47,14 @@ function SyncNotConfigured() {
             ✓ Se sincroniza
           </p>
           <ul className="space-y-2 text-sm text-[var(--vela-fg)]">
-            <li>Workspaces y pestañas</li>
-            <li>
-              <span>Anclas</span>
-              <span className="ml-1.5 text-xs text-[var(--vela-fg-muted)]">· Pestañas ancladas globalmente</span>
-            </li>
-            <li>
-              <span>Cargas</span>
-              <span className="ml-1.5 text-xs text-[var(--vela-fg-muted)]">· Pestañas ancladas por workspace</span>
-            </li>
-            <li>Gestor de contraseñas</li>
-            <li>Scripts de usuario</li>
-            <li>Notas rápidas</li>
-            <li>Configuración del perfil</li>
+            {SYNC_CATEGORIES.map((category) => (
+              <li key={category.id}>
+                <span>{category.label}</span>
+                <span className="ml-1.5 text-xs text-[var(--vela-fg-muted)]">
+                  · {category.description}
+                </span>
+              </li>
+            ))}
           </ul>
         </div>
         <div>
@@ -83,6 +79,7 @@ function SyncNotConfigured() {
         </button>
         <p className="text-xs text-[var(--vela-fg-muted)]">
           La sincronización es opcional y gratuita. Vela funciona perfectamente sin ella.
+          Podrás elegir qué categorías se sincronizan una vez activada.
         </p>
       </div>
     </div>
@@ -584,6 +581,8 @@ function SyncActiveView({ settings }: SyncActiveProps) {
         Última sync: <span className="text-[var(--vela-fg)]">{lastSyncLabel}</span>
       </div>
 
+      <SyncCategoriesSection settings={settings} />
+
       <section>
         <h3 className="mb-3 text-sm font-semibold text-[var(--vela-fg)]">Dispositivos conectados</h3>
         <div className="space-y-1 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] divide-y divide-[var(--vela-border)]">
@@ -671,6 +670,70 @@ function SyncActiveView({ settings }: SyncActiveProps) {
         )}
       </section>
     </div>
+  );
+}
+
+// ── Qué se sincroniza ──────────────────────────────────────────────────────
+
+interface SyncCategoriesProps {
+  settings: ReturnType<typeof useSettings>;
+}
+
+/**
+ * Selector de categorías. El filtro se aplica en los dos sentidos: una
+ * categoría desactivada ni se envía ni se acepta de los demás dispositivos.
+ * La elección es de este equipo — el ajuste vive bajo el prefijo `sync:`, que
+ * no se sincroniza.
+ */
+function SyncCategoriesSection({ settings }: SyncCategoriesProps) {
+  const disabled = settings.get<SyncCategory[]>('sync:disabled-categories', []);
+
+  function toggle(id: SyncCategory, enabled: boolean) {
+    const next = enabled
+      ? disabled.filter((c) => c !== id)
+      : [...disabled.filter((c) => c !== id), id];
+    void settings.set('sync:disabled-categories', next);
+  }
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-semibold text-[var(--vela-fg)]">Qué se sincroniza</h3>
+      <p className="mb-3 text-xs text-[var(--vela-fg-muted)]">
+        Lo que desactives aquí deja de enviarse y tampoco se aplicará lo que
+        manden tus otros dispositivos. Lo que ya esté en el servidor se queda
+        ahí por si vuelves a activarlo.
+      </p>
+
+      <div className="divide-y divide-[var(--vela-border)] rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)]">
+        {SYNC_CATEGORIES.map((category) => {
+          const enabled = !disabled.includes(category.id);
+          return (
+            <label
+              key={category.id}
+              className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm text-[var(--vela-fg)]">{category.label}</span>
+                <span className="block text-xs text-[var(--vela-fg-muted)]">
+                  {category.description}
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => toggle(category.id, e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-[var(--vela-accent)]"
+              />
+            </label>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-xs text-[var(--vela-fg-muted)]">
+        El historial, las extensiones y las pestañas fantasma no se sincronizan
+        nunca.
+      </p>
+    </section>
   );
 }
 

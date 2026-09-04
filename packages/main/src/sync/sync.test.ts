@@ -4,6 +4,7 @@ import { ProfileSettingsRepository } from '../storage/repositories/ProfileSettin
 import { syncEvents, type SyncEntityEvent } from './syncEvents';
 import { serializers } from './serializers';
 import { encrypt, decrypt, deriveKey } from './crypto';
+import { SYNC_CATEGORIES, SYNC_TYPE_TO_CATEGORY } from '@vela/shared';
 
 function createSettingsDb(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
@@ -134,5 +135,35 @@ describe('crypto de sync', () => {
     const packed = encrypt('{"hola":1}', a);
     expect(decrypt(packed, a).toString('utf-8')).toBe('{"hola":1}');
     expect(() => decrypt(packed, b)).toThrow();
+  });
+});
+
+describe('categorías de sincronización', () => {
+  it('cada entity_type sincronizable pertenece a una categoría', () => {
+    // Si se añade un serializer nuevo sin categoría, se sincronizará siempre y
+    // el usuario no podrá desactivarlo desde los ajustes.
+    const sinCategoria = Object.keys(serializers).filter(
+      (type) => SYNC_TYPE_TO_CATEGORY[type] === undefined,
+    );
+    expect(sinCategoria).toEqual([]);
+  });
+
+  it('workspaces y árbol viajan juntos: no tiene sentido uno sin el otro', () => {
+    expect(SYNC_TYPE_TO_CATEGORY['workspace']).toBe('workspaces');
+    expect(SYNC_TYPE_TO_CATEGORY['treenode']).toBe('workspaces');
+  });
+
+  it('el vault y las notas no son entidades: se filtran por su propio guard', () => {
+    const porId = Object.fromEntries(SYNC_CATEGORIES.map((c) => [c.id, c]));
+    expect(porId['passwords']!.entityTypes).toEqual([]);
+    expect(porId['notes']!.entityTypes).toEqual([]);
+  });
+
+  it('no hay categorías duplicadas ni tipos en dos categorías', () => {
+    const ids = SYNC_CATEGORIES.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    const tipos = SYNC_CATEGORIES.flatMap((c) => c.entityTypes);
+    expect(new Set(tipos).size).toBe(tipos.length);
   });
 });
