@@ -1,110 +1,76 @@
-import { app, BrowserWindow } from 'electron';
+import { app, shell, BrowserWindow } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import { IPC_EVENTS } from '@vela/shared';
+import { IPC_EVENTS, type UpdateStatus } from '@vela/shared';
 import { logger } from '../logger';
+import { UpdateService, type Updater } from './UpdateService';
 
-const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+export { UpdateService } from './UpdateService';
+export type { Updater, UpdateServiceOptions } from './UpdateService';
 
-let initialized = false;
-let intervalHandle: NodeJS.Timeout | null = null;
+const RELEASES_URL = 'https://github.com/IvanRosNavarro/Vela-Browser/releases';
 
-function broadcastToAllWindows(channel: string, payload?: unknown): void {
+/**
+ * macOS: Squirrel.Mac solo aplica actualizaciones sobre un binario firmado y
+ * notarizado, y Vela no lo está todavía. Sin esto la actualización fallaba en
+ * silencio; ahora la interfaz ofrece abrir la página de la release.
+ */
+const CAN_INSTALL = process.platform !== 'darwin';
+
+let service: UpdateService | null = null;
+
+function broadcast(status: UpdateStatus): void {
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) {
-      win.webContents.send(channel, payload);
-    }
+    if (!win.isDestroyed()) win.webContents.send(IPC_EVENTS.UPDATE_STATUS_CHANGED, status);
   }
 }
 
-export function initUpdater(): void {
-  if (initialized) return;
+export interface InitUpdaterOptions {
+  /** Lee el ajuste global `updates:auto-check` en cada tick. */
+  autoCheckEnabled: () => boolean;
+}
 
-  if (!app.isPackaged) {
-    logger.info('[updater] dev: omitido (no aplicable a builds no empaquetadas)');
-    return;
+export function initUpdater(options: InitUpdaterOptions): UpdateService {
+  if (service) return service;
+
+  const packaged = app.isPackaged;
+
+  if (packaged) {
+    autoUpdater.logger = {
+      info: (msg) => logger.info(`[updater] ${stringifyEvent(msg)}`),
+      warn: (msg) => logger.warn(`[updater] ${stringifyEvent(msg)}`),
+      error: (msg) => logger.error(`[updater] ${stringifyEvent(msg)}`),
+      debug: (msg) => logger.debug(`[updater] ${stringifyEvent(msg)}`),
+    };
+  } else {
+    logger.info('[updater] dev: sin feed de actualizaciones (estado "unsupported")');
   }
 
-  initialized = true;
-
-  autoUpdater.logger = {
-    info: (msg) => logger.info(`[updater] ${stringifyEvent(msg)}`),
-    warn: (msg) => logger.warn(`[updater] ${stringifyEvent(msg)}`),
-    error: (msg) => logger.error(`[updater] ${stringifyEvent(msg)}`),
-    debug: (msg) => logger.debug(`[updater] ${stringifyEvent(msg)}`),
-  };
-
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('checking-for-update', () => {
-    logger.info('[updater] comprobando actualizaciones…');
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_CHECKING);
+  service = new UpdateService({
+    updater: autoUpdater as unknown as Updater,
+    currentVersion: app.getVersion(),
+    packaged,
+    canInstall: CAN_INSTALL,
+    autoCheckEnabled: options.autoCheckEnabled,
+    onChange: broadcast,
+    openExternal: (url) => {
+      void shell.openExternal(url).catch((err: unknown) => {
+        logger.warn(`[updater] no se pudo abrir ${url}: ${stringifyEvent(err)}`);
+      });
+    },
+    releasesUrl: RELEASES_URL,
+    log: (message) => logger.warn(`[updater] ${message}`),
   });
-
-  autoUpdater.on('update-available', (info) => {
-    logger.info(`[updater] disponible: v${info.version}`);
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_AVAILABLE, { version: info.version });
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    logger.debug(`[updater] al día (versión actual ${info.version})`);
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_NOT_AVAILABLE, { version: info.version });
-  });
-
-  autoUpdater.on('download-progress', (p) => {
-    logger.debug(
-      `[updater] descargando ${p.percent.toFixed(1)}% (${(p.bytesPerSecond / 1024).toFixed(0)} KB/s)`,
-    );
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, {
-      percent: Math.round(p.percent),
-      bytesPerSecond: p.bytesPerSecond,
-    });
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    logger.info(`[updater] descargada v${info.version}; se aplicará al cerrar la app`);
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_DOWNLOADED, { version: info.version });
-  });
-
-  autoUpdater.on('error', (err) => {
-    logger.error(`[updater] error: ${err.message}`);
-    broadcastToAllWindows(IPC_EVENTS.UPDATE_ERROR, { message: err.message });
-  });
-
-  void autoUpdater.checkForUpdates().catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[updater] check inicial fallido: ${message}`);
-  });
-
-  intervalHandle = setInterval(() => {
-    void autoUpdater.checkForUpdates().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn(`[updater] check periódico fallido: ${message}`);
-    });
-  }, CHECK_INTERVAL_MS);
+  service.startAutoCheck();
+  return service;
 }
 
-export async function checkForUpdatesNow(): Promise<void> {
-  await autoUpdater.checkForUpdates().catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`[updater] checkForUpdatesNow fallido: ${message}`);
-    throw err;
-  });
-}
-
-export async function downloadUpdate(): Promise<void> {
-  await autoUpdater.downloadUpdate();
-}
-
-export function quitAndInstall(): void {
-  autoUpdater.quitAndInstall();
+/** `null` hasta que `initUpdater` corre (arranque de la app). */
+export function getUpdateService(): UpdateService | null {
+  return service;
 }
 
 export function shutdownUpdater(): void {
-  if (intervalHandle) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
-  }
+  service?.stop();
 }
 
 function stringifyEvent(value: unknown): string {

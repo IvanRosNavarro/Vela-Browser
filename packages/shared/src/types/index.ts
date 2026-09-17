@@ -30,3 +30,4 @@ export * from './titlebar';
 export * from './sync';
 export * from './download';
 export * from './analyticsDebugger';
+export * from './update';

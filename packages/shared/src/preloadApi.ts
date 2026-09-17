@@ -80,6 +80,7 @@ import type { TitleBarIconConfig } from './types/titlebar';
 import type { ExtendedSuggestion } from './types/suggestion';
 import type { DownloadItem } from './types/download';
 import type { WindowInfo } from './types/window';
+import type { UpdateStatus } from './types/update';
 
 export type WorkspaceCreateInput = z.input<typeof workspaceCreateInputSchema>;
 export type WorkspaceUpdateInput = z.input<typeof workspaceUpdateInputSchema>;
@@ -313,9 +314,12 @@ export interface RuntimeApi {
 }
 
 export interface UpdateApi {
-  checkNow(): Promise<IpcResponse<void>>;
+  getStatus(): Promise<IpcResponse<UpdateStatus>>;
+  checkNow(): Promise<IpcResponse<UpdateStatus>>;
   download(): Promise<IpcResponse<void>>;
   quitAndInstall(): Promise<IpcResponse<void>>;
+  /** Abre la página de la release: única vía en macOS (binario sin firmar). */
+  openRelease(): Promise<IpcResponse<void>>;
 }
 
 export interface ThemeApi {

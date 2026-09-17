@@ -1,47 +1,40 @@
 import { create } from 'zustand';
+import type { UpdateStatus } from '@vela/shared';
 
-export type UpdatePhase =
-  | 'idle'
-  | 'checking'
-  | 'dev-mode'
-  | 'up-to-date'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error';
+declare const __APP_VERSION__: string;
 
+/**
+ * El estado del actualizador lo mantiene `UpdateService` en main y llega
+ * entero en `state:update-status-changed`. Aquí solo se guarda lo último
+ * recibido y si la modal está abierta.
+ */
 interface UpdateStore {
   modalOpen: boolean;
-  phase: UpdatePhase;
-  availableVersion: string;
-  downloadPercent: number;
-  errorMessage: string;
+  status: UpdateStatus;
   openModal: () => void;
   closeModal: () => void;
-  setPhase: (
-    phase: UpdatePhase,
-    opts?: { version?: string; percent?: number; message?: string },
-  ) => void;
+  setStatus: (status: UpdateStatus) => void;
+  hydrate: () => Promise<void>;
 }
+
+const INITIAL_STATUS: UpdateStatus = {
+  phase: 'idle',
+  currentVersion: __APP_VERSION__,
+  version: null,
+  percent: 0,
+  error: null,
+  checkedAt: null,
+  canInstall: true,
+};
 
 export const useUpdateStore = create<UpdateStore>((set) => ({
   modalOpen: false,
-  phase: 'idle',
-  availableVersion: '',
-  downloadPercent: 0,
-  errorMessage: '',
+  status: INITIAL_STATUS,
   openModal: () => set({ modalOpen: true }),
   closeModal: () => set({ modalOpen: false }),
-  setPhase: (phase, opts = {}) =>
-    set((s) => ({
-      phase,
-      availableVersion: opts.version ?? s.availableVersion,
-      downloadPercent:
-        opts.percent !== undefined
-          ? opts.percent
-          : phase === 'downloading'
-            ? s.downloadPercent
-            : 0,
-      errorMessage: opts.message ?? s.errorMessage,
-    })),
+  setStatus: (status) => set({ status }),
+  hydrate: async () => {
+    const res = await window.api.update.getStatus();
+    if (res.ok) set({ status: res.data });
+  },
 }));

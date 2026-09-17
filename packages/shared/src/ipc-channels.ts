@@ -14,6 +14,7 @@ import type { AdBlockerCounts } from './types/adblocker';
 import type { SyncStatus } from './types/sync';
 import type { ExtendedSuggestion } from './types/suggestion';
 import type { WindowInfo } from './types/window';
+import type { UpdateStatus } from './types/update';
 
 export const IPC_CHANNELS = {
   WORKSPACE_LIST: 'workspace:list',
@@ -95,9 +96,11 @@ export const IPC_CHANNELS = {
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
 
+  UPDATE_GET_STATUS: 'update:get-status',
   UPDATE_CHECK_NOW: 'update:check-now',
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_QUIT_AND_INSTALL: 'update:quit-and-install',
+  UPDATE_OPEN_RELEASE: 'update:open-release',
   RUNTIME_GET_VERSIONS: 'runtime:get-versions',
   RUNTIME_GET_BACKGROUND_MATERIAL: 'runtime:get-background-material',
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
@@ -507,13 +510,7 @@ export const IPC_EVENTS = {
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
   UPDATE_MODAL_OPEN: 'state:update-modal-open',
-  UPDATE_DEV_MODE: 'state:update-dev-mode',
-  UPDATE_CHECKING: 'state:update-checking',
-  UPDATE_AVAILABLE: 'state:update-available',
-  UPDATE_NOT_AVAILABLE: 'state:update-not-available',
-  UPDATE_DOWNLOAD_PROGRESS: 'state:update-download-progress',
-  UPDATE_DOWNLOADED: 'state:update-downloaded',
-  UPDATE_ERROR: 'state:update-error',
+  UPDATE_STATUS_CHANGED: 'state:update-status-changed',
   TAB_PREVIEW_DATA: 'state:tab-preview-data',
   WINDOW_WORKSPACE_CHANGED: 'state:window-workspace-changed',
   WINDOWS_CHANGED: 'state:windows-changed',
@@ -617,13 +614,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };
   [IPC_EVENTS.UPDATE_MODAL_OPEN]: void;
-  [IPC_EVENTS.UPDATE_DEV_MODE]: { version: string };
-  [IPC_EVENTS.UPDATE_CHECKING]: void;
-  [IPC_EVENTS.UPDATE_AVAILABLE]: { version: string };
-  [IPC_EVENTS.UPDATE_NOT_AVAILABLE]: { version: string };
-  [IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS]: { percent: number; bytesPerSecond: number };
-  [IPC_EVENTS.UPDATE_DOWNLOADED]: { version: string };
-  [IPC_EVENTS.UPDATE_ERROR]: { message: string };
+  [IPC_EVENTS.UPDATE_STATUS_CHANGED]: UpdateStatus;
   [IPC_EVENTS.TAB_PREVIEW_DATA]: { tabId: string; profileId: string; title: string; url: string };
   [IPC_EVENTS.WINDOW_WORKSPACE_CHANGED]: { workspaceId: string | null };
   [IPC_EVENTS.WINDOWS_CHANGED]: { windows: WindowInfo[] };
