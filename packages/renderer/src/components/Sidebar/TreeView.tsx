@@ -131,6 +131,7 @@ export function TreeView({ workspaceId, mode, activeDrop }: TreeViewProps) {
           rowHeight={rowHeight}
           rowComponent={RowComponent}
           rowProps={rowProps}
+          className="vela-scroll"
           style={{ height: '100%', width: '100%' }}
         />
       </div>
@@ -138,7 +139,7 @@ export function TreeView({ workspaceId, mode, activeDrop }: TreeViewProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" role="list">
+    <div className="vela-scroll flex-1 overflow-y-auto" role="list">
       {flat.map((item) => (
         <TreeNodeRow
           key={item.node.id}

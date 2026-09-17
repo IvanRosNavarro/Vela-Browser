@@ -237,7 +237,7 @@ export function PinnedTabs({
   return (
     <div
       ref={sectionDrop.setNodeRef}
-      className="flex shrink-0 gap-1 overflow-x-auto border-b px-1.5 py-2"
+      className="vela-scroll flex shrink-0 gap-1 overflow-x-auto border-b px-1.5 py-2"
       style={{
         borderColor: 'var(--vela-border)',
         flexWrap: compact ? 'wrap' : 'nowrap',

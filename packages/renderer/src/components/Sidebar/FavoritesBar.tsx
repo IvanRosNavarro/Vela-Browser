@@ -188,7 +188,7 @@ export function FavoritesBar({ workspaceId, activeDrop }: FavoritesBarProps) {
   return (
     <div
       ref={sectionDrop.setNodeRef}
-      className="flex shrink-0 flex-wrap gap-1 overflow-x-auto border-b px-1.5 py-2"
+      className="vela-scroll flex shrink-0 flex-wrap gap-1 overflow-x-auto border-b px-1.5 py-2"
       style={{
         borderColor: 'var(--vela-border)',
         background: isPinnedTarget ? 'var(--vela-drop-bg)' : undefined,
