@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   app,
   BrowserWindow,
+  session,
   WebContentsView,
   type Session,
   type WebContents,
@@ -2167,6 +2168,15 @@ export class TabManager {
   }
 
   private spawnView(state: PerWindow, tab: TabNode): WebContentsView {
+    // Una pestaña fantasma que vuelve de suspendida (o se recrea por cualquier
+    // otra vía) debe seguir en su sesión en memoria, nunca en la del perfil:
+    // si no, la navegación privada acabaría escribiendo cookies e historial
+    // de caché en la partición persistente. fromPartition devuelve la misma
+    // instancia que creó setupTab, así que conserva su estado.
+    if (tab.isSecure || this.secureTabs.has(tab.id)) {
+      const secureSession = session.fromPartition(`secure-${tab.id}`, { cache: false });
+      return this.spawnSecureView(state, tab, secureSession);
+    }
     // Cada WebContentsView se crea bajo la sesión particionada del perfil de
     // la window. Si no hay profileId (path heredado de Fase 1, mientras el
     // ProfileWindowManager del Prompt 4 no esté operativo), se cae a la

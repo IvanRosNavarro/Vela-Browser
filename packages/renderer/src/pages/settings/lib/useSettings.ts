@@ -25,6 +25,7 @@ const DEFAULTS: SettingsMap = {
   'tabs:discard-audio': true,
   'tabs:discard-forms': true,
   'tabs:discard-pinned': true,
+  'tabs:discard-secure': true,
   'tabs:discard-whitelist': '',
   'tabs:new-tab-page': 'newtab',
   'tabs:auto-collapse-folders': false,

@@ -321,6 +321,9 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       página) al cambiar de workspace. Antes se suspendían con el workspace
       saliente y volver a ellas creaba un WCV nuevo. ADR 0100.
 - [x] `DiscardManager` exceptúa las Anclas bajo el guard `tabs:discard-pinned`.
+- [x] Las pestañas fantasma no se descartan por inactividad salvo que se
+      desactive `tabs:discard-secure`. Al reactivar una suspendida, `spawnView`
+      la recrea en su sesión en memoria (antes caía en la del perfil).
 
 ### Abiertos
 

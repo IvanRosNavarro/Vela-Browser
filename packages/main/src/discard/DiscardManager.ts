@@ -72,6 +72,12 @@ export class DiscardManager {
     const noPinnedRaw = repos.settings.get('tabs:discard-pinned');
     const noPinned = noPinnedRaw !== null ? (JSON.parse(noPinnedRaw) as boolean) !== false : true;
 
+    // Pestañas fantasma: por defecto no se descartan. Descartarlas no pierde
+    // la sesión en memoria, pero sí la página viva, y el usuario las abre
+    // para una tarea puntual. La suspensión manual sigue disponible.
+    const noSecureRaw = repos.settings.get('tabs:discard-secure');
+    const noSecure = noSecureRaw !== null ? (JSON.parse(noSecureRaw) as boolean) !== false : true;
+
     // Global domain whitelist (textarea, one domain per line)
     const whitelistRaw = repos.settings.get('tabs:discard-whitelist');
     const whitelistStr = whitelistRaw !== null ? (JSON.parse(whitelistRaw) as string) : '';
@@ -110,6 +116,7 @@ export class DiscardManager {
         // las tabs que el usuario mantiene abiertas a propósito y cuyo estado
         // (sesión, formularios) no debe perderse por inactividad.
         if (noPinned && (node.pinned || node.anchored)) continue;
+        if (noSecure && node.isSecure) continue;
         if (!node.lastActiveAt || node.lastActiveAt >= now - timeoutMs) continue;
 
         // Solo descartar tabs con WCV vivo en runtime (en ventana o suspendido).
