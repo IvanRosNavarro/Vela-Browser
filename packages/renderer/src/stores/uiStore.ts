@@ -126,6 +126,10 @@ export const useUiStore = create<UiState>((set, get) => ({
       fontSize,
       compactDensity: coerceBool(all['ui:compactDensity'], UI_SETTINGS_DEFAULTS.compactDensity),
       newtabButtonPos: all['ui:sidebar-newtab-pos'] === 'footer' ? 'footer' : 'above-tabs',
+      workspaceSwitchAnimation: coerceBool(
+        all['ui:workspace-switch-animation'],
+        UI_SETTINGS_DEFAULTS.workspaceSwitchAnimation,
+      ),
     };
     set({ ...next, sidebarWidthNormal, customThemes, customCss, loaded: true });
 

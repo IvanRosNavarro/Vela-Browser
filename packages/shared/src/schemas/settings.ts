@@ -87,6 +87,7 @@ export const SETTINGS_KEYS = [
   'favorites:view-mode',
   'sidebar:tab-preview-delay',
   'notifications:display-mode',
+  'ui:workspace-switch-animation',
 ] as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[number];
@@ -193,6 +194,7 @@ export const SETTINGS_DEFAULT_SCOPE: Record<SettingsKey, SettingsScope> = {
   'favorites:view-mode': 'profile',
   'sidebar:tab-preview-delay': 'profile',
   'notifications:display-mode': 'profile',
+  'ui:workspace-switch-animation': 'profile',
 };
 
 export const settingsGetInputSchema = z.object({

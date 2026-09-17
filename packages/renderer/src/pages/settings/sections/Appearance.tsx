@@ -412,6 +412,15 @@ export function Appearance({ settings }: Props) {
           />
         </SettingRow>
         <SettingRow
+          label="Animación al cambiar de workspace"
+          description="Las pestañas se deslizan hacia el lado del workspace destino."
+        >
+          <Toggle
+            value={get<boolean>('ui:workspace-switch-animation', true)}
+            onChange={(v) => void set('ui:workspace-switch-animation', v)}
+          />
+        </SettingRow>
+        <SettingRow
           label="Ancho en modo normal"
           description={`${sidebarWidthNormal} px`}
         >

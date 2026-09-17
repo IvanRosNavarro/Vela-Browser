@@ -12,6 +12,8 @@ export interface UiSettings {
   fontSize: number;
   compactDensity: boolean;
   newtabButtonPos: NewTabButtonPos;
+  /** Deslizamiento del contenido de la sidebar al cambiar de workspace. */
+  workspaceSwitchAnimation: boolean;
 }
 
 export const UI_SETTINGS_DEFAULTS: UiSettings = {
@@ -24,6 +26,7 @@ export const UI_SETTINGS_DEFAULTS: UiSettings = {
   fontSize: 14,
   compactDensity: false,
   newtabButtonPos: 'above-tabs',
+  workspaceSwitchAnimation: true,
 };
 
 export type MruScope = 'workspace' | 'global';
