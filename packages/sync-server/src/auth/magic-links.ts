@@ -11,15 +11,26 @@ import {
 
 export const authRouter = Router();
 
+/** Aplicaciones que pueden pedir un enlace mágico, con su esquema de vuelta. */
+const CALLBACK_SCHEMES: Record<string, string> = {
+  browser: 'vela://',
+  ftp: 'vela-ftp://',
+};
+
 // POST /auth/magic-link
 authRouter.post('/magic-link',
   rateLimitMagicLink,
   rateLimitMagicLinkByEmail,
   async (req, res) => {
-    const { email } = req.body as { email?: string };
+    const { email, app } = req.body as { email?: string; app?: string };
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'Email inválido' });
+    }
+    // Sin `app` es Vela Browser: los clientes anteriores no lo mandan.
+    const appId = app === undefined ? 'browser' : app;
+    if (!CALLBACK_SCHEMES[appId]) {
+      return res.status(400).json({ error: 'app desconocida' });
     }
 
     const db = getDb();
@@ -50,9 +61,9 @@ authRouter.post('/magic-link',
 
     db.prepare(`
       INSERT INTO magic_link_tokens
-        (token, user_id, email, expires_at)
-      VALUES (?, ?, ?, ?)
-    `).run(token, user.id, emailLower, expiresAt);
+        (token, user_id, email, expires_at, app)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(token, user.id, emailLower, expiresAt, appId);
 
     try {
       await sendMagicLink(emailLower, token);
@@ -74,10 +85,10 @@ authRouter.get('/verify', rateLimitVerify, (req, res) => {
 
   const db = getDb();
   const record = db.prepare(`
-    SELECT user_id FROM magic_link_tokens
+    SELECT user_id, app FROM magic_link_tokens
     WHERE token = ? AND used = 0
       AND expires_at > ?
-  `).get(token, Date.now()) as { user_id: string } | undefined;
+  `).get(token, Date.now()) as { user_id: string; app: string | null } | undefined;
 
   if (!record) {
     return res.status(400).send('El enlace ha caducado o ya fue utilizado.');
@@ -90,6 +101,7 @@ authRouter.get('/verify', rateLimitVerify, (req, res) => {
 
   const sessionToken = createSession(record.user_id);
 
-  // El protocolo vela:// captura este redirect en el cliente.
-  res.redirect(`vela://sync-callback?token=${sessionToken}`);
+  // El protocolo de la aplicación captura este redirect en el cliente.
+  const scheme = CALLBACK_SCHEMES[record.app ?? 'browser'] ?? CALLBACK_SCHEMES.browser;
+  res.redirect(`${scheme}sync-callback?token=${sessionToken}`);
 });
