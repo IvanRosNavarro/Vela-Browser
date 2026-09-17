@@ -221,6 +221,15 @@ export function Tabs({ settings }: Props) {
             onChange={(v) => void set('tabs:discard-pinned', v)}
           />
         </SettingRow>
+        <SettingRow
+          label="No descartar pestañas fantasma"
+          description="Puedes suspenderlas a mano desde su menú contextual."
+        >
+          <Toggle
+            value={get<boolean>('tabs:discard-secure', true)}
+            onChange={(v) => void set('tabs:discard-secure', v)}
+          />
+        </SettingRow>
         <div className="px-4 py-3">
           <label className="mb-1.5 block text-sm text-[var(--vela-fg)]">
             Dominios en lista blanca (uno por línea)

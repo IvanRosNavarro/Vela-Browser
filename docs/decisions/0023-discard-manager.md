@@ -24,6 +24,7 @@ funcionalidad globalmente.
 | `tabs:discard-audio` | bool | true | No descartar si hay audio activo |
 | `tabs:discard-forms` | bool | true | No descartar si hay formulario con datos |
 | `tabs:discard-pinned` | bool | true | No descartar tabs pinneadas |
+| `tabs:discard-secure` | bool | true | No descartar pestañas fantasma (la suspensión manual sigue permitida) |
 | `tabs:discard-whitelist` | string (newline-separated) | '' | Dominios globales excluidos |
 | `tabs:discard-permanent-whitelist` | string[] | [] | Tab IDs excluidas permanentemente |
 | `tabs:discard-workspace-whitelists` | Record<wsId, bool> | {} | Workspaces excluidos |
