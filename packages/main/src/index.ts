@@ -889,7 +889,14 @@ app.whenReady().then(async () => {
 
   app.on('before-quit', () => discardManager.stop());
 
-  initUpdater();
+  // El ajuste global `updates:auto-check` se lee en cada tick: desactivarlo en
+  // Ajustes surte efecto sin reiniciar.
+  initUpdater({
+    autoCheckEnabled: () =>
+      new GlobalSettings(ipcCtx!.repositories.appMetadata).get<boolean>(
+        'updates:auto-check',
+      ) !== false,
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,12 +1,16 @@
 import { app, ipcMain, session, BrowserWindow } from 'electron';
-import { IPC_CHANNELS, IPC_EVENTS, type IpcResponse } from '@vela/shared';
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type IpcResponse,
+  type UpdateStatus,
+} from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { guardTrustedFrame } from './validate';
-import { checkForUpdatesNow, downloadUpdate, quitAndInstall } from '../updater';
+import { getUpdateService } from '../updater';
 import { resolveWindowId } from './helpers';
 import { InvariantViolationError } from '../lib/errors';
-import { logger } from '../logger';
 
 function broadcastToAllWindows(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -14,21 +18,42 @@ function broadcastToAllWindows(channel: string, payload?: unknown): void {
   }
 }
 
+/**
+ * Estado de reserva si alguien pregunta antes de que `initUpdater` corra: el
+ * renderer siempre recibe un `UpdateStatus` completo, nunca `null`.
+ */
+function fallbackStatus(): UpdateStatus {
+  return {
+    phase: 'unsupported',
+    currentVersion: app.getVersion(),
+    version: null,
+    percent: 0,
+    error: null,
+    checkedAt: null,
+    canInstall: false,
+  };
+}
+
 export function registerUpdateHandlers(ctx: IpcContext): void {
   ipcMain.handle(
+    IPC_CHANNELS.UPDATE_GET_STATUS,
+    async (event): Promise<IpcResponse<UpdateStatus>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.UPDATE_GET_STATUS);
+      return { ok: true, data: getUpdateService()?.current ?? fallbackStatus() };
+    },
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.UPDATE_CHECK_NOW,
-    async (): Promise<IpcResponse<void>> => {
+    async (event): Promise<IpcResponse<UpdateStatus>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.UPDATE_CHECK_NOW);
+      // La comprobación puede pedirse desde vela://settings o desde el menú de
+      // Vela, que son ventanas distintas de la shell: el aviso abre la modal
+      // allí donde vive la interfaz.
       broadcastToAllWindows(IPC_EVENTS.UPDATE_MODAL_OPEN);
-
-      if (!app.isPackaged) {
-        logger.info('[updater] check manual: modo de desarrollo, sin actualizaciones');
-        broadcastToAllWindows(IPC_EVENTS.UPDATE_DEV_MODE, { version: app.getVersion() });
-        return { ok: true, data: undefined };
-      }
-
       try {
-        await checkForUpdatesNow();
-        return { ok: true, data: undefined };
+        const service = getUpdateService();
+        return { ok: true, data: service ? await service.check() : fallbackStatus() };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.UPDATE_CHECK_NOW);
       }
@@ -37,9 +62,11 @@ export function registerUpdateHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(
     IPC_CHANNELS.UPDATE_DOWNLOAD,
-    async (): Promise<IpcResponse<void>> => {
+    async (event): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.UPDATE_DOWNLOAD);
       try {
-        await downloadUpdate();
+        // No se espera: el progreso viaja por `state:update-status-changed`.
+        void getUpdateService()?.download();
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.UPDATE_DOWNLOAD);
@@ -49,12 +76,26 @@ export function registerUpdateHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(
     IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL,
-    async (): Promise<IpcResponse<void>> => {
+    async (event): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL);
       try {
-        quitAndInstall();
+        getUpdateService()?.install();
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.UPDATE_OPEN_RELEASE,
+    async (event): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.UPDATE_OPEN_RELEASE);
+      try {
+        getUpdateService()?.openRelease();
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.UPDATE_OPEN_RELEASE);
       }
     },
   );

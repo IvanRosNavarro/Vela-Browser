@@ -182,9 +182,11 @@ const api: PreloadApi = {
     query: (input) => call(IPC_CHANNELS.SUGGEST_QUERY, input),
   },
   update: {
+    getStatus: () => call(IPC_CHANNELS.UPDATE_GET_STATUS),
     checkNow: () => call(IPC_CHANNELS.UPDATE_CHECK_NOW),
     download: () => call(IPC_CHANNELS.UPDATE_DOWNLOAD),
     quitAndInstall: () => call(IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL),
+    openRelease: () => call(IPC_CHANNELS.UPDATE_OPEN_RELEASE),
   },
   defaultBrowser: {
     getStatus: () => call(IPC_CHANNELS.DEFAULT_BROWSER_GET_STATUS),

@@ -168,51 +168,36 @@ export function App() {
 
     const offUpdateModalOpen = window.api.on(IPC_EVENTS.UPDATE_MODAL_OPEN, () => {
       useUpdateStore.getState().openModal();
-      useUpdateStore.getState().setPhase('checking');
     });
-    const offUpdateDevMode = window.api.on(IPC_EVENTS.UPDATE_DEV_MODE, () => {
-      useUpdateStore.getState().setPhase('dev-mode');
-    });
-    const offUpdateChecking = window.api.on(IPC_EVENTS.UPDATE_CHECKING, () => {
-      useUpdateStore.getState().setPhase('checking');
-    });
-    const offUpdateAvailable = window.api.on(IPC_EVENTS.UPDATE_AVAILABLE, ({ version }) => {
-      useUpdateStore.getState().setPhase('available', { version });
-      if (!useUpdateStore.getState().modalOpen) {
-        toast(`Nueva versión v${version} disponible`, 'success', () => {
+    // Main emite el estado completo en cada cambio; aquí solo se guarda y se
+    // avisa con un toast de las transiciones que el usuario querría saber
+    // cuando la modal no está abierta.
+    let lastPhase = useUpdateStore.getState().status.phase;
+    const offUpdateStatus = window.api.on(IPC_EVENTS.UPDATE_STATUS_CHANGED, (status) => {
+      const previous = lastPhase;
+      lastPhase = status.phase;
+      useUpdateStore.getState().setStatus(status);
+      if (useUpdateStore.getState().modalOpen || status.phase === previous) return;
+
+      if (status.phase === 'available') {
+        toast(`Nueva versión v${status.version} disponible`, 'success', () => {
           useUpdateStore.getState().openModal();
         });
-      }
-    });
-    const offUpdateNotAvailable = window.api.on(IPC_EVENTS.UPDATE_NOT_AVAILABLE, () => {
-      useUpdateStore.getState().setPhase('up-to-date');
-      if (!useUpdateStore.getState().modalOpen) {
-        toast('Vela está al día', 'success');
-      }
-    });
-    let downloadingToastShown = false;
-    const offUpdateProgress = window.api.on(IPC_EVENTS.UPDATE_DOWNLOAD_PROGRESS, ({ percent }) => {
-      useUpdateStore.getState().setPhase('downloading', { percent });
-      if (!useUpdateStore.getState().modalOpen && !downloadingToastShown) {
-        downloadingToastShown = true;
+      } else if (status.phase === 'downloading') {
         toast('Descargando actualización…');
+      } else if (status.phase === 'downloaded') {
+        toast(
+          `Actualización v${status.version} lista — Reinicia Vela para instalarla`,
+          'success',
+          () => {
+            void window.api.update.quitAndInstall();
+          },
+        );
+      } else if (status.phase === 'error' && status.error) {
+        toast(`Error al actualizar: ${status.error}`, 'error');
       }
     });
-    const offUpdateDownloaded = window.api.on(IPC_EVENTS.UPDATE_DOWNLOADED, ({ version }) => {
-      downloadingToastShown = false;
-      useUpdateStore.getState().setPhase('downloaded', { version });
-      if (!useUpdateStore.getState().modalOpen) {
-        toast(`Actualización v${version} lista — Reinicia Vela para instalarla`, 'success', () => {
-          void window.api.update.quitAndInstall();
-        });
-      }
-    });
-    const offUpdateError = window.api.on(IPC_EVENTS.UPDATE_ERROR, ({ message }) => {
-      useUpdateStore.getState().setPhase('error', { message });
-      if (!useUpdateStore.getState().modalOpen) {
-        toast(`Error al actualizar: ${message}`, 'error');
-      }
-    });
+    void useUpdateStore.getState().hydrate();
 
     const offColorPicked = window.api.on(IPC_EVENTS.DEVTOOLS_COLOR_PICKED, (color) => {
       useDevToolsStore.getState().receiveColor(color);
@@ -338,9 +323,7 @@ export function App() {
     return () => {
       offColorPicked();
       offWorkspace(); offProfile(); offSnapshot(); offSelectionSaved(); offLinkInWorkspace(); offAddNodeMenu(); offDownloads();
-      offUpdateModalOpen(); offUpdateDevMode();
-      offUpdateChecking(); offUpdateAvailable(); offUpdateNotAvailable();
-      offUpdateProgress(); offUpdateDownloaded(); offUpdateError();
+      offUpdateModalOpen(); offUpdateStatus();
       offClusterRelay();
       offNotificationsChanged(); offPermissionPending(); offPermissionChanged(); offNotificationCenterOpen();
       offMediaPermPending(); offMediaPermChanged();
