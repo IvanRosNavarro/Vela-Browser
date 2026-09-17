@@ -1,21 +1,19 @@
 import { app, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
 import { logger } from '../logger';
+import { isTrustedFrameUrl, originOf } from './trustedFrameUrl';
 
-const isDev = !app.isPackaged;
+const DEV_SERVER_ORIGIN = app.isPackaged
+  ? null
+  : originOf(process.env['VITE_DEV_SERVER_URL'] ?? 'http://localhost:5173');
 
 /**
  * Devuelve true si el frame remitente es de confianza: una página interna
- * vela://, el renderer empaquetado (file://) o el dev server (localhost).
+ * vela://, el renderer empaquetado (file://) o el dev server.
  */
 export function isTrustedFrame(
   event: IpcMainInvokeEvent | IpcMainEvent,
 ): boolean {
-  const url = event.senderFrame?.url ?? '';
-  return (
-    url.startsWith('vela://') ||
-    url.startsWith('file://') ||
-    (isDev && url.startsWith('http://localhost'))
-  );
+  return isTrustedFrameUrl(event.senderFrame?.url ?? '', DEV_SERVER_ORIGIN);
 }
 
 /**
