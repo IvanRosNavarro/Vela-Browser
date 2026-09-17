@@ -25,7 +25,9 @@
     "build:mac": "pnpm build && electron-builder --config electron-builder.config.cjs --mac",
     "build:linux": "pnpm build && electron-builder --config electron-builder.config.cjs --linux",
     "release": "pnpm build && electron-builder --config electron-builder.config.cjs --publish always",
-    "clean": "pnpm -r --parallel clean && rimraf node_modules"
+    "clean": "pnpm -r --parallel clean && rimraf node_modules",
+    "kit:link": "node scripts/kit-link.mjs link",
+    "kit:unlink": "node scripts/kit-link.mjs unlink"
   },
   "dependencies": {
     "@cliqz/adblocker-electron": "^1.34.0",

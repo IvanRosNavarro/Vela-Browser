@@ -19,6 +19,7 @@ import { createMainWindow } from './window/createMainWindow';
 import { getAppIconPath } from './window/iconPath';
 import { EXTENSIONS_DIR, loadExtensions } from './extensions/loadExtensions';
 import { registerExtensionShortcuts } from './extensions/extensionCommands';
+import { watchMaximized } from 'vela-kit/window';
 import { initLogger, logger, closeLogger } from './logger';
 import { initStorage, getDb, closeStorage } from './storage/db';
 import { initUpdater, shutdownUpdater } from './updater';
@@ -701,11 +702,8 @@ app.whenReady().then(async () => {
       if (ipcCtx) {
         const { events } = ipcCtx;
         const windowId = window.id;
-        window.on('maximize', () => {
-          events.emit(IPC_EVENTS.WINDOW_MAXIMIZED_CHANGED, { windowId, maximized: true });
-        });
-        window.on('unmaximize', () => {
-          events.emit(IPC_EVENTS.WINDOW_MAXIMIZED_CHANGED, { windowId, maximized: false });
+        watchMaximized(window, (maximized) => {
+          events.emit(IPC_EVENTS.WINDOW_MAXIMIZED_CHANGED, { windowId, maximized });
         });
         window.on('enter-full-screen', () => {
           events.emit(IPC_EVENTS.FULLSCREEN_CHANGED, { windowId, fullscreen: true });

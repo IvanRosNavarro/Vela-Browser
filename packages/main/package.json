@@ -15,7 +15,8 @@
   "dependencies": {
     "@vela/shared": "workspace:*",
     "@vitalets/google-translate-api": "^9.2.1",
-    "fractional-indexing": "^3.2.0"
+    "fractional-indexing": "^3.2.0",
+    "vela-kit": "github:IvanRosNavarro/Vela-Kit#v0.3.0"
   },
   "devDependencies": {
     "@types/node": "22.10.0",

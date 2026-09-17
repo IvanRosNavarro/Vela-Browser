@@ -88,6 +88,25 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       más NO funciona — esas migraciones siembran un workspace por defecto y los
       tests asumen una BD vacía; hay que adaptar también las expectativas.
 
+### vela-kit (ADR 0106)
+
+- [ ] **Comandos y atajos siguen fuera del kit**: `CommandRegistry`,
+      `ShortcutTable` y `attachShortcuts` del navegador no se sustituyeron por
+      los de `vela-kit/commands` porque cambiarían comportamiento (el parser del
+      kit acepta `Home`/`End`/`PageUp`/`PageDown`, invoca en microtarea y su
+      `InvalidCommandArgsError` no lleva el mensaje de zod). Si se quiere
+      unificar, hacerlo primero en el kit de forma retrocompatible (opciones
+      para limitar teclas e invocar en síncrono) y verificar `Ctrl+Tab` MRU y el
+      paso de Escape con la barra de direcciones y el find bar.
+- [ ] **Validación de CSS custom solo en el renderer**: la documentación habla
+      de validador dual renderer + main, pero en main no hay validación antes
+      de persistir `ui:custom-css`. Añadirla con `validateCustomCss` de
+      `vela-kit/theme` (`allowedUrlSchemes: ['vela:']`) en el handler de
+      ajustes. Preexistente; detectado al adoptar el kit.
+- [ ] **ErrorBoundary propio**: el de `renderer/src/main.tsx` podría usar el de
+      `vela-kit/ui` si se acepta que la pantalla de error tome los colores del
+      tema en vez de los fijos actuales.
+
 ### Multimedia
 
 - [ ] **Control multimedia en iframes cross-origin**: sitios como Spotify Web o reproductores
