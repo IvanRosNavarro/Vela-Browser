@@ -22,6 +22,7 @@ import { GlobalAnchorBar } from './GlobalAnchorBar';
 import { SidebarFooter } from './SidebarFooter';
 import { TreeView } from './TreeView';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceSlide } from './WorkspaceSlide';
 import {
   decodeDroppableId,
   isDropValid,
@@ -219,7 +220,7 @@ export function Sidebar() {
         <GlobalAnchorBar activeDrop={activeDrop} />
         {!window.api.init.isBlindedWindow && <WorkspaceHeader />}
         {activeWorkspaceId ? (
-          <>
+          <WorkspaceSlide>
             <FavoritesBar
               workspaceId={activeWorkspaceId}
               activeDrop={activeDrop}
@@ -260,7 +261,7 @@ export function Sidebar() {
               activeDrop={activeDrop}
             />
             <SidebarFooter mode={sidebarMode} onNewTab={onNewTab} />
-          </>
+          </WorkspaceSlide>
         ) : (
           <div className="flex-1 px-3 py-4 text-sm text-[var(--vela-fg-muted)]">
             Selecciona un workspace para empezar.

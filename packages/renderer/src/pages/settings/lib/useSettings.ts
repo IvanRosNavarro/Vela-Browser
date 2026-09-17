@@ -31,6 +31,7 @@ const DEFAULTS: SettingsMap = {
   'ui:glassmorphism': false,
   'ui:glassmorphism-intensity': 60,
   'ui:glassmorphism-opacity': 60,
+  'ui:workspace-switch-animation': true,
   'media:widget-enabled': true,
   'media:tab-indicator': true,
 };
