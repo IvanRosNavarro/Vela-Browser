@@ -1031,9 +1031,16 @@ export function App() {
           from { transform: translateX(-100%); }
           to   { transform: translateX(0); }
         }
-        ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: var(--vela-border, rgba(255,255,255,0.12)); border-radius: 2px; }
-        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+        ::-webkit-scrollbar-button { display: none; }
+        ::-webkit-scrollbar-thumb {
+          background-color: color-mix(in srgb, var(--vela-sidebar-fg, var(--vela-fg, #e6e8ee)) 14%, transparent);
+          background-clip: padding-box; border: 2px solid transparent; border-radius: 999px;
+        }
+        *:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--vela-sidebar-fg, var(--vela-fg, #e6e8ee)) 28%, transparent); }
+        ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--vela-sidebar-fg, var(--vela-fg, #e6e8ee)) 42%, transparent); }
+        ::-webkit-scrollbar-thumb:active { background-color: var(--vela-accent, #7d8cff); }
       `}</style>
 
       <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
