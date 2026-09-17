@@ -9,12 +9,20 @@ syncRouter.use(requireAuth);
 // Tipos de entidad sincronizable conocidos (debe coincidir con los serializers
 // del cliente). Cualquier otro entity_type se rechaza para no almacenar basura.
 const ALLOWED_ENTITY_TYPES = new Set([
+  // Vela Browser
   'workspace',
   'treenode',
   'favorite',
   'user_script',
   'adblocker_exception',
   'setting',
+  // Vela FTP (prefijo propio: comparten cuenta pero no perfil remoto)
+  'ftp.project',
+  'ftp.site',
+  'ftp.site_secret',
+  'ftp.bookmark',
+  'ftp.known_host',
+  'ftp.setting',
 ]);
 
 const MAX_ENTITIES_PER_REQUEST = 1000;

@@ -4,6 +4,7 @@ import fs from 'fs';
 import { migration001 } from './migrations/001_initial';
 import { migration002 } from './migrations/002_push_proxy';
 import { migration003 } from './migrations/003_key_salt';
+import { migration004 } from './migrations/004_app_scheme';
 
 let db: Database.Database;
 
@@ -21,6 +22,7 @@ export function initDatabase(dbPath: string): void {
   db.exec(migration001);
   db.exec(migration002);
   db.exec(migration003);
+  migration004(db);
 
   console.log(`Database initialized at ${dbPath}`);
 }
