@@ -1,6 +1,6 @@
-import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { logger } from '../logger';
+import { migrationsFromGlob } from 'vela-kit/storage';
 import { transaction } from './db';
 
 const PROFILE_MIGRATION_FILES = import.meta.glob(
@@ -59,10 +59,7 @@ export class ProfileMigrationRunner {
       .all() as MigrationRow[];
     const applied = new Set(appliedRows.map((r) => r.name));
 
-    const pending: PreparedMigration[] = Object.entries(PROFILE_MIGRATION_FILES)
-      .map(([file, sql]) => ({ name: path.basename(file), sql }))
-      .filter(({ name }) => /^\d+-.+\.sql$/.test(name))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const pending: PreparedMigration[] = migrationsFromGlob(PROFILE_MIGRATION_FILES);
 
     let appliedCount = 0;
     for (const { name, sql } of pending) {

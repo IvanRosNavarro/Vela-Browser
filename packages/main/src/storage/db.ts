@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { app } from 'electron';
+import { migrationsFromGlob, transaction } from 'vela-kit/storage';
 import { logger } from '../logger';
+
+// `transaction` vive en vela-kit (ADR 0106); se reexporta para los módulos
+// que ya lo importaban de aquí.
+export { transaction };
 
 const MIGRATION_FILES = import.meta.glob('./migrations/*.sql', {
   query: '?raw',
@@ -62,10 +67,7 @@ function applyMigrations(database: DatabaseSync): void {
     .all() as MigrationRow[];
   const applied = new Set(appliedRows.map((r) => r.name));
 
-  const pending = Object.entries(MIGRATION_FILES)
-    .map(([file, sql]) => ({ name: path.basename(file), sql }))
-    .filter(({ name }) => /^\d+-.+\.sql$/.test(name))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const pending = migrationsFromGlob(MIGRATION_FILES);
 
   let appliedCount = 0;
   for (const { name, sql } of pending) {
@@ -99,19 +101,3 @@ function upsertAppVersion(database: DatabaseSync): void {
   logger.info(`[storage] app_version=${version}`);
 }
 
-export function transaction<T>(database: DatabaseSync, fn: () => T): T {
-  database.exec('BEGIN');
-  try {
-    const result = fn();
-    database.exec('COMMIT');
-    return result;
-  } catch (err) {
-    try {
-      database.exec('ROLLBACK');
-    } catch {
-      // si el rollback falla (BD ya cerrada, etc.), propagar el error
-      // original es más útil que enmascararlo con uno secundario
-    }
-    throw err;
-  }
-}

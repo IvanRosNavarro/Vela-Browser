@@ -1,12 +1,16 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, searchForWorkspaceRoot } from 'vite';
 
 const rootPkg = JSON.parse(
   readFileSync(resolve(__dirname, '../../package.json'), 'utf-8'),
 ) as { version: string };
 const APP_VERSION = rootPkg.version;
+
+// Con `pnpm kit:link` vela-kit vive fuera del repo y el dev server se negaría
+// a servir sus ficheros.
+const velaKitDir = realpathSync(resolve(__dirname, 'node_modules/vela-kit'));
 
 export default defineConfig({
   plugins: [react()],
@@ -74,9 +78,15 @@ export default defineConfig({
       '@vela/shared': resolve(__dirname, '../shared/src/index.ts'),
       '@': resolve(__dirname, 'src'),
     },
+    // Con vela-kit enlazado, sus imports resolverían contra su propio
+    // node_modules y habría dos React (hooks rotos) y dos stores de zustand.
+    dedupe: ['react', 'react-dom', 'zustand'],
   },
   server: {
     port: 5173,
     strictPort: true,
+    fs: {
+      allow: [searchForWorkspaceRoot(__dirname), velaKitDir],
+    },
   },
 });

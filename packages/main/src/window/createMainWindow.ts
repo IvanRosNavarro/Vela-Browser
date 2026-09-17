@@ -4,6 +4,7 @@ import { release } from 'node:os';
 import { platform } from 'node:process';
 import { app, BrowserWindow } from 'electron';
 import { getAppIconPath } from './iconPath';
+import { titleBarWindowOptions } from 'vela-kit/window';
 import { buildCspHeader } from '../security/csp';
 
 const PRELOAD_PATH = path.join(__dirname, '..', '..', 'preload', 'dist', 'index.js');
@@ -18,22 +19,12 @@ function isAcrylicSupported(): boolean {
 
 export const backgroundMaterialSupported: { value: boolean } = { value: false };
 
-const titleBarConfig = (() => {
-  if (platform === 'darwin') {
-    return { titleBarStyle: 'hiddenInset' as const };
-  }
-  if (platform === 'win32') {
-    return {
-      titleBarStyle: 'hidden' as const,
-      titleBarOverlay: {
-        color: '#1a1a1a',
-        symbolColor: '#e0e0e0',
-        height: 32,
-      },
-    };
-  }
-  return { titleBarStyle: 'hidden' as const };
-})();
+// Estrategia de title bar por plataforma (ADR 0012), desde vela-kit: overlay
+// nativo de 32 px en Windows (#1a1a1a / #e0e0e0 hasta que el tema lo recolorea),
+// semáforos integrados en macOS y barra propia en Linux y el resto.
+const titleBarConfig = titleBarWindowOptions(
+  platform === 'darwin' || platform === 'win32' ? platform : 'linux',
+);
 
 export interface WindowInitState {
   sidebarWidth?: number;
