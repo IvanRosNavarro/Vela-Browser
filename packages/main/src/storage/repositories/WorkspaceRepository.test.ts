@@ -8,7 +8,7 @@ describe('WorkspaceRepository', () => {
   let repo: WorkspaceRepository;
 
   beforeEach(() => {
-    db = createTestDb();
+    db = createTestDb('profile');
     repo = new WorkspaceRepository(db);
   });
 

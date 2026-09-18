@@ -13,7 +13,7 @@ describe('AutoGroupRuleRepository', () => {
   let folderId: string;
 
   beforeEach(() => {
-    db = createTestDb();
+    db = createTestDb('profile');
     rules = new AutoGroupRuleRepository(db);
     nodes = new TreeNodeRepository(db);
     folderId = nodes.createFolder({

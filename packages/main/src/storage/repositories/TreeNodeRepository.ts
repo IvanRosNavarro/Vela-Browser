@@ -386,6 +386,12 @@ export class TreeNodeRepository {
           `update: tab-only fields not allowed on folder ${id}`,
         );
       }
+    } else if (patch.collapsed !== undefined && !isFolderTabUrl(node.url)) {
+      // Misma regla que toggleCollapse: solo se pliegan las carpetas y las
+      // pestañas-carpeta (vela://folder-view).
+      throw new InvariantViolationError(
+        `update: collapsed not allowed on tab ${id}`,
+      );
     }
 
     const sets: string[] = [];
