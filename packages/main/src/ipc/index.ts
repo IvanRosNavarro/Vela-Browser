@@ -47,6 +47,7 @@ import { registerNotesHandlers } from './notes';
 import { registerHistoryHandlers } from './history';
 import { registerCookieHandlers } from './cookies';
 import { registerFavoritesHandlers } from './favorites';
+import { registerBrowserImportHandlers } from './browserImport';
 import { registerAdBlockerHandlers } from './adblocker';
 import { registerVaultHandlers } from './vault';
 import { registerScriptsHandlers } from './scripts';
@@ -315,6 +316,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerHistoryHandlers(ctx);
   registerCookieHandlers(ctx);
   registerFavoritesHandlers(ctx);
+  registerBrowserImportHandlers(ctx);
   registerAdBlockerHandlers(ctx);
   registerVaultHandlers(ctx);
   registerScriptsHandlers(ctx);

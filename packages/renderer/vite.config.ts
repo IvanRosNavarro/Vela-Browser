@@ -41,6 +41,7 @@ export default defineConfig({
         history: resolve(__dirname, 'src/pages/history/index.html'),
         cookiepanel: resolve(__dirname, 'src/pages/cookiepanel/index.html'),
         favorites: resolve(__dirname, 'src/pages/favorites/index.html'),
+        'import-data': resolve(__dirname, 'src/pages/import-data/index.html'),
         anchors: resolve(__dirname, 'src/pages/anchors/index.html'),
         'adblocker-panel': resolve(__dirname, 'src/pages/adblocker-panel/index.html'),
         'vault-save-modal': resolve(__dirname, 'src/pages/vault-save-modal/index.html'),

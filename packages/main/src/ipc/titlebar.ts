@@ -33,7 +33,7 @@ function broadcastConfig(config: TitleBarIconConfig[], windowId: number): void {
 }
 
 const titleBarIconConfigSchema = z.object({
-  id: z.enum(['favorites', 'media', 'windows', 'sync', 'split-view', 'device-mode']),
+  id: z.enum(['media', 'windows', 'sync', 'split-view', 'device-mode']),
   visible: z.boolean(),
 });
 

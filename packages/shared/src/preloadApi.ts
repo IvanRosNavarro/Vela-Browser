@@ -70,6 +70,16 @@ import type { MediaSource } from './types/media';
 import type { RecentlyClosedTab } from './types/recentlyClosedTab';
 import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat } from './types/quickNote';
 import type { Favorite } from './types/favorite';
+import type { BrowserImportResult, ImportableBrowser } from './types/browserImport';
+import type {
+  BrowserImportRunInput,
+  FavoritesAddInput,
+  FavoritesCreateFolderInput,
+  FavoritesMoveInput,
+  FavoritesRemoveInput,
+  FavoritesReorderInput,
+  FavoritesUpdateInput,
+} from './schemas/favorites';
 import type { AdBlockerStatus } from './types/adblocker';
 import type { VaultEntry, VaultEntrySummary, VaultPendingInfo } from './types/vault';
 import type { UserScript, UserScriptData, UserScriptMeta } from './types/userScript';
@@ -617,14 +627,19 @@ export interface CookiesApi {
 
 export interface FavoritesApi {
   list(): Promise<IpcResponse<Favorite[]>>;
-  add(input: { url: string; title: string; favicon?: string | null; parentId?: string | null; windowId?: number }): Promise<IpcResponse<Favorite>>;
-  remove(input: { id: string }): Promise<IpcResponse<void>>;
-  reorder(input: { id: string; newPosition: string }): Promise<IpcResponse<void>>;
-  updateTitle(input: { id: string; title: string }): Promise<IpcResponse<void>>;
-  createFolder(input: { title: string; parentId?: string | null }): Promise<IpcResponse<Favorite>>;
-  move(input: { id: string; parentId: string | null; newPosition: string }): Promise<IpcResponse<void>>;
-  update(input: { id: string; url?: string | null; title?: string; favicon?: string | null }): Promise<IpcResponse<void>>;
+  add(input: FavoritesAddInput): Promise<IpcResponse<Favorite>>;
+  remove(input: FavoritesRemoveInput): Promise<IpcResponse<void>>;
+  reorder(input: FavoritesReorderInput): Promise<IpcResponse<void>>;
+  createFolder(input: FavoritesCreateFolderInput): Promise<IpcResponse<Favorite>>;
+  move(input: FavoritesMoveInput): Promise<IpcResponse<void>>;
+  update(input: FavoritesUpdateInput): Promise<IpcResponse<void>>;
   exportFile(input: { data: string }): Promise<IpcResponse<void>>;
+}
+
+export interface BrowserImportApi {
+  /** Navegadores y perfiles instalados que Vela sabe leer. */
+  detect(): Promise<IpcResponse<ImportableBrowser[]>>;
+  run(input: BrowserImportRunInput): Promise<IpcResponse<BrowserImportResult>>;
 }
 
 export interface AdBlockerApi {
@@ -751,6 +766,7 @@ export interface PreloadApi {
   history: HistoryApi;
   cookies: CookiesApi;
   favorites: FavoritesApi;
+  browserImport: BrowserImportApi;
   adblocker: AdBlockerApi;
   vault: VaultApi;
   scripts: UserScriptsApi;

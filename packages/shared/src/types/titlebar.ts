@@ -1,5 +1,4 @@
 export type TitleBarIconId =
-  | 'favorites'
   | 'media'
   | 'windows'
   | 'sync'
@@ -12,7 +11,6 @@ export interface TitleBarIconConfig {
 }
 
 export const DEFAULT_TITLEBAR_CONFIG: TitleBarIconConfig[] = [
-  { id: 'favorites',   visible: true  },
   { id: 'media',       visible: true  },
   { id: 'windows',     visible: true  },
   { id: 'sync',        visible: false },
@@ -21,7 +19,6 @@ export const DEFAULT_TITLEBAR_CONFIG: TitleBarIconConfig[] = [
 ];
 
 export const TITLEBAR_ICON_LABELS: Record<TitleBarIconId, string> = {
-  'favorites':   'Favoritos',
   'media':       'Control multimedia',
   'windows':     'Indicador de ventanas',
   'sync':        'Estado de sincronización',

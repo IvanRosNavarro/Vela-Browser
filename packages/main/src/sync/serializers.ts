@@ -94,7 +94,10 @@ export const serializers: Record<string, EntitySerializer> = {
       repos.favorites.syncUpsert(data);
     },
     applyDelete: async (id, repos) => {
-      repos.favorites.remove(id);
+      // Solo la fila: el dispositivo de origen ya envía por separado lo que
+      // pasó con el contenido de una carpeta. Con `remove` se reenviaba el
+      // borrado al servidor como si fuera un cambio local.
+      repos.favorites.syncDelete(id);
     },
     getUpdatedAt: async (id, repos) => {
       return repos.favorites.getById(id)?.updatedAt ?? null;

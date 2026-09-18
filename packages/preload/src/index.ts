@@ -336,11 +336,14 @@ const api: PreloadApi = {
     add: (input) => call(IPC_CHANNELS.FAVORITES_ADD, input),
     remove: (input) => call(IPC_CHANNELS.FAVORITES_REMOVE, input),
     reorder: (input) => call(IPC_CHANNELS.FAVORITES_REORDER, input),
-    updateTitle: (input) => call(IPC_CHANNELS.FAVORITES_UPDATE_TITLE, input),
     createFolder: (input) => call(IPC_CHANNELS.FAVORITES_CREATE_FOLDER, input),
     move: (input) => call(IPC_CHANNELS.FAVORITES_MOVE, input),
     update: (input) => call(IPC_CHANNELS.FAVORITES_UPDATE, input),
     exportFile: (input) => call(IPC_CHANNELS.FAVORITES_EXPORT_FILE, input),
+  },
+  browserImport: {
+    detect: () => call(IPC_CHANNELS.BROWSER_IMPORT_DETECT),
+    run: (input) => call(IPC_CHANNELS.BROWSER_IMPORT_RUN, input),
   },
   adblocker: {
     getStatus: (input) => call(IPC_CHANNELS.ADBLOCKER_GET_STATUS, input),

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { transaction } from 'vela-kit/storage';
 
 export interface HistoryEntry {
   id: string;
@@ -86,6 +87,32 @@ export class HistoryRepository {
     } catch {
       // Graceful degradation: history table may not exist in older DBs
     }
+  }
+
+  /**
+   * Inserta en bloque (una transacción) las entradas que no estén ya: ni por
+   * id ni como la misma URL visitada en el mismo instante. Devuelve cuántas
+   * se insertaron. Pensado para importar el historial de otro navegador.
+   */
+  insertManyIfAbsent(entries: HistoryEntry[]): number {
+    if (entries.length === 0) return 0;
+    const stmt = this.db.prepare(
+      `INSERT OR IGNORE INTO history
+         (id, url, title, favicon, visited_at, workspace_id, session_id)
+       SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM history WHERE url = ? AND visited_at = ?)`,
+    );
+    return transaction(this.db, () => {
+      let inserted = 0;
+      for (const e of entries) {
+        const res = stmt.run(
+          e.id, e.url, e.title, e.favicon ?? null, e.visitedAt, e.workspaceId, e.sessionId,
+          e.url, e.visitedAt,
+        );
+        inserted += Number(res.changes);
+      }
+      return inserted;
+    });
   }
 
   search(query: string, opts?: {

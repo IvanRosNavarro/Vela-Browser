@@ -6,7 +6,6 @@ import { SplitViewButton } from './SplitViewButton';
 import { MediaButton } from './MediaButton';
 import { SyncStatusButton } from './SyncStatusButton';
 import { WindowsIndicator } from './WindowsIndicator';
-import { FavoritesButton } from './FavoritesButton';
 import { useTitleBarIconStore } from '../../../stores/titleBarIconStore';
 
 export function TitleBarRight() {
@@ -28,7 +27,6 @@ export function TitleBarRight() {
       } as CSSProperties}
     >
       <ExtensionActionsBar />
-      {isVisible('favorites') && <FavoritesButton />}
       {isVisible('media') && <MediaButton />}
       {isVisible('windows') && <WindowsIndicator />}
       {isVisible('sync') && <SyncStatusButton />}
