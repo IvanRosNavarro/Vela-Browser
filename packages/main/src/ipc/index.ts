@@ -49,6 +49,7 @@ import { registerCookieHandlers } from './cookies';
 import { registerFavoritesHandlers } from './favorites';
 import { registerAdBlockerHandlers } from './adblocker';
 import { registerVaultHandlers } from './vault';
+import { registerAutofillHandlers } from './autofill';
 import { registerScriptsHandlers } from './scripts';
 import { registerBugSnapshotHandlers } from './bugSnapshot';
 import { registerResourcesHandlers } from './resources';
@@ -317,6 +318,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerFavoritesHandlers(ctx);
   registerAdBlockerHandlers(ctx);
   registerVaultHandlers(ctx);
+  registerAutofillHandlers(ctx);
   registerScriptsHandlers(ctx);
   registerBugSnapshotHandlers(ctx);
   registerResourcesHandlers(ctx);

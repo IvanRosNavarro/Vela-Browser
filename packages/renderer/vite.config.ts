@@ -45,6 +45,8 @@ export default defineConfig({
         'adblocker-panel': resolve(__dirname, 'src/pages/adblocker-panel/index.html'),
         'vault-save-modal': resolve(__dirname, 'src/pages/vault-save-modal/index.html'),
         'vault-autofill-modal': resolve(__dirname, 'src/pages/vault-autofill-modal/index.html'),
+        'autofill-popup': resolve(__dirname, 'src/pages/autofill-popup/index.html'),
+        'autofill-save': resolve(__dirname, 'src/pages/autofill-save/index.html'),
         passwords: resolve(__dirname, 'src/pages/passwords/index.html'),
         scripts: resolve(__dirname, 'src/pages/scripts/index.html'),
         'security-popup': resolve(__dirname, 'src/pages/security-popup/index.html'),

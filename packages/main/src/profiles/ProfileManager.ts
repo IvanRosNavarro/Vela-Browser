@@ -25,6 +25,7 @@ import {
 } from '../storage/repositories';
 import { ProfileMigrationRunner } from '../storage/ProfileMigrationRunner';
 import { PasswordVault } from '../passwords/PasswordVault';
+import { AutofillVault } from '../passwords/AutofillVault';
 import type { ProfileExtensionManager } from '../extensions/ProfileExtensionManager';
 import {
   getProfileDbPath,
@@ -46,6 +47,8 @@ export interface ProfileRepositories {
   metadata: ProfileMetadataRepository;
   settings: ProfileSettingsRepository;
   passwordVault: PasswordVault;
+  /** Direcciones y tarjetas del vault (mismo cifrado que las contraseñas). */
+  autofillVault: AutofillVault;
   notifications: NotificationRepository;
   pushSubscriptions: PushSubscriptionRepository;
   history: HistoryRepository;
@@ -249,6 +252,12 @@ export class ProfileManager {
           metadata: new ProfileMetadataRepository(db),
           settings,
           passwordVault: new PasswordVault({
+            db,
+            keyring: this.ctx.keyring,
+            profileId,
+            logger: this.ctx.logger,
+          }),
+          autofillVault: new AutofillVault({
             db,
             keyring: this.ctx.keyring,
             profileId,
