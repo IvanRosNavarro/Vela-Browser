@@ -201,6 +201,11 @@ export const PALETTE_COMMAND_DEFS: PaletteCommandDef[] = [
   },
 
   {
+    id: 'darkmode.toggleSite',
+    when: (ctx) => ctx.activeTabId !== null,
+  },
+
+  {
     id: 'tab.pin',
     when: (ctx) => ctx.activeTabId !== null,
   },

@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { SwipeTracker, type SwipeDirection, type SwipeUpdate } from '@vela/shared/gestures/swipe';
 import type { TrackpadState } from '@vela/shared/schemas/trackpad';
+import { initDarkMode } from './darkMode';
+
+// Lo primero: el modo oscuro tiene que decidirse antes de que se pinte nada.
+initDarkMode();
 
 // ─── Bug Snapshot console buffer ──────────────────────────────────────────────
 const MAX_CONSOLE_ENTRIES = 500;

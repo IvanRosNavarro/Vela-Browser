@@ -309,6 +309,13 @@ function render(p) {
     add.push(sep());
   }
 
+  if (p.darkMode && !p.isEditable) {
+    add.push(item(p.darkMode.active
+      ? 'Desactivar modo oscuro en este sitio'
+      : 'Activar modo oscuro en este sitio', false, { type: 'darkmode:toggle-site' }));
+    add.push(sep());
+  }
+
   add.push(item('Guardar p\\u00e1gina como\\u2026', false, { type: 'page:save' },  'Ctrl+S'));
   add.push(item('Imprimir\\u2026',                  false, { type: 'page:print' }, 'Ctrl+P'));
   add.push(sep());
@@ -670,6 +677,14 @@ export class ContextMenuPopup {
       case 'page:print':
         wc?.print();
         break;
+
+      case 'darkmode:toggle-site': {
+        // Sobre la pestaña del clic derecho (en Split View puede no ser la
+        // activa). Se aplica al vuelo en todas las pestañas del perfil.
+        if (!wc || wc.isDestroyed()) break;
+        this.ctx.darkMode.toggleSite(wc);
+        break;
+      }
 
       case 'text:translate': {
         const text = (action.text as string | undefined) ?? '';

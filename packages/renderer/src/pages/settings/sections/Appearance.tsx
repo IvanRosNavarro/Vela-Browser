@@ -7,6 +7,7 @@ import { Slider } from '../components/controls/Slider';
 import { ThemePreviewCard } from '../components/ThemePreviewCard';
 import { ThemeEditor } from '../components/ThemeEditor';
 import { TitleBarConfigurator } from '../components/TitleBarConfigurator';
+import { DarkModeSettings } from './DarkModeSettings';
 import { BUILTIN_THEMES, themeManager } from '../../../shared-ui/theme';
 import { validateCustomCss } from '../../../shared-ui/theme/cssValidator';
 import { useUiStore } from '../../../stores/uiStore';
@@ -387,6 +388,9 @@ export function Appearance({ settings }: Props) {
           />
         </div>
       </SettingSection>
+
+      {/* ── Modo oscuro de las webs ── */}
+      <DarkModeSettings settings={settings} />
 
       {/* ── Sidebar ── */}
       <SettingSection title="Sidebar">

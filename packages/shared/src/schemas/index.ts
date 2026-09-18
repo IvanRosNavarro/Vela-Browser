@@ -6,6 +6,7 @@ export * from './menu';
 export * from './autoGroupRule';
 export * from './suggest';
 export * from './theme';
+export * from './darkmode';
 export * from './shortcuts';
 export * from './devtools';
 export * from './cookies';

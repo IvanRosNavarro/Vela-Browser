@@ -29,6 +29,10 @@ export const SETTINGS_KEYS = [
   'reader:line-height',
   'reader:theme',
   'reader:always-on-domains',
+  'darkmode:web',
+  'darkmode:brightness',
+  'darkmode:contrast',
+  'darkmode:sites',
   'search:custom-engines',
   'notifications:permissions',
   'notifications:silence-rules',
@@ -140,6 +144,12 @@ export const SETTINGS_DEFAULT_SCOPE: Record<SettingsKey, SettingsScope> = {
   'reader:line-height': 'profile',
   'reader:theme': 'profile',
   'reader:always-on-domains': 'profile',
+  // Modo oscuro de las webs: por perfil y sincronizable (prefijo fuera de
+  // NON_SYNCABLE_PREFIXES), como el tema de Vela.
+  'darkmode:web': 'profile',
+  'darkmode:brightness': 'profile',
+  'darkmode:contrast': 'profile',
+  'darkmode:sites': 'profile',
   'search:custom-engines': 'profile',
   'notifications:permissions': 'profile',
   'notifications:silence-rules': 'profile',
