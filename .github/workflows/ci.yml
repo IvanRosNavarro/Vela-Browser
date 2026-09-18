@@ -48,6 +48,9 @@ jobs:
         run: pnpm lint
         continue-on-error: true
 
+      - name: Tests
+        run: pnpm --filter @vela/main test
+
   build:
     name: Build (${{ matrix.os }})
     needs: lint-and-typecheck

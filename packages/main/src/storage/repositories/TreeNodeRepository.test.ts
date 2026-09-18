@@ -13,7 +13,7 @@ describe('TreeNodeRepository', () => {
   let repo: TreeNodeRepository;
 
   beforeEach(() => {
-    db = createTestDb();
+    db = createTestDb('profile');
     repo = new TreeNodeRepository(db);
   });
 
@@ -259,6 +259,14 @@ describe('TreeNodeRepository', () => {
       url: 'https://x.example',
     });
     expect(() => repo.update(t.id, { collapsed: true })).toThrow();
+
+    // Las pestañas-carpeta sí se pliegan, como en toggleCollapse.
+    const folderTab = repo.createTab({
+      workspaceId: WS,
+      parentId: null,
+      url: 'vela://folder-view?id=x',
+    });
+    expect(repo.update(folderTab.id, { collapsed: true }).collapsed).toBe(true);
   });
 
   describe('searchTabs', () => {

@@ -147,7 +147,7 @@ describe('applyRulesToTab', () => {
   let docsFolderId: string;
 
   beforeEach(() => {
-    db = createTestDb();
+    db = createTestDb('profile');
     nodes = new TreeNodeRepository(db);
     rules = new AutoGroupRuleRepository(db);
     codeFolderId = nodes.createFolder({
