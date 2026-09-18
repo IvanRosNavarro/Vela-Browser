@@ -23,6 +23,7 @@ import { SidebarFooter } from './SidebarFooter';
 import { TreeView } from './TreeView';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSlide } from './WorkspaceSlide';
+import { useWorkspaceSwipe } from '../../shell/hooks/useWorkspaceSwipe';
 import {
   decodeDroppableId,
   isDropValid,
@@ -47,6 +48,8 @@ export function Sidebar() {
 
   const [activeDrop, setActiveDrop] = useState<ActiveDrop | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [asideEl, setAsideEl] = useState<HTMLElement | null>(null);
+  useWorkspaceSwipe(asideEl);
 
   const onNewTab = useCallback((): void => {
     void call(() =>
@@ -199,6 +202,7 @@ export function Sidebar() {
 
   return (
     <aside
+      ref={setAsideEl}
       className="flex h-full shrink-0 flex-col"
       style={{
         position: 'relative',

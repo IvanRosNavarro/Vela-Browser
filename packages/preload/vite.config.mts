@@ -30,8 +30,11 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@vela/shared': resolve(import.meta.dirname, '../shared/src/index.ts'),
-    },
+    // Las subrutas (`@vela/shared/gestures/swipe`) dejan al preload de las
+    // pestañas importar un módulo concreto sin arrastrar zod desde el índice.
+    alias: [
+      { find: /^@vela\/shared$/, replacement: resolve(import.meta.dirname, '../shared/src/index.ts') },
+      { find: /^@vela\/shared\/(.*)$/, replacement: `${resolve(import.meta.dirname, '../shared/src')}/$1` },
+    ],
   },
 });

@@ -73,6 +73,9 @@ export const SETTINGS_KEYS = [
   'gestures:show-trail',
   'gestures:min-segment-px',
   'gestures:bindings',
+  'gestures:trackpad-navigation',
+  'gestures:pinch-zoom',
+  'ui:workspace-swipe',
   'adblocker:enabled',
   'adblocker:active-lists',
   'adblocker:custom-lists',
@@ -181,6 +184,11 @@ export const SETTINGS_DEFAULT_SCOPE: Record<SettingsKey, SettingsScope> = {
   'gestures:show-trail': 'global',
   'gestures:min-segment-px': 'global',
   'gestures:bindings': 'global',
+  'gestures:trackpad-navigation': 'global',
+  'gestures:pinch-zoom': 'global',
+  // Global aunque empiece por ui: (el prefijo solo sirve para que la shell
+  // se entere del cambio vía UI_SETTINGS_CHANGED).
+  'ui:workspace-swipe': 'global',
   'adblocker:enabled': 'profile',
   'adblocker:active-lists': 'profile',
   'adblocker:custom-lists': 'profile',

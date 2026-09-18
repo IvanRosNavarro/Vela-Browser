@@ -40,6 +40,7 @@ import { registerDiscardHandlers } from './discard';
 import { registerContextMenuHandlers } from './contextMenu';
 import { registerFilePickerHandlers } from './filepicker';
 import { registerGlanceHandlers } from './glance';
+import { registerTrackpadHandlers } from './trackpad';
 import { registerMediaHandlers } from './media';
 import { registerHoverUrlHandlers } from './hoverUrl';
 import { registerNotesHandlers } from './notes';
@@ -69,6 +70,7 @@ import { CertificateManager } from '../security/CertificateManager';
 import { ClientCertificateManager } from '../security/ClientCertificateManager';
 import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
+import { TrackpadGestures } from '../gestures/TrackpadGestures';
 import { MediaSessionManager } from '../media/MediaSessionManager';
 import { MediaPopupWindow } from '../media/MediaPopupWindow';
 import { AdBlockerManager } from '../adblocker/AdBlockerManager';
@@ -111,6 +113,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     windowState: new WindowStateRepository(db),
   };
   const events = createMainEventBus();
+  const trackpadGestures = new TrackpadGestures(repositories.appMetadata, logger);
   const keyring = new ProfileKeyring({
     logger,
     safeStorage: {
@@ -145,6 +148,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     onTabViewWired: (tabId, view, windowId, profileId) => {
       mediaManagerRef?.attachToTab(tabId, view, windowId, profileId);
       notificationManagerRef?.attachToWebContents(view.webContents, profileId);
+      trackpadGestures.attach(view.webContents);
     },
     onSecureSessionReady: async (profileId, repos, secureSession) => {
       try {
@@ -256,6 +260,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     tabManager,
     layoutManager,
     glanceManager,
+    trackpadGestures,
     mediaManager,
     mediaPopupWindow,
     logger,
@@ -303,6 +308,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerContextMenuHandlers(ctx);
   registerFilePickerHandlers(ctx);
   registerGlanceHandlers(ctx);
+  registerTrackpadHandlers(ctx);
   registerMediaHandlers(ctx);
   registerHoverUrlHandlers(ctx);
   registerNotesHandlers(ctx);

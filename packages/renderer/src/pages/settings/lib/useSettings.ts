@@ -33,6 +33,9 @@ const DEFAULTS: SettingsMap = {
   'ui:glassmorphism-intensity': 60,
   'ui:glassmorphism-opacity': 60,
   'ui:workspace-switch-animation': true,
+  'gestures:trackpad-navigation': true,
+  'gestures:pinch-zoom': true,
+  'ui:workspace-swipe': true,
   'media:widget-enabled': true,
   'media:tab-indicator': true,
 };

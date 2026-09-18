@@ -92,6 +92,9 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
         if (parsed.data.key === 'workspaces:switch-modifier') {
           ctx.events.emit(IPC_EVENTS.SHORTCUTS_SYSTEM_CHANGED);
         }
+        if (parsed.data.key === 'gestures:pinch-zoom') {
+          ctx.trackpadGestures.applyPinchZoomToAll();
+        }
         return { ok: true, data: { key: parsed.data.key } };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SETTINGS_SET);

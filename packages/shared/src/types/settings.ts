@@ -14,6 +14,8 @@ export interface UiSettings {
   newtabButtonPos: NewTabButtonPos;
   /** Deslizamiento del contenido de la sidebar al cambiar de workspace. */
   workspaceSwitchAnimation: boolean;
+  /** Swipe horizontal de trackpad sobre la sidebar para cambiar de workspace. */
+  workspaceSwipe: boolean;
 }
 
 export const UI_SETTINGS_DEFAULTS: UiSettings = {
@@ -27,6 +29,7 @@ export const UI_SETTINGS_DEFAULTS: UiSettings = {
   compactDensity: false,
   newtabButtonPos: 'above-tabs',
   workspaceSwitchAnimation: true,
+  workspaceSwipe: true,
 };
 
 export type MruScope = 'workspace' | 'global';
