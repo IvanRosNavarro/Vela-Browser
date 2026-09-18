@@ -16,7 +16,9 @@ import type {
   navGotoInputSchema,
   navSimpleInputSchema,
   nodeDeleteInputSchema,
+  nodeGroupIntoFolderInputSchema,
   nodeMoveInputSchema,
+  nodeMoveManyInputSchema,
   nodeRenameInputSchema,
   nodeReorderInputSchema,
   nodeToggleCollapseInputSchema,
@@ -40,6 +42,8 @@ import type {
   suggestQueryInputSchema,
   tabActivateInputSchema,
   tabCreateInputSchema,
+  tabIdsInputSchema,
+  tabSetMutedInputSchema,
   tabSimpleInputSchema,
   treeGetByWorkspaceInputSchema,
   treeNodeIdInputSchema,
@@ -106,9 +110,15 @@ export type NodeToggleCollapseInput = z.input<
   typeof nodeToggleCollapseInputSchema
 >;
 export type NodeRenameInput = z.input<typeof nodeRenameInputSchema>;
+export type NodeMoveManyInput = z.input<typeof nodeMoveManyInputSchema>;
+export type NodeGroupIntoFolderInput = z.input<
+  typeof nodeGroupIntoFolderInputSchema
+>;
 
 export type TabActivateInput = z.input<typeof tabActivateInputSchema>;
 export type TabSimpleInput = z.input<typeof tabSimpleInputSchema>;
+export type TabIdsInput = z.input<typeof tabIdsInputSchema>;
+export type TabSetMutedInput = z.input<typeof tabSetMutedInputSchema>;
 
 export type TreeGetByWorkspaceInput = z.input<
   typeof treeGetByWorkspaceInputSchema
@@ -191,6 +201,10 @@ export interface NodeApi {
     input: NodeToggleCollapseInput,
   ): Promise<IpcResponse<TreeNode>>;
   rename(input: NodeRenameInput): Promise<IpcResponse<TreeNode>>;
+  /** Mueve varios nodos en una sola transacción (selección múltiple). */
+  moveMany(input: NodeMoveManyInput): Promise<IpcResponse<TreeNode[]>>;
+  /** Crea una carpeta-pestaña y mete dentro los nodos dados, en orden. */
+  groupIntoFolder(input: NodeGroupIntoFolderInput): Promise<IpcResponse<TabNode>>;
 }
 
 export interface TabApi {
@@ -202,6 +216,11 @@ export interface TabApi {
   unpin(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;
   restorePinnedUrl(input: TabSimpleInput): Promise<IpcResponse<void>>;
   replacePinnedUrl(input: TabSimpleInput): Promise<IpcResponse<void>>;
+  /** Cierra varias pestañas con un único refresco del árbol. */
+  closeMany(input: TabIdsInput): Promise<IpcResponse<{ ids: string[] }>>;
+  /** Silencia o reactiva el sonido; devuelve la lista completa de silenciadas. */
+  setMuted(input: TabSetMutedInput): Promise<IpcResponse<{ mutedTabIds: string[] }>>;
+  getMuted(): Promise<IpcResponse<{ mutedTabIds: string[] }>>;
   recentlyClosed(): Promise<IpcResponse<RecentlyClosedTab[]>>;
   reopenById(input: { closedTabId: string }): Promise<IpcResponse<{ id: string }>>;
   anchor(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;

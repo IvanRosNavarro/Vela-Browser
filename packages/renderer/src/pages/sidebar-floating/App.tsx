@@ -652,6 +652,8 @@ export function App() {
 
       const whitelistRes = await window.api.discard.getWhitelistStatus({ tabId: node.id });
       const isPermanentlyWhitelisted = whitelistRes.ok ? whitelistRes.data.permanent : false;
+      const mutedRes = await window.api.tab.getMuted();
+      const isMuted = mutedRes.ok && mutedRes.data.mutedTabIds.includes(node.id);
 
       const isAnchor = node.anchored ?? false;
       const otherWorkspaces = workspaces.filter((w) => w.id !== node.workspaceId);
@@ -704,6 +706,7 @@ export function App() {
         { type: 'normal', id: 'add-to-folder', label: 'Añadir a carpeta' },
         { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
         { type: 'separator' },
+        { type: 'normal', id: 'toggle-mute', label: isMuted ? 'Activar sonido' : 'Silenciar pestaña' },
         { type: 'normal', id: 'duplicate', label: 'Duplicar' },
         {
           type: 'normal',
@@ -760,6 +763,7 @@ export function App() {
         'restore-anchor': () => void window.api.tab.restoreAnchoredUrl({ id: node.id }),
         'replace-anchor': () => void window.api.tab.replaceAnchoredUrl({ id: node.id }),
         'add-to-folder': () => void addTabToNewFolder(node),
+        'toggle-mute': () => void window.api.tab.setMuted({ ids: [node.id], muted: !isMuted }),
         duplicate: () => void window.api.window.openUrlInNewTab({ url: node.url, parentId: node.parentId }),
         'open-secure': () => void window.api.tab.createSecure({ url: node.url }),
         delete: () => void window.api.node.delete({ id: node.id }),

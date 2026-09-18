@@ -84,6 +84,8 @@ const api: PreloadApi = {
     toggleCollapse: (input) =>
       call(IPC_CHANNELS.NODE_TOGGLE_COLLAPSE, input),
     rename: (input) => call(IPC_CHANNELS.NODE_RENAME, input),
+    moveMany: (input) => call(IPC_CHANNELS.NODE_MOVE_MANY, input),
+    groupIntoFolder: (input) => call(IPC_CHANNELS.NODE_GROUP_INTO_FOLDER, input),
   },
   tab: {
     activate: (input) => call(IPC_CHANNELS.TAB_ACTIVATE, input),
@@ -94,6 +96,9 @@ const api: PreloadApi = {
     unpin: (input) => call(IPC_CHANNELS.TAB_UNPIN, input),
     restorePinnedUrl: (input) => call(IPC_CHANNELS.TAB_RESTORE_PINNED_URL, input),
     replacePinnedUrl: (input) => call(IPC_CHANNELS.TAB_REPLACE_PINNED_URL, input),
+    closeMany: (input) => call(IPC_CHANNELS.TAB_CLOSE_MANY, input),
+    setMuted: (input) => call(IPC_CHANNELS.TAB_SET_MUTED, input),
+    getMuted: () => call(IPC_CHANNELS.TAB_GET_MUTED, {}),
     recentlyClosed: () => call(IPC_CHANNELS.TABS_GET_RECENTLY_CLOSED),
     reopenById: (input) => call(IPC_CHANNELS.TABS_REOPEN_BY_ID, input),
     anchor: (input) => call(IPC_CHANNELS.TAB_ANCHOR, input),
