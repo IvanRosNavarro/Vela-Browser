@@ -208,6 +208,10 @@ export const IPC_CHANNELS = {
   GLANCE_OPEN_IN_TAB: 'glance:open-in-tab',
   GLANCE_OPEN_IN_SPLIT: 'glance:open-in-split',
 
+  // Desde el preload de las pestañas web (webTab.ts), que usa los literales.
+  TRACKPAD_GET_STATE: 'trackpad:get-state',
+  TRACKPAD_NAVIGATE: 'trackpad:navigate',
+
   MEDIA_GET_SOURCES: 'media:get-sources',
   MEDIA_PLAY: 'media:play',
   MEDIA_PAUSE: 'media:pause',

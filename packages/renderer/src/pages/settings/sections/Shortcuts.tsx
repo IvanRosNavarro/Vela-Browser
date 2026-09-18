@@ -3,6 +3,7 @@ import { Download, Search, Upload, RotateCcw, Keyboard } from 'lucide-react';
 import type { CommandCategory, ShortcutCommandInfo } from '@vela/shared';
 import { ShortcutCaptureModal } from '../components/ShortcutCaptureModal';
 import { GestureSettings } from './GestureSettings';
+import { TrackpadSettings } from './TrackpadSettings';
 
 // Grupos de categorías para la UI
 type DisplayGroup =
@@ -329,6 +330,10 @@ export function Shortcuts() {
       {/* Separador */}
       <div className="border-t border-[var(--vela-border)] pt-6">
         <GestureSettings />
+      </div>
+
+      <div className="border-t border-[var(--vela-border)] pt-6">
+        <TrackpadSettings />
       </div>
     </div>
   );

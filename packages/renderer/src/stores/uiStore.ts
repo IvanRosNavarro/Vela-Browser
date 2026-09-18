@@ -130,6 +130,7 @@ export const useUiStore = create<UiState>((set, get) => ({
         all['ui:workspace-switch-animation'],
         UI_SETTINGS_DEFAULTS.workspaceSwitchAnimation,
       ),
+      workspaceSwipe: coerceBool(all['ui:workspace-swipe'], UI_SETTINGS_DEFAULTS.workspaceSwipe),
     };
     set({ ...next, sidebarWidthNormal, customThemes, customCss, loaded: true });
 

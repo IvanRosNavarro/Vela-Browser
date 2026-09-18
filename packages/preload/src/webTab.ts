@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
+import { SwipeTracker, type SwipeDirection, type SwipeUpdate } from '@vela/shared/gestures/swipe';
+import type { TrackpadState } from '@vela/shared/schemas/trackpad';
 
 // ─── Bug Snapshot console buffer ──────────────────────────────────────────────
 const MAX_CONSOLE_ENTRIES = 500;
@@ -531,6 +533,198 @@ window.addEventListener(
     }
   },
   { capture: true },
+);
+
+// ─── Trackpad: swipe de dos dedos para atrás/adelante ─────────────────────────
+// Electron no trae la navegación con dos dedos de Chrome. SwipeTracker la
+// reconoce a partir de los eventos wheel cuando la página ya no puede
+// desplazarse más en horizontal. La burbuja se pinta dentro de la propia
+// página (shadow DOM cerrado), así que no compite con el WCV. Solo el main
+// frame: los iframes no llegan a este listener.
+
+let trackpadState: TrackpadState = { enabled: false, canGoBack: false, canGoForward: false };
+
+function refreshTrackpadState(): void {
+  void (ipcRenderer.invoke('trackpad:get-state') as Promise<{ ok: boolean; data?: TrackpadState }>)
+    .then((res) => {
+      if (res?.ok && res.data) trackpadState = res.data;
+    })
+    .catch(() => { /* la pestaña se está cerrando */ });
+}
+refreshTrackpadState();
+
+const NON_SCROLLING_OVERFLOW = new Set(['hidden', 'clip']);
+
+function canScrollX(el: Element, direction: SwipeDirection): boolean {
+  const max = el.scrollWidth - el.clientWidth;
+  if (max <= 1) return false;
+  // En RTL scrollLeft va de 0 a -max: se normaliza a distancia desde la izquierda.
+  const pos = getComputedStyle(el).direction === 'rtl' ? max + el.scrollLeft : el.scrollLeft;
+  return direction === 'back' ? pos > 1 : pos < max - 1;
+}
+
+/** ¿Algún contenedor bajo el cursor, o la propia página, absorbe el desplazamiento? */
+function pageCanScrollX(path: EventTarget[], direction: SwipeDirection): boolean {
+  const root = document.scrollingElement;
+  for (const node of path) {
+    if (!(node instanceof Element) || node === root) continue;
+    const overflowX = getComputedStyle(node).overflowX;
+    if ((overflowX === 'auto' || overflowX === 'scroll') && canScrollX(node, direction)) return true;
+  }
+  if (!root) return false;
+  const htmlOverflow = getComputedStyle(document.documentElement).overflowX;
+  const bodyOverflow = document.body ? getComputedStyle(document.body).overflowX : 'visible';
+  if (NON_SCROLLING_OVERFLOW.has(htmlOverflow) || NON_SCROLLING_OVERFLOW.has(bodyOverflow)) return false;
+  return canScrollX(root, direction);
+}
+
+const swipeBubble = (() => {
+  const SIZE = 44;
+  const TRAVEL = SIZE + 16;
+  const ACCENT = '#46B5A0';
+  let host: HTMLElement | null = null;
+  let circle: HTMLDivElement | null = null;
+  let arrow: SVGSVGElement | null = null;
+  let side: SwipeDirection = 'back';
+  let removeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function ensure(): boolean {
+    if (removeTimer) {
+      clearTimeout(removeTimer);
+      removeTimer = null;
+    }
+    if (host?.isConnected && circle && arrow) return true;
+    if (!document.documentElement) return false;
+
+    // Elemento propio con estilos !important: la CSS de la página no lo alcanza.
+    host = document.createElement('vela-swipe-indicator');
+    const hostStyle: Record<string, string> = {
+      all: 'initial',
+      display: 'block',
+      position: 'fixed',
+      top: '50%',
+      left: '0',
+      width: '100%',
+      height: '0',
+      overflow: 'visible',
+      'z-index': '2147483647',
+      'pointer-events': 'none',
+    };
+    for (const [prop, value] of Object.entries(hostStyle)) host.style.setProperty(prop, value, 'important');
+
+    circle = document.createElement('div');
+    Object.assign(circle.style, {
+      position: 'absolute',
+      top: `${-SIZE / 2}px`,
+      width: `${SIZE}px`,
+      height: `${SIZE}px`,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.28)',
+      transition: 'transform 60ms linear, opacity 150ms ease, background-color 120ms ease',
+    });
+
+    const svgNs = 'http://www.w3.org/2000/svg';
+    arrow = document.createElementNS(svgNs, 'svg');
+    arrow.setAttribute('width', '22');
+    arrow.setAttribute('height', '22');
+    arrow.setAttribute('viewBox', '0 0 24 24');
+    arrow.setAttribute('fill', 'none');
+    arrow.setAttribute('stroke-width', '2.5');
+    arrow.setAttribute('stroke-linecap', 'round');
+    arrow.setAttribute('stroke-linejoin', 'round');
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('d', 'M19 12H5M12 19l-7-7 7-7');
+    arrow.append(path);
+    circle.append(arrow);
+
+    host.attachShadow({ mode: 'closed' }).append(circle);
+    document.documentElement.append(host);
+    return true;
+  }
+
+  /** Desplazamiento de la burbuja respecto a su borde (negativo = fuera). */
+  function translate(direction: SwipeDirection, offset: number): string {
+    return `translateX(${direction === 'back' ? offset : -offset}px)`;
+  }
+
+  function show(direction: SwipeDirection, progress: number): void {
+    if (!ensure() || !circle || !arrow) return;
+    side = direction;
+    const p = Math.min(progress, 1);
+    const armed = progress >= 1;
+    circle.style.left = direction === 'back' ? '0' : '';
+    circle.style.right = direction === 'back' ? '' : '0';
+    circle.style.transform = translate(direction, -SIZE + p * TRAVEL);
+    circle.style.opacity = String(Math.min(1, p * 1.4));
+    circle.style.backgroundColor = armed ? ACCENT : '#ffffff';
+    arrow.setAttribute('stroke', armed ? '#ffffff' : '#1B1D24');
+    arrow.style.transform = direction === 'back' ? '' : 'rotate(180deg)';
+  }
+
+  function hide(committed: boolean): void {
+    if (!circle || !host?.isConnected) return;
+    // Al cancelar vuelve al borde por el que entró; al confirmar se desvanece.
+    if (!committed) circle.style.transform = translate(side, -SIZE);
+    circle.style.opacity = '0';
+    const current = host;
+    removeTimer = setTimeout(() => {
+      removeTimer = null;
+      current.remove();
+    }, 200);
+  }
+
+  return { show, hide };
+})();
+
+function applySwipeUpdate(update: SwipeUpdate): void {
+  switch (update.kind) {
+    case 'progress':
+      swipeBubble.show(update.direction, update.progress);
+      break;
+    case 'commit':
+      swipeBubble.hide(true);
+      ipcRenderer.send('trackpad:navigate', { direction: update.direction });
+      break;
+    case 'cancel':
+      swipeBubble.hide(false);
+      break;
+    case 'none':
+      break;
+  }
+}
+
+const swipeTracker = new SwipeTracker();
+let swipeEndTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Pasivo y en la fase de burbuja de window: no frena el scroll y ve el
+// `defaultPrevented` de los listeners de la página (mapas, carruseles...).
+window.addEventListener(
+  'wheel',
+  (e: WheelEvent) => {
+    // Ctrl = pellizco, Shift = scroll horizontal con la rueda del ratón.
+    if (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey || e.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return;
+    if (swipeTracker.isNewGesture(e.timeStamp)) refreshTrackpadState();
+
+    const update = swipeTracker.feed(
+      { dx: e.deltaX, dy: e.deltaY, time: e.timeStamp },
+      (direction) =>
+        !trackpadState.enabled ||
+        !(direction === 'back' ? trackpadState.canGoBack : trackpadState.canGoForward) ||
+        e.defaultPrevented ||
+        pageCanScrollX(e.composedPath(), direction),
+    );
+    applySwipeUpdate(update);
+
+    if (swipeEndTimer) clearTimeout(swipeEndTimer);
+    swipeEndTimer = setTimeout(() => {
+      swipeEndTimer = null;
+      applySwipeUpdate(swipeTracker.end());
+    }, swipeTracker.idleMs);
+  },
+  { passive: true },
 );
 
 // ─── File input interception ──────────────────────────────────────────────────

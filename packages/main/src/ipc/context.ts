@@ -12,6 +12,7 @@ import type { TabManager } from '../tabs/TabManager';
 import type { MainEventBus } from './events';
 import type { LayoutManager } from '../layout/LayoutManager';
 import type { GlanceManager } from '../glance/GlanceManager';
+import type { TrackpadGestures } from '../gestures/TrackpadGestures';
 import type { MediaSessionManager } from '../media/MediaSessionManager';
 import type { MediaPopupWindow } from '../media/MediaPopupWindow';
 import type { AdBlockerManager } from '../adblocker/AdBlockerManager';
@@ -47,6 +48,7 @@ export interface IpcContext {
   tabManager: TabManager;
   layoutManager: LayoutManager;
   glanceManager: GlanceManager;
+  trackpadGestures: TrackpadGestures;
   mediaManager: MediaSessionManager;
   mediaPopupWindow: MediaPopupWindow;
   logger: Logger;
