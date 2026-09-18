@@ -73,21 +73,6 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       visualizador de v0.1.20 aparecerá en "Otros procesos" con nombre y PID:
       reproducir y anotar de qué proceso se trata antes de buscar la causa.
 
-### Tests
-
-- [ ] **Fixtures de tests desalineados con el esquema**: 21 tests de
-      `TreeNodeRepository`, `AutoGroupRuleRepository` y `autoGrouping` fallan con
-      `table tree_nodes has no column named is_secure` y similares. `createTestDb`
-      aplica `storage/migrations`, que conserva copias de `workspaces`,
-      `tree_nodes` y `auto_group_rules` anteriores al multi-perfil; el esquema
-      real de esas tablas vive en `storage/profile-migrations`. Fallan igual en
-      `main` desde antes de v0.1.19; no bloquean la build ni el typecheck.
-      En v0.2.0 se arreglaron los fixtures de `ProfileKeyring` y `PasswordVault`
-      (24 tests más que también fallaban, por columnas ausentes en tablas
-      creadas a mano). **Ojo**: apuntar `createTestDb` a `profile-migrations` sin
-      más NO funciona — esas migraciones siembran un workspace por defecto y los
-      tests asumen una BD vacía; hay que adaptar también las expectativas.
-
 ### vela-kit (ADR 0106)
 
 - [ ] **Comandos y atajos siguen fuera del kit**: `CommandRegistry`,
@@ -141,6 +126,20 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 - [ ] **Posición del botón Nueva pestaña configurable** desde Ajustes (arriba del workspace
       o abajo del perfil). Toggle en sección Pestañas de `vela://settings`.
 
+### Gestos de trackpad (ADR 0108)
+
+- [ ] **Ajustar umbrales con trackpad real**: se fijaron sin hardware
+      (`DEFAULT_SWIPE_OPTIONS` en `shared/src/gestures/swipe.ts` y
+      `SIDEBAR_SWIPE` en `useWorkspaceSwipe.ts`). Probar en Windows (touchpad
+      de precisión) y macOS, con y sin inercia.
+- [ ] **Swipe en páginas `vela://`**: usan el preload interno, compartido con
+      la shell, que no escucha el gesto. Desde `vela://newtab` no se puede ir
+      adelante deslizando.
+- [ ] **Swipe sobre iframes**: el listener vive en el main frame; sobre un
+      vídeo o mapa incrustado no hay gesto.
+- [ ] **Swipe en el sidebar flotante**: `pages/sidebar-floating/` no usa
+      `useWorkspaceSwipe`.
+
 ### SafeStorage en Linux
 
 - [ ] **Validar safeStorage en Linux**. En distros sin libsecret/kwallet,
@@ -178,6 +177,15 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 ---
 
 ## Cerrado
+
+### Cerrados en v0.2.6
+
+- [x] **Fixtures de tests desalineados con el esquema**: `createTestDb('profile')`
+      aplica `profile-migrations` y siembra el workspace `default`; los 21
+      tests de `TreeNodeRepository`, `AutoGroupRuleRepository` y `autoGrouping`
+      vuelven a pasar. El CI ejecuta ahora los tests de main.
+- [x] **Ajustes de gestos de ratón ignorados dentro de las páginas**:
+      `GestureRecognizer` los leía de `profile.db` y viven en `app_metadata`.
 
 ### Cerrados en v0.2.0
 
