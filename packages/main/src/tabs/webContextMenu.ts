@@ -90,6 +90,16 @@ export function attachWebContextMenu(
       };
     }
 
+    // misspelledWord solo viene relleno si el corrector de la sesión está
+    // activo y el clic cae sobre una palabra subrayada.
+    let spelling: ContextMenuShowPayload['spelling'] = null;
+    if (params.isEditable && params.misspelledWord) {
+      spelling = {
+        misspelledWord: params.misspelledWord,
+        suggestions: params.dictionarySuggestions.slice(0, 5),
+      };
+    }
+
     const payload: ContextMenuShowPayload = {
       windowId,
       x: params.x,
@@ -102,6 +112,7 @@ export function attachWebContextMenu(
       link,
       image,
       selection,
+      spelling,
       isEditable: params.isEditable,
       editFlags: {
         canCut: params.editFlags.canCut,

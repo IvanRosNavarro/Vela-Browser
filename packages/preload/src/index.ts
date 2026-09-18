@@ -166,6 +166,7 @@ const api: PreloadApi = {
     get: (input) => call(IPC_CHANNELS.SETTINGS_GET, input),
     set: (input) => call(IPC_CHANNELS.SETTINGS_SET, input),
     getAll: (input) => call(IPC_CHANNELS.SETTINGS_GET_ALL, input ?? {}),
+    getSpellcheckInfo: () => call(IPC_CHANNELS.SPELLCHECK_GET_INFO),
   },
   menu: {
     show: (input) => call(IPC_CHANNELS.MENU_SHOW, input),

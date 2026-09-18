@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { ContextMenuExecAction } from './types/contextMenu';
 import type { WindowLayout, LayoutMode, PanelId } from './types/layout';
 import type { CustomThemeExport } from './schemas/theme';
+import type { SpellcheckInfo } from './schemas/spellcheck';
 import type { DeviceEmulationParams } from './types/deviceEmulation';
 import type { ShortcutCommandInfo } from './types/command';
 import type {
@@ -526,6 +527,8 @@ export interface SettingsApi {
   getAll(
     input?: SettingsGetAllInput,
   ): Promise<IpcResponse<Record<SettingsKey, unknown>>>;
+  /** Estado del corrector ortográfico del perfil de la ventana. */
+  getSpellcheckInfo(): Promise<IpcResponse<SpellcheckInfo>>;
 }
 
 export interface MenuApi {
