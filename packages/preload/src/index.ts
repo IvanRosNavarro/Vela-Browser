@@ -304,6 +304,7 @@ const api: PreloadApi = {
     activateTab: (input) => call(IPC_CHANNELS.MEDIA_ACTIVATE_TAB, input),
     getCurrentTime: (input) => call(IPC_CHANNELS.MEDIA_GET_CURRENT_TIME, input),
     seekBy: (input) => call(IPC_CHANNELS.MEDIA_SEEK_BY, input),
+    togglePictureInPicture: (input) => call(IPC_CHANNELS.MEDIA_TOGGLE_PIP, input),
     openPopup: (input) => call(IPC_CHANNELS.MEDIA_OPEN_POPUP, input),
     closePopup: () => call(IPC_CHANNELS.MEDIA_CLOSE_POPUP),
   },

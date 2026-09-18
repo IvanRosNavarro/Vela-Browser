@@ -797,6 +797,21 @@ export function registerCoreCommands(
     }),
   );
 
+  // ---------- multimedia ----------
+
+  // Sin atajo por defecto: el usuario puede asignarle uno en Ajustes → Atajos.
+  registry.register(
+    defineCommand({
+      id: 'media.pictureInPicture',
+      title: 'Imagen en imagen (vídeo de la pestaña activa)',
+      category: 'tab',
+      run: async (ctx) => {
+        if (ctx.activeTabId === null) return;
+        await ipc.pipManager.toggleForTab(ctx.activeTabId);
+      },
+    }),
+  );
+
   registry.register(
     defineCommand({
       id: 'internal.openSettings',

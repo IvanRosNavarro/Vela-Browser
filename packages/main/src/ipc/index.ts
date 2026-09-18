@@ -72,6 +72,8 @@ import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
 import { TrackpadGestures } from '../gestures/TrackpadGestures';
 import { MediaSessionManager } from '../media/MediaSessionManager';
+import { PipManager } from '../media/PipManager';
+import { GlobalSettings } from '../settings';
 import { MediaPopupWindow } from '../media/MediaPopupWindow';
 import { AdBlockerManager } from '../adblocker/AdBlockerManager';
 import { DownloadManager } from '../downloads/DownloadManager';
@@ -137,6 +139,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   // Los managers que dependen de tabManager se conectan vía closure para
   // evitar dependencia circular en la construcción.
   let mediaManagerRef: MediaSessionManager | null = null;
+  let pipManagerRef: PipManager | null = null;
   let notificationManagerRef: import('../notifications/NotificationManager').NotificationManager | null = null;
 
   const tabManager = new TabManager({
@@ -147,8 +150,12 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     ...(opts.onTabActivated ? { onTabActivated: opts.onTabActivated } : {}),
     onTabViewWired: (tabId, view, windowId, profileId) => {
       mediaManagerRef?.attachToTab(tabId, view, windowId, profileId);
+      pipManagerRef?.attachToTab(tabId, view.webContents);
       notificationManagerRef?.attachToWebContents(view.webContents, profileId);
       trackpadGestures.attach(view.webContents);
+    },
+    onVisibleTabsChanged: (windowId, visibleTabIds) => {
+      pipManagerRef?.onVisibleTabsChanged(windowId, visibleTabIds);
     },
     onSecureSessionReady: async (profileId, repos, secureSession) => {
       try {
@@ -178,6 +185,19 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   });
   mediaManagerRef = mediaManager;
   const mediaPopupWindow = new MediaPopupWindow(logger);
+  const pipManager = new PipManager({
+    logger,
+    isAutoPipEnabled: () => {
+      try {
+        return new GlobalSettings(repositories.appMetadata).get<boolean>('media:auto-pip') !== false;
+      } catch {
+        return true;
+      }
+    },
+    getViewForTab: (tabId) => tabManager.getLiveViewForTab(tabId),
+    isTabPlayingMedia: (tabId) => mediaManager.isTabPlaying(tabId),
+  });
+  pipManagerRef = pipManager;
 
   const adBlockerManager = new AdBlockerManager({ logger, tabManager, events });
   const downloadManager = new DownloadManager(events, logger);
@@ -263,6 +283,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     trackpadGestures,
     mediaManager,
     mediaPopupWindow,
+    pipManager,
     logger,
     profileManager,
     profileWindowManager,
