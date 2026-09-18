@@ -98,18 +98,23 @@ export class GestureRecognizer {
     const profileId = this.ctx.profileWindowManager.getProfileForWindow(windowId);
     if (!profileId) return null;
     try {
-      const repos = this.ctx.profileManager.getRepositories(profileId);
-      const enabledRaw = repos.settings.get('gestures:enabled');
+      // Los ajustes gestures:* son globales (SETTINGS_DEFAULT_SCOPE): viven en
+      // app_metadata de vela.db, no en el profile.db del perfil de la ventana.
+      const global = this.ctx.repositories.appMetadata;
+      const enabledRaw = global.get('gestures:enabled');
       const enabled = enabledRaw !== null ? (JSON.parse(enabledRaw) as boolean) : true;
       if (!enabled) return null;
 
-      const minSegRaw = repos.settings.get('gestures:min-segment-px');
+      const minSegRaw = global.get('gestures:min-segment-px');
       const minSegmentPx = minSegRaw !== null ? (JSON.parse(minSegRaw) as number) : 60;
 
-      const bindingsRaw = repos.settings.get('gestures:bindings');
-      const bindings = bindingsRaw !== null
+      // Sin combinaciones guardadas, las de fábrica: igual que gesturesStore
+      // en la shell, para que los gestos no cambien según dónde empiecen.
+      const bindingsRaw = global.get('gestures:bindings');
+      const saved = bindingsRaw !== null
         ? (JSON.parse(bindingsRaw) as Array<{ pattern: string[]; commandId: string }>)
-        : DEFAULT_BINDINGS;
+        : [];
+      const bindings = saved.length > 0 ? saved : DEFAULT_BINDINGS;
 
       return { minSegmentPx, bindings, profileId };
     } catch {
