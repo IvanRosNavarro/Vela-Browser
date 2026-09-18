@@ -10,6 +10,7 @@ import type { WindowLayout } from './types/layout';
 import type { MediaSource } from './types/media';
 import type { Favorite } from './types/favorite';
 import type { TabNode } from './types/treeNode';
+import type { TabZoomState } from './types/zoom';
 import type { AdBlockerCounts } from './types/adblocker';
 import type { SyncStatus } from './types/sync';
 import type { ExtendedSuggestion } from './types/suggestion';
@@ -258,6 +259,12 @@ export const IPC_CHANNELS = {
   COOKIES_OPEN_PANEL: 'cookies:open-panel',
   COOKIES_CLOSE_PANEL: 'cookies:close-panel',
 
+  ZOOM_GET: 'zoom:get',
+  ZOOM_STEP: 'zoom:step',
+  ZOOM_RESET: 'zoom:reset',
+  ZOOM_OPEN_POPUP: 'zoom:open-popup',
+  ZOOM_CLOSE_POPUP: 'zoom:close-popup',
+
   FAVORITES_LIST: 'favorites:list',
   FAVORITES_ADD: 'favorites:add',
   FAVORITES_REMOVE: 'favorites:remove',
@@ -476,6 +483,8 @@ export const IPC_EVENTS = {
   FULLSCREEN_CHANGED: 'state:fullscreen-changed',
   TAB_READER_STATE_CHANGED: 'state:tab-reader-state-changed',
   TAB_FEATURES_CHANGED: 'state:tab-features-changed',
+  /** Zoom de página de una pestaña (al cambiarlo, al navegar y al activarla). */
+  TAB_ZOOM_CHANGED: 'state:tab-zoom-changed',
   NOTIFICATIONS_CHANGED: 'state:notifications-changed',
   NOTIFICATION_PERMISSION_PENDING: 'state:notification-permission-pending',
   NOTIFICATION_PERMISSION_CHANGED: 'state:notification-permission-changed',
@@ -570,6 +579,7 @@ export interface MainEventPayloads {
     windowId: number;
     features: Array<'rss' | 'form' | 'media'>;
   };
+  [IPC_EVENTS.TAB_ZOOM_CHANGED]: TabZoomState;
   [IPC_EVENTS.NOTIFICATIONS_CHANGED]: { profileId: string; unreadCount: number };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_PENDING]: { origin: string; windowId: number; hasPushRequest: boolean };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_CHANGED]: {

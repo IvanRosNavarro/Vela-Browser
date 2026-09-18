@@ -20,6 +20,7 @@ const NON_SYNCABLE_PREFIXES = [
   'client-cert:', // elección de certificado por origen, propia del equipo
   'push:',        // suscripciones push, ligadas a este dispositivo
   'extensions:',  // qué extensiones hay instaladas aquí
+  'zoom:',        // zoom por sitio: depende de la pantalla de este equipo
 ];
 
 function isSyncable(key: string): boolean {

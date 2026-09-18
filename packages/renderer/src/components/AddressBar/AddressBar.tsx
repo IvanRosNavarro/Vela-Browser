@@ -15,6 +15,7 @@ import { SecurityIndicator } from './SecurityIndicator';
 import { SuggestionsList } from './SuggestionsList';
 import { UrlInput } from './UrlInput';
 import { CopyUrlButton } from './CopyUrlButton';
+import { ZoomIndicator } from './ZoomIndicator';
 import { TranslateButton } from './TranslateButton';
 import { ModeChip } from './ModeChip';
 import { UrlBreadcrumb } from './UrlBreadcrumb';
@@ -291,6 +292,8 @@ export function AddressBar() {
           </span>
         </div>
 
+        {/* Zoom de página ≠ 100 % */}
+        <ZoomIndicator editing={ctrl.editing} />
         {/* Always-visible: copy URL */}
         <CopyUrlButton url={ctrl.displayUrl.raw} editing={ctrl.editing} />
         {/* Translate selected text */}

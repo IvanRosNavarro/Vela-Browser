@@ -579,6 +579,49 @@ export function registerCoreCommands(
     }),
   );
 
+  // Zoom de página de la pestaña activa (con split view, la del panel con el
+  // foco). Además del atajo, `buildShortcutTable` engancha Ctrl con los
+  // caracteres «+», «=», «-» y «0» sea cual sea la distribución del teclado
+  // (y el teclado numérico), porque la tabla casa por tecla física.
+  registry.register(
+    defineCommand({
+      id: 'zoom.in',
+      title: 'Acercar (zoom +)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+=',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.step(ctx.activeTabId, 'in');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'zoom.out',
+      title: 'Alejar (zoom −)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+-',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.step(ctx.activeTabId, 'out');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'zoom.reset',
+      title: 'Restablecer zoom (100 %)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+0',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.reset(ctx.activeTabId);
+      },
+    }),
+  );
+
   // ---------- window ----------
 
   registry.register(

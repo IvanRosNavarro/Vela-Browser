@@ -3,6 +3,7 @@ export * from './profile';
 export * from './window';
 export * from './treeNode';
 export * from './tabRuntime';
+export * from './zoom';
 export * from './ipcResponse';
 export * from './settings';
 export * from './theme';

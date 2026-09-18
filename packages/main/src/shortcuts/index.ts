@@ -8,6 +8,7 @@ import { logger } from '../logger';
 import type { CommandRegistry } from '../commands/registry';
 import { buildContext } from '../commands/context';
 import type { IpcContext } from '../ipc';
+import { keyAliasLabel, matchesKeyAlias, type KeyAlias } from './keyAlias';
 
 // Ctrl+Shift+P estaba reservado para el command palette de Fase 4.5.
 // Ya está implementado (commandPalette.open); el conjunto queda vacío.
@@ -53,6 +54,13 @@ interface ShortcutBinding {
   source: string;
   invoke: (windowId: number) => Promise<void> | void;
 }
+
+interface KeyAliasBinding extends KeyAlias {
+  source: string;
+  invoke: (windowId: number) => Promise<void> | void;
+}
+
+type ShortcutMatch = Pick<ShortcutBinding, 'source' | 'invoke'>;
 
 function comboKey(c: NormalizedCombo): string {
   const mods: string[] = [];
@@ -168,6 +176,7 @@ function isControlKey(code: string): boolean {
 
 export class ShortcutTable {
   private readonly bindings: ShortcutBinding[] = [];
+  private readonly keyAliases: KeyAliasBinding[] = [];
   private readonly seen = new Map<string, string>();
 
   register(
@@ -206,17 +215,44 @@ export class ShortcutTable {
     }
   }
 
-  match(input: Input): ShortcutBinding | null {
+  /**
+   * Registra un atajo que casa por carácter (ver `keyAlias.ts`). Solo se
+   * consulta si ningún atajo por tecla física coincide, así que nunca quita
+   * una combinación a un comando ni al usuario.
+   */
+  registerKeyAlias(
+    key: string,
+    mods: { ctrl?: boolean; alt?: boolean; meta?: boolean },
+    source: string,
+    invoke: (windowId: number) => Promise<void> | void,
+  ): void {
+    this.keyAliases.push({
+      key,
+      ctrl: mods.ctrl ?? false,
+      alt: mods.alt ?? false,
+      meta: mods.meta ?? false,
+      source,
+      invoke,
+    });
+  }
+
+  match(input: Input): ShortcutMatch | null {
     if (input.type !== 'keyDown') return null;
     for (const b of this.bindings) {
       if (matchesInput(b.combo, input)) return b;
+    }
+    for (const a of this.keyAliases) {
+      if (matchesKeyAlias(a, input)) return a;
     }
     return null;
   }
 
   /** Lista todas las combinaciones registradas (para debugging). */
   listBindings(): ReadonlyArray<{ combo: string; source: string }> {
-    return this.bindings.map((b) => ({ combo: comboKey(b.combo), source: b.source }));
+    return [
+      ...this.bindings.map((b) => ({ combo: comboKey(b.combo), source: b.source })),
+      ...this.keyAliases.map((a) => ({ combo: keyAliasLabel(a), source: a.source })),
+    ];
   }
 }
 
@@ -311,6 +347,24 @@ export function buildShortcutTable(
   if (effectiveFocus && effectiveFocus !== 'Ctrl+E') {
     table.tryRegister('Ctrl+E', 'nav.focusAddressBar#alias', async (windowId) => {
       await registry.execute('nav.focusAddressBar', buildContext(ipc, windowId));
+    });
+  }
+
+  //    zoom.in/out/reset → Ctrl con «+», «=», «-» y «0» por carácter, sea cual
+  //    sea la distribución (en el teclado español «+» y «-» son teclas propias)
+  //    y en el teclado numérico. Solo si el usuario no ha quitado el atajo.
+  const zoomKeyAliases: ReadonlyArray<readonly [string, string]> = [
+    ['+', 'zoom.in'],
+    ['=', 'zoom.in'],
+    ['-', 'zoom.out'],
+    ['0', 'zoom.reset'],
+  ];
+  for (const [key, commandId] of zoomKeyAliases) {
+    const effective =
+      commandId in custom ? custom[commandId] : registry.get(commandId)?.defaultShortcut;
+    if (!effective) continue;
+    table.registerKeyAlias(key, { ctrl: true }, `${commandId}#key`, async (windowId) => {
+      await registry.execute(commandId, buildContext(ipc, windowId));
     });
   }
 
