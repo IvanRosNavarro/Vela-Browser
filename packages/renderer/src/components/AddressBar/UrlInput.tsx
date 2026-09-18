@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import type { FormattedUrl } from './url';
+import { canInlineComplete } from './useInlineAutocomplete';
 
 interface UrlInputProps {
   editing: boolean;
@@ -12,8 +13,11 @@ interface UrlInputProps {
   display: FormattedUrl;
   placeholder?: string;
   compact: boolean;
-  onChange: (value: string) => void;
+  /** `allowComplete`: el cambio puede disparar la compleción inline. */
+  onChange: (value: string, allowComplete: boolean) => void;
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+  onCompositionStart?: () => void;
+  onCompositionEnd?: () => void;
   onFocus: () => void;
   onBlur: () => void;
   onActivateDisplay: () => void;
@@ -39,6 +43,8 @@ export const UrlInput = forwardRef<HTMLInputElement, UrlInputProps>(
       compact,
       onChange,
       onKeyDown,
+      onCompositionStart,
+      onCompositionEnd,
       onFocus,
       onBlur,
       onActivateDisplay,
@@ -55,9 +61,11 @@ export const UrlInput = forwardRef<HTMLInputElement, UrlInputProps>(
           value={inputValue}
           placeholder={placeholder}
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
-            onChange(e.target.value)
+            onChange(e.target.value, canInlineComplete(e))
           }
           onKeyDown={onKeyDown}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           onFocus={onFocus}
           onBlur={onBlur}
           style={{
