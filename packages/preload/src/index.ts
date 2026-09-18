@@ -321,6 +321,7 @@ const api: PreloadApi = {
     deleteDomain: (input) => call(IPC_CHANNELS.HISTORY_DELETE_DOMAIN, input),
     deleteAll: (input) => call(IPC_CHANNELS.HISTORY_DELETE_ALL, input),
     getForPeriod: (input) => call(IPC_CHANNELS.HISTORY_GET_FOR_PERIOD, input),
+    autocomplete: (input) => call(IPC_CHANNELS.HISTORY_AUTOCOMPLETE, input),
   },
   cookies: {
     getForUrl: (url) => call(IPC_CHANNELS.COOKIES_GET_FOR_URL, { url }),
