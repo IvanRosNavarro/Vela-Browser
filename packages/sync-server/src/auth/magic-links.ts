@@ -28,7 +28,7 @@ authRouter.post('/magic-link',
   rateLimitMagicLink,
   rateLimitMagicLinkByEmail,
   async (req, res) => {
-    const { email, app } = req.body as { email?: string; app?: string };
+    const { email, app, poll } = req.body as { email?: string; app?: string; poll?: boolean };
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'Email inválido' });
@@ -62,9 +62,11 @@ authRouter.post('/magic-link',
     `).run(user.id);
 
     // Crear nuevo token. `login_id` es el secreto con el que la app que pidió
-    // el enlace recoge la sesión por sondeo (ver migración 005).
+    // el enlace recoge la sesión por sondeo (ver migración 005). Solo si el
+    // cliente lo pide con `poll: true`: los clientes ya instalados no saben
+    // sondear y dependen del redirect a vela://sync-callback en /verify.
     const token = nanoid(32);
-    const loginId = nanoid(43);
+    const loginId = poll === true ? nanoid(43) : null;
     const expiresAt = Date.now() + TOKEN_TTL_MS;
 
     db.prepare(`
@@ -83,9 +85,7 @@ authRouter.post('/magic-link',
     res.json({
       ok: true,
       message: 'Email enviado. Revisa tu bandeja.',
-      login_id: loginId,
-      poll_interval_ms: POLL_INTERVAL_MS,
-      expires_at: expiresAt,
+      ...(loginId ? { login_id: loginId, poll_interval_ms: POLL_INTERVAL_MS, expires_at: expiresAt } : {}),
     });
   }
 );
