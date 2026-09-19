@@ -15,6 +15,7 @@ import type { GlanceManager } from '../glance/GlanceManager';
 import type { TrackpadGestures } from '../gestures/TrackpadGestures';
 import type { MediaSessionManager } from '../media/MediaSessionManager';
 import type { MediaPopupWindow } from '../media/MediaPopupWindow';
+import type { PipManager } from '../media/PipManager';
 import type { AdBlockerManager } from '../adblocker/AdBlockerManager';
 import type { SyncManager } from '../sync/SyncManager';
 import type { DownloadManager } from '../downloads/DownloadManager';
@@ -51,6 +52,7 @@ export interface IpcContext {
   trackpadGestures: TrackpadGestures;
   mediaManager: MediaSessionManager;
   mediaPopupWindow: MediaPopupWindow;
+  pipManager: PipManager;
   logger: Logger;
   profileManager: ProfileManager;
   profileWindowManager: ProfileWindowManager;

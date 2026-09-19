@@ -370,6 +370,15 @@ export function Tabs({ settings }: Props) {
             onChange={(v) => void set('media:tab-indicator', v, 'global')}
           />
         </SettingRow>
+        <SettingRow
+          label="Imagen en imagen automática"
+          description="Al salir de una pestaña que está reproduciendo un vídeo con sonido, el vídeo sigue en una ventana flotante. Vuelve a su sitio al regresar a la pestaña."
+        >
+          <Toggle
+            value={get<boolean>('media:auto-pip', true)}
+            onChange={(v) => void set('media:auto-pip', v, 'global')}
+          />
+        </SettingRow>
       </SettingSection>
     </>
   );

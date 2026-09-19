@@ -1,10 +1,27 @@
 import { ipcMain } from 'electron';
-import { IPC_CHANNELS, type IpcResponse } from '@vela/shared';
+import {
+  IPC_CHANNELS,
+  historyAutocompleteInputSchema,
+  type IpcResponse,
+} from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getReposForFrame } from './helpers';
-import type { HistorySearchEntry, HistorySession, DomainStat } from '@vela/shared';
+import { guardTrustedFrame } from './validate';
+import type {
+  HistorySearchEntry,
+  HistorySession,
+  DomainStat,
+  HistoryAutocompleteMatch,
+} from '@vela/shared';
 import { z } from '@vela/shared';
+import type { AutocompleteExtraCandidate } from '../storage/repositories/HistoryRepository';
+
+/** Bonus de frecencia de un favorito: equivale a ~5 visitas recientes. */
+const AUTOCOMPLETE_FAVORITE_SCORE = 500;
+/** Bonus de una pestaña abierta: equivale a una visita reciente. */
+const AUTOCOMPLETE_OPEN_TAB_SCORE = 100;
+const AUTOCOMPLETE_OPEN_TAB_LIMIT = 20;
 
 const historySearchSchema = z.object({
   query: z.string(),
@@ -166,6 +183,39 @@ export function registerHistoryHandlers(ctx: IpcContext): void {
         return { ok: true, data: entries.map(entryToSearchEntry) };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.HISTORY_GET_FOR_PERIOD);
+      }
+    },
+  );
+
+  // Compleción inline de la barra de direcciones: se invoca a cada tecla.
+  ipcMain.handle(
+    IPC_CHANNELS.HISTORY_AUTOCOMPLETE,
+    async (event, payload): Promise<IpcResponse<HistoryAutocompleteMatch | null>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.HISTORY_AUTOCOMPLETE);
+        const parsed = historyAutocompleteInputSchema.safeParse(payload);
+        if (!parsed.success) {
+          return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+        }
+        const prefix = parsed.data.prefix.trim();
+        const repos = getReposForFrame(event, ctx);
+
+        // Favoritos y pestañas abiertas suman a la frecencia del historial:
+        // el repositorio descarta los que no casan con el prefijo.
+        const extra: AutocompleteExtraCandidate[] = [];
+        for (const fav of repos.favorites.list()) {
+          if (fav.url) extra.push({ url: fav.url, score: AUTOCOMPLETE_FAVORITE_SCORE });
+        }
+        const tabQuery = prefix.replace(/^https?:\/\//i, '');
+        if (tabQuery.length > 0) {
+          for (const { tab } of repos.treeNodes.searchTabs(tabQuery, AUTOCOMPLETE_OPEN_TAB_LIMIT)) {
+            extra.push({ url: tab.url, score: AUTOCOMPLETE_OPEN_TAB_SCORE });
+          }
+        }
+
+        return { ok: true, data: repos.history.autocomplete(prefix, { extra }) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.HISTORY_AUTOCOMPLETE);
       }
     },
   );

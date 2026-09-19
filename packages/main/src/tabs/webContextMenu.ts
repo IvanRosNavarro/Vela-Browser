@@ -81,6 +81,20 @@ export function attachWebContextMenu(
       image = { url: params.srcURL };
     }
 
+    let video: ContextMenuShowPayload['video'] = null;
+    if (
+      params.mediaType === 'video' &&
+      params.mediaFlags.canShowPictureInPicture &&
+      params.frame &&
+      !params.frame.detached
+    ) {
+      video = {
+        inPip: params.mediaFlags.isShowingPictureInPicture,
+        frameProcessId: params.frame.processId,
+        frameToken: params.frame.frameToken,
+      };
+    }
+
     let selection: ContextMenuShowPayload['selection'] = null;
     if (params.selectionText) {
       selection = {
@@ -111,6 +125,7 @@ export function attachWebContextMenu(
       activeTabId,
       link,
       image,
+      video,
       selection,
       spelling,
       isEditable: params.isEditable,

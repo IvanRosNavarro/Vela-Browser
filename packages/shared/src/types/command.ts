@@ -42,6 +42,7 @@ export type RendererCommandAction =
   | 'open-create-profile-modal'
   | 'open-manage-profile-modal'
   | 'rename-tab'
+  | 'clear-tab-selection'
   | 'focus-address-bar'
   | 'focus-address-bar-with-prefix'
   | 'create-folder-prompt'

@@ -366,4 +366,127 @@ describe('TreeNodeRepository', () => {
       expect(repo.searchTabs('github', 10)).toEqual([]);
     });
   });
+
+  describe('operaciones en bloque', () => {
+    const tab = (parentId: string | null, name: string, ws = WS): TabNode =>
+      repo.createTab({
+        workspaceId: ws,
+        parentId,
+        url: `https://${name}.example.com`,
+        originalTitle: name,
+      });
+
+    const childrenOf = (parentId: string | null, ws = WS): string[] =>
+      repo
+        .getByWorkspace(ws)
+        .filter((n) => n.parentId === parentId)
+        .sort((a, b) => (a.position < b.position ? -1 : 1))
+        .map((n) => n.id);
+
+    it('moveMany mete varias pestañas en una carpeta conservando el orden dado', () => {
+      const folder = repo.createFolder({ workspaceId: WS, parentId: null, name: 'F' });
+      const a = tab(null, 'a');
+      const b = tab(null, 'b');
+      const c = tab(null, 'c');
+      const result = repo.moveMany([c.id, a.id], folder.id);
+      expect(result.nodes.map((n) => n.parentId)).toEqual([folder.id, folder.id]);
+      expect(childrenOf(folder.id)).toEqual([c.id, a.id]);
+      expect(childrenOf(null)).toEqual([folder.id, b.id]);
+      expect(result.affectedWorkspaceIds).toEqual([WS]);
+    });
+
+    it('moveMany coloca los nodos dentro del hueco indicado', () => {
+      const a = tab(null, 'a');
+      const b = tab(null, 'b');
+      const c = tab(null, 'c');
+      const d = tab(null, 'd');
+      // Mover d y c entre a y b.
+      repo.moveMany([d.id, c.id], null, { prev: a.position, next: b.position });
+      expect(childrenOf(null)).toEqual([a.id, d.id, c.id, b.id]);
+    });
+
+    it('moveMany a otro workspace arrastra los descendientes', () => {
+      const wsRepo = new WorkspaceRepository(db);
+      const other = wsRepo.create({ name: 'Otro' });
+      const existing = tab(null, 'existente', other.id);
+      const folderTab = repo.createFolderTab({ workspaceId: WS, parentId: null, name: 'FT' });
+      const child = tab(folderTab.id, 'hija');
+      const loose = tab(null, 'suelta');
+
+      const result = repo.moveMany([folderTab.id, loose.id], null, undefined, other.id);
+      expect(new Set(result.affectedWorkspaceIds)).toEqual(new Set([WS, other.id]));
+      expect(childrenOf(null, other.id)).toEqual([existing.id, folderTab.id, loose.id]);
+      expect(repo.getById(child.id)?.workspaceId).toBe(other.id);
+      expect(repo.getById(child.id)?.parentId).toBe(folderTab.id);
+    });
+
+    it('moveMany ignora los nodos que ya viajan dentro de otro de la lista', () => {
+      const target = repo.createFolder({ workspaceId: WS, parentId: null, name: 'T' });
+      const folderTab = repo.createFolderTab({ workspaceId: WS, parentId: null, name: 'FT' });
+      const child = tab(folderTab.id, 'hija');
+      const result = repo.moveMany([folderTab.id, child.id], target.id);
+      expect(result.nodes.map((n) => n.id)).toEqual([folderTab.id]);
+      expect(repo.getById(child.id)?.parentId).toBe(folderTab.id);
+    });
+
+    it('moveMany rechaza ciclos sin mover nada', () => {
+      const folder = repo.createFolder({ workspaceId: WS, parentId: null, name: 'F' });
+      const sub = repo.createFolder({ workspaceId: WS, parentId: folder.id, name: 'S' });
+      const a = tab(null, 'a');
+      expect(() => repo.moveMany([a.id, folder.id], sub.id)).toThrow();
+      expect(repo.getById(a.id)?.parentId).toBeNull();
+    });
+
+    it('moveMany rechaza un hueco invertido', () => {
+      const a = tab(null, 'a');
+      const b = tab(null, 'b');
+      const c = tab(null, 'c');
+      expect(() =>
+        repo.moveMany([c.id], null, { prev: b.position, next: a.position }),
+      ).toThrow();
+    });
+
+    it('moveMany desestiba las Cargas que entran en una carpeta', () => {
+      const folder = repo.createFolder({ workspaceId: WS, parentId: null, name: 'F' });
+      const pinned = repo.createTab({
+        workspaceId: WS,
+        parentId: null,
+        url: 'https://pinned.example.com',
+        pinned: true,
+      });
+      repo.moveMany([pinned.id], folder.id);
+      const after = repo.getById(pinned.id);
+      expect(after?.kind === 'tab' && after.pinned).toBe(false);
+    });
+
+    it('groupIntoFolder crea la carpeta en el sitio de la primera pestaña', () => {
+      const a = tab(null, 'a');
+      const b = tab(null, 'b');
+      const c = tab(null, 'c');
+      const d = tab(null, 'd');
+      const { folder, nodes } = repo.groupIntoFolder([b.id, d.id], 'Grupo');
+      expect(folder.name).toBe('Grupo');
+      expect(folder.url.startsWith('vela://folder-view')).toBe(true);
+      expect(nodes.map((n) => n.parentId)).toEqual([folder.id, folder.id]);
+      expect(childrenOf(null)).toEqual([a.id, folder.id, c.id]);
+      expect(childrenOf(folder.id)).toEqual([b.id, d.id]);
+    });
+
+    it('groupIntoFolder rechaza pestañas de workspaces distintos', () => {
+      const wsRepo = new WorkspaceRepository(db);
+      const other = wsRepo.create({ name: 'Otro' });
+      const a = tab(null, 'a');
+      const b = tab(null, 'b', other.id);
+      expect(() => repo.groupIntoFolder([a.id, b.id], 'X')).toThrow();
+      expect(repo.getByWorkspace(WS).filter((n) => n.kind === 'folder')).toEqual([]);
+    });
+
+    it('deleteMany borra varias pestañas e ignora las que no existen', () => {
+      const a = tab(null, 'a');
+      const b = tab(null, 'b');
+      const c = tab(null, 'c');
+      expect(repo.deleteMany([a.id, 'no-existe', c.id, a.id])).toEqual([a.id, c.id]);
+      expect(childrenOf(null)).toEqual([b.id]);
+    });
+  });
 });
