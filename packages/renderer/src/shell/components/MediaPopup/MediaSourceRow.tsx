@@ -59,9 +59,11 @@ function CtrlBtn({ onClick, disabled, title, children, large }: CtrlBtnProps) {
 interface MediaSourceRowProps {
   source: MediaSource;
   onActivate: () => void;
+  /** Alterna la imagen en imagen del vídeo de la pestaña. Sin él no se muestra el botón. */
+  onTogglePip?: () => void;
 }
 
-export function MediaSourceRow({ source, onActivate }: MediaSourceRowProps) {
+export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceRowProps) {
   // Controls navigate to the source tab until remote media control is reliable.
   // See docs/pending.md — "Control remoto de audio sin activar la tab".
 
@@ -184,6 +186,9 @@ export function MediaSourceRow({ source, onActivate }: MediaSourceRowProps) {
           {source.isPlaying ? '⏸' : '▶'}
         </CtrlBtn>
         <CtrlBtn onClick={onActivate} title="Ir a la pestaña">⏭</CtrlBtn>
+        {onTogglePip && (
+          <CtrlBtn onClick={onTogglePip} title="Imagen en imagen">⧉</CtrlBtn>
+        )}
       </div>
 
       {/* Go to tab */}

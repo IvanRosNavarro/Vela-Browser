@@ -8,6 +8,8 @@ interface Props {
 
 export function Security({ settings }: Props) {
   const autofill = settings.get('vault:autofill-enabled', true) as boolean;
+  const autofillAddresses = settings.get('vault:autofill-addresses', true) as boolean;
+  const autofillCards = settings.get('vault:autofill-cards', true) as boolean;
 
   return (
     <div className="space-y-8">
@@ -19,6 +21,26 @@ export function Security({ settings }: Props) {
           <Toggle
             checked={autofill}
             onChange={(v) => void settings.set('vault:autofill-enabled', v)}
+          />
+        </Row>
+
+        <Row
+          label="Autorrellenar direcciones"
+          description="Ofrece rellenar formularios de envío y facturación con tus direcciones guardadas, y guardar las nuevas."
+        >
+          <Toggle
+            checked={autofillAddresses}
+            onChange={(v) => void settings.set('vault:autofill-addresses', v)}
+          />
+        </Row>
+
+        <Row
+          label="Autorrellenar tarjetas"
+          description="Ofrece rellenar pagos con tus tarjetas guardadas, solo en páginas seguras (https). El código de seguridad (CVV) no se guarda nunca."
+        >
+          <Toggle
+            checked={autofillCards}
+            onChange={(v) => void settings.set('vault:autofill-cards', v)}
           />
         </Row>
 
@@ -36,7 +58,7 @@ export function Security({ settings }: Props) {
             </svg>
           </button>
           <p className="mt-2 text-xs text-[var(--vela-fg-muted)]">
-            Gestiona, busca, genera y audita tus contraseñas guardadas.
+            Gestiona, busca, genera y audita tus contraseñas, y gestiona tus direcciones y tarjetas guardadas.
           </p>
         </div>
       </Group>

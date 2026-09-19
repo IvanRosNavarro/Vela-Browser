@@ -89,6 +89,11 @@ export function App() {
                 .activateTab({ tabId: source.tabId, windowId: source.windowId })
                 .then(() => window.api.media.closePopup());
             }}
+            onTogglePip={() => {
+              void window.api.media
+                .togglePictureInPicture({ tabId: source.tabId })
+                .then(() => window.api.media.closePopup());
+            }}
           />
         </div>
       ))}

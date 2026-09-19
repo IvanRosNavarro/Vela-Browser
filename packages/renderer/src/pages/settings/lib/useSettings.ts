@@ -11,6 +11,7 @@ const DEFAULTS: SettingsMap = {
   'search:engine': 'duckduckgo',
   'search:customUrl': '',
   'search:suggestions': true,
+  'addressbar:inline-autocomplete': true,
   'privacy:block-third-party-cookies': false,
   'privacy:do-not-track': false,
   'privacy:dns-over-https': false,
@@ -32,12 +33,16 @@ const DEFAULTS: SettingsMap = {
   'ui:glassmorphism': false,
   'ui:glassmorphism-intensity': 60,
   'ui:glassmorphism-opacity': 60,
+  'darkmode:web': 'off',
+  'darkmode:brightness': 100,
+  'darkmode:contrast': 100,
   'ui:workspace-switch-animation': true,
   'gestures:trackpad-navigation': true,
   'gestures:pinch-zoom': true,
   'ui:workspace-swipe': true,
   'media:widget-enabled': true,
   'media:tab-indicator': true,
+  'media:auto-pip': true,
 };
 
 export function useSettings() {

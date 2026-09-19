@@ -112,6 +112,12 @@ export function App() {
         void window.api.downloads.showInFolder(filePath);
       });
     });
+    const offPageSaved = window.api.on(IPC_EVENTS.PAGE_SAVED, ({ filePath }) => {
+      const filename = filePath.split(/[/\\]/).pop() ?? 'pagina.html';
+      toast(`Página guardada: ${filename}`, 'success', () => {
+        void window.api.downloads.showInFolder(filePath);
+      });
+    });
     const offLinkInWorkspace = window.api.on(
       IPC_EVENTS.LINK_OPENED_IN_WORKSPACE,
       ({ workspaceId, workspaceName }) => {
@@ -322,6 +328,7 @@ export function App() {
 
     return () => {
       offColorPicked();
+      offPageSaved();
       offWorkspace(); offProfile(); offSnapshot(); offSelectionSaved(); offLinkInWorkspace(); offAddNodeMenu(); offDownloads();
       offUpdateModalOpen(); offUpdateStatus();
       offClusterRelay();

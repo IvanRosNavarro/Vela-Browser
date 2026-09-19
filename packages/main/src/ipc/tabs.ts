@@ -2,6 +2,8 @@ import { ipcMain } from 'electron';
 import {
   IPC_CHANNELS,
   tabActivateInputSchema,
+  tabIdsInputSchema,
+  tabSetMutedInputSchema,
   tabSimpleInputSchema,
   z,
   type IpcResponse,
@@ -227,6 +229,61 @@ export function registerTabHandlers(ctx: IpcContext): void {
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.TAB_REPLACE_PINNED_URL);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.TAB_CLOSE_MANY,
+    async (event, payload): Promise<IpcResponse<{ ids: string[] }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.TAB_CLOSE_MANY);
+      const parsed = tabIdsInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        const windowId = resolveWindowId(event);
+        if (windowId === null) {
+          throw new InvariantViolationError(
+            'tab:close-many: webContents sin BrowserWindow asociada',
+          );
+        }
+        const ids = await ctx.tabManager.closeTabs(windowId, parsed.data.ids);
+        return { ok: true, data: { ids } };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.TAB_CLOSE_MANY);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.TAB_SET_MUTED,
+    async (event, payload): Promise<IpcResponse<{ mutedTabIds: string[] }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.TAB_SET_MUTED);
+      const parsed = tabSetMutedInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        const mutedTabIds = ctx.tabManager.setTabsMuted(
+          parsed.data.ids,
+          parsed.data.muted,
+        );
+        return { ok: true, data: { mutedTabIds } };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.TAB_SET_MUTED);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.TAB_GET_MUTED,
+    async (event): Promise<IpcResponse<{ mutedTabIds: string[] }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.TAB_GET_MUTED);
+      try {
+        return { ok: true, data: { mutedTabIds: ctx.tabManager.getMutedTabIds() } };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.TAB_GET_MUTED);
       }
     },
   );

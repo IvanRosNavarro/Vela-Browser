@@ -19,6 +19,7 @@ import { useExtensionActionsStore } from './extensionActionsStore';
 import { useMruSwitcherStore, type MruTabEntry } from './mruSwitcherStore';
 import { useScreenshotStore } from './screenshotStore';
 import { useMediaStore } from './mediaStore';
+import { useTabSelectionStore } from './tabSelectionStore';
 import { useTabSwitcherStore } from './tabSwitcherStore';
 import { useCommandPaletteStore } from './commandPaletteStore';
 import { useFavoritesStore } from './favoritesStore';
@@ -137,6 +138,9 @@ function handleRendererAction(payload: CommandRendererActionPayload): void {
     }
     case 'find-open':
       useFindStore.getState().openBar();
+      return;
+    case 'clear-tab-selection':
+      useTabSelectionStore.getState().clear();
       return;
     case 'rename-tab':
     case 'create-folder-prompt':
@@ -301,6 +305,13 @@ export function initSubscriptions(): () => void {
     },
   );
 
+  const offTabMutedChanged = window.api.on(
+    IPC_EVENTS.TAB_MUTED_CHANGED,
+    (payload) => {
+      useMediaStore.getState().setMutedTabIds(payload.mutedTabIds);
+    },
+  );
+
   const offFavoritesChanged = window.api.on(
     IPC_EVENTS.FAVORITES_CHANGED,
     (payload) => {
@@ -420,6 +431,7 @@ export function initSubscriptions(): () => void {
     offContextMenuShow();
     offLayoutChanged();
     offMediaChanged();
+    offTabMutedChanged();
     offFavoritesChanged();
     offAnchoredTabs();
     offAparejos();

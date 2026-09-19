@@ -71,7 +71,7 @@ export const SYNC_CATEGORIES: readonly SyncCategoryInfo[] = [
   {
     id: 'passwords',
     label: 'Gestor de contraseñas',
-    description: 'Las credenciales guardadas en el vault',
+    description: 'Las credenciales, direcciones y tarjetas guardadas en el vault',
     entityTypes: [],
   },
   {

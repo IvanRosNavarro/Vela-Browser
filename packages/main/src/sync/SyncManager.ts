@@ -3,9 +3,9 @@ import { SYNC_TYPE_TO_CATEGORY, type SyncCategory } from '@vela/shared';
 import * as os from 'node:os';
 import { encrypt, decrypt, deriveKey } from './crypto';
 import { serializers } from './serializers';
-import { syncEvents, type SyncEntityEvent } from './syncEvents';
+import { syncEvents, type SyncEntityAppliedEvent, type SyncEntityEvent } from './syncEvents';
 import type { ProfileRepositories } from '../profiles/ProfileManager';
-import type { PasswordEntry } from '../passwords/PasswordVault';
+import { applyVaultSnapshot, buildVaultSnapshot } from '../passwords/vaultSnapshot';
 import type { Logger } from '../logger';
 import type { MainEventBus } from '../ipc/events';
 
@@ -848,6 +848,8 @@ export class SyncManager {
     }
 
     this.events.emit('state:sync-entity-updated' as any, { type, id, deleted });
+    const applied: SyncEntityAppliedEvent = { profileId: this.profileId, type, id, deleted };
+    syncEvents.emit('entity:applied', applied);
   }
 
   // ── Cola offline ───────────────────────────────────────────────────────────
@@ -957,11 +959,15 @@ export class SyncManager {
     if (this.disabledCategories().has('passwords')) return;
     try {
       const repos = this.getRepos();
-      const entries = repos.passwordVault.exportAll();
-      if (entries.length === 0) return;
+      // Direcciones y tarjetas viajan en el mismo blob (ver vaultSnapshot.ts).
+      const items = buildVaultSnapshot(
+        repos.passwordVault.exportAll(),
+        repos.autofillVault.exportAll(),
+      );
+      if (items.length === 0) return;
       await this.pushVault(
-        Buffer.from(JSON.stringify(entries), 'utf-8'),
-        repos.passwordVault.latestUpdatedAt() || Date.now(),
+        Buffer.from(JSON.stringify(items), 'utf-8'),
+        Math.max(repos.passwordVault.latestUpdatedAt(), repos.autofillVault.latestUpdatedAt()) || Date.now(),
       );
     } catch (err) {
       // Perfil bloqueado (sin clave en memoria) o red caída: no es fatal.
@@ -976,14 +982,11 @@ export class SyncManager {
     try {
       const blob = await this.pullVault();
       if (!blob) return;
-      const entries = JSON.parse(blob.toString('utf-8')) as PasswordEntry[];
+      const items = JSON.parse(blob.toString('utf-8')) as unknown;
       const repos = this.getRepos();
-      for (const entry of entries) {
-        try {
-          repos.passwordVault.syncUpsert(entry);
-        } catch (e) {
-          this.logger.warn(`[sync] entrada de vault descartada ${entry?.id}:`, e);
-        }
+      const { rejected } = applyVaultSnapshot(items, repos);
+      for (const id of rejected) {
+        this.logger.warn(`[sync] entrada de vault descartada ${id}`);
       }
     } catch (err) {
       this.logger.warn('[sync] pull del vault falló:', err);

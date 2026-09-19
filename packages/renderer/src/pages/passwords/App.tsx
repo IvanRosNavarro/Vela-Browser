@@ -5,9 +5,18 @@ import { PasswordDetail } from './components/PasswordDetail';
 import { PasswordGenerator } from './components/PasswordGenerator';
 import { NewEntryForm } from './components/NewEntryForm';
 import { SecurityAudit } from './components/SecurityAudit';
-import { FolderSidebar } from './components/FolderSidebar';
+import { FolderSidebar, type VaultView } from './components/FolderSidebar';
+import { AddressesView } from './components/AddressesView';
+import { CardsView } from './components/CardsView';
 
-type Tab = 'passwords' | 'audit';
+type Tab = VaultView;
+
+// vela://passwords?view=addresses|cards abre directamente esa vista (lo usa el
+// enlace "Gestionar…" del popup de autorrelleno).
+function initialView(): Tab {
+  const view = new URLSearchParams(window.location.search).get('view');
+  return view === 'addresses' || view === 'cards' || view === 'audit' ? view : 'passwords';
+}
 
 export function App() {
   const [entries, setEntries] = useState<VaultEntrySummary[]>([]);
@@ -16,7 +25,7 @@ export function App() {
   const [folders, setFolders] = useState<string[]>(['General']);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<Tab>('passwords');
+  const [tab, setTab] = useState<Tab>(initialView);
   const [showGenerator, setShowGenerator] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
 
@@ -191,6 +200,10 @@ export function App() {
               </div>
             </div>
           </>
+        ) : tab === 'addresses' ? (
+          <AddressesView />
+        ) : tab === 'cards' ? (
+          <CardsView />
         ) : (
           <SecurityAudit entries={entries} />
         )}

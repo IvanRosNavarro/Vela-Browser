@@ -4,6 +4,7 @@ import type { useSettings } from '../lib/useSettings';
 import { SettingRow, SettingSection } from '../components/SettingRow';
 import { Toggle } from '../components/controls/Toggle';
 import { Select, type SelectOption } from '../components/controls/Select';
+import { SpellcheckSettings } from './SpellcheckSettings';
 import type { TranslationSettings } from '@vela/shared';
 
 declare const __APP_VERSION__: string;
@@ -156,6 +157,8 @@ export function General({ settings }: Props) {
           />
         </SettingRow>
       </SettingSection>
+
+      <SpellcheckSettings settings={settings} />
 
       <SettingSection title="Traducción">
         <SettingRow

@@ -32,6 +32,8 @@ import {
   type DropZone,
 } from './dropValidation';
 import { resolveDropPosition } from './dropPosition';
+import { dropSelection } from './multiDrag';
+import { bulkSelectionFor } from '../../stores/tabSelectionStore';
 import type { ActiveDrop } from './types';
 import type { NodeDropData } from './useNodeDrop';
 
@@ -145,6 +147,21 @@ export function Sidebar() {
 
       const dragged = byId.get(draggedIdNow);
       if (!dragged) return;
+
+      // Arrastrar una pestaña de una selección múltiple mueve todas. Hacia
+      // Cargas o Anclas sigue yendo solo la arrastrada.
+      const selection = bulkSelectionFor(draggedIdNow);
+      if (
+        selection &&
+        drop.targetId !== PINNED_TARGET_ID &&
+        drop.targetId !== ANCHOR_TARGET_ID
+      ) {
+        void dropSelection(selection, dragged.workspaceId, {
+          nodeId: drop.targetId,
+          zone: drop.zone,
+        });
+        return;
+      }
 
       const targetNode =
         drop.targetId === PINNED_TARGET_ID

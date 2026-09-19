@@ -14,6 +14,8 @@ import type { IpcContext } from '../ipc/context';
 import type { ContextMenuShowPayload } from '@vela/shared';
 import { IPC_EVENTS } from '@vela/shared';
 import { translateAndShow } from '../ipc/translation';
+import { printPage, savePageAs } from './pageActions';
+import { sanitizeFileName } from './pageSaveFormat';
 
 const MENU_WIDTH = 272;
 
@@ -21,15 +23,6 @@ const CTXMENU_PRELOAD_PATH = path.join(
   __dirname,
   '../../preload/dist/ctxMenu.js',
 );
-
-/** Limpia un título de página para usarlo como nombre de fichero por defecto. */
-function sanitizeFileName(name: string): string {
-  return name
-    .replace(/[<>:"/\\|?*]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-}
 
 // ─── HTML del popup ───────────────────────────────────────────────────────────
 
@@ -87,6 +80,7 @@ body{
 }
 .item:hover:not(:disabled){background:rgba(255,255,255,0.07)}
 .item:disabled{opacity:.45;cursor:not-allowed;color:#8c93a3}
+.item.suggestion{font-weight:600}
 .item-label{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .item-kbd{color:#8c93a3;font-size:11px;flex-shrink:0;letter-spacing:0.02em}
 .sep{height:1px;background:rgba(255,255,255,0.08);margin:2px 8px}
@@ -256,6 +250,22 @@ function render(p) {
 
   const add = [];
 
+  // Corrector: sugerencias de la palabra subrayada, arriba del todo como en
+  // Chrome. Solo llega spelling si el corrector del perfil está activo.
+  if (p.spelling) {
+    const sugg = p.spelling.suggestions || [];
+    if (sugg.length === 0) {
+      add.push(item('Sin sugerencias', true));
+    }
+    sugg.forEach(s => {
+      const el = item(s, false, { type: 'spell:replace', text: s });
+      el.classList.add('suggestion');
+      add.push(el);
+    });
+    add.push(item('A\\u00f1adir al diccionario', false, { type: 'spell:add-word', word: p.spelling.misspelledWord }));
+    add.push(sep());
+  }
+
   if (p.link) {
     add.push(item('Abrir enlace en nueva pesta\\u00f1a',          false, { type: 'link:new-tab', url: p.link.url, activate: false }));
     add.push(item('Abrir enlace en nueva pesta\\u00f1a activa',   false, { type: 'link:new-tab', url: p.link.url, activate: true  }));
@@ -290,6 +300,17 @@ function render(p) {
     add.push(sep());
   }
 
+  if (p.video) {
+    add.push(item(p.video.inPip ? 'Salir de imagen en imagen' : 'Imagen en imagen', false, {
+      type: 'video:pip',
+      frameProcessId: p.video.frameProcessId,
+      frameToken: p.video.frameToken,
+      wcvX: p.wcvX,
+      wcvY: p.wcvY,
+    }));
+    add.push(sep());
+  }
+
   if (p.selection) {
     const q = trunc(p.selection.text, 30);
     add.push(item('Buscar "' + q + '" en ' + p.selection.searchLabel, false, { type: 'selection:search', url: p.selection.searchUrl }));
@@ -306,6 +327,13 @@ function render(p) {
     add.push(sep());
   } else if (p.selection) {
     add.push(item('Copiar', !p.editFlags.canCopy, { type: 'edit:copy' }, 'Ctrl+C'));
+    add.push(sep());
+  }
+
+  if (p.darkMode && !p.isEditable) {
+    add.push(item(p.darkMode.active
+      ? 'Desactivar modo oscuro en este sitio'
+      : 'Activar modo oscuro en este sitio', false, { type: 'darkmode:toggle-site' }));
     add.push(sep());
   }
 
@@ -646,6 +674,25 @@ export class ContextMenuPopup {
         break;
       }
 
+      case 'video:pip': {
+        if (!wc || wc.isDestroyed()) break;
+        const { frameProcessId, frameToken, wcvX, wcvY } = action;
+        if (
+          typeof frameProcessId !== 'number' ||
+          typeof frameToken !== 'string' ||
+          typeof wcvX !== 'number' ||
+          typeof wcvY !== 'number'
+        ) break;
+        const tabId = this.ctx.tabManager.getTabIdForWebContents(wc.id);
+        await this.ctx.pipManager.toggleInFrame(
+          tabId,
+          wc,
+          { processId: frameProcessId, frameToken },
+          { x: wcvX, y: wcvY },
+        );
+        break;
+      }
+
       case 'page:screenshot': {
         if (!wc || wc.isDestroyed()) break;
         const image = await wc.capturePage();
@@ -653,23 +700,35 @@ export class ContextMenuPopup {
         break;
       }
 
-      case 'page:save': {
-        const { filePath, canceled } = await dialog.showSaveDialog(
-          parentWin as BrowserWindow,
-          {
-            defaultPath: 'pagina.html',
-            filters: [{ name: 'Página web', extensions: ['html', 'htm'] }],
-          },
-        );
-        if (!canceled && filePath) {
-          await wc?.savePage(filePath, 'HTMLComplete')?.catch(() => {});
-        }
+      case 'page:save':
+        await savePageAs(wc, parentWin, this.ctx.events);
+        break;
+
+      case 'page:print':
+        printPage(wc);
+        break;
+
+      case 'spell:replace': {
+        const text = action.text;
+        if (typeof text !== 'string' || !wc || wc.isDestroyed()) break;
+        wc.replaceMisspelling(text);
         break;
       }
 
-      case 'page:print':
-        wc?.print();
+      case 'spell:add-word': {
+        const word = action.word;
+        if (typeof word !== 'string' || !word || !wc || wc.isDestroyed()) break;
+        wc.session.addWordToSpellCheckerDictionary(word);
         break;
+      }
+
+      case 'darkmode:toggle-site': {
+        // Sobre la pestaña del clic derecho (en Split View puede no ser la
+        // activa). Se aplica al vuelo en todas las pestañas del perfil.
+        if (!wc || wc.isDestroyed()) break;
+        this.ctx.darkMode.toggleSite(wc);
+        break;
+      }
 
       case 'text:translate': {
         const text = (action.text as string | undefined) ?? '';

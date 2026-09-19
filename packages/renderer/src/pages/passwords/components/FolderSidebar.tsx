@@ -2,9 +2,18 @@ interface Props {
   folders: string[];
   activeFolder: string | null;
   onSelectFolder: (folder: string | null) => void;
-  tab: 'passwords' | 'audit';
-  onTabChange: (tab: 'passwords' | 'audit') => void;
+  tab: VaultView;
+  onTabChange: (tab: VaultView) => void;
 }
+
+export type VaultView = 'passwords' | 'addresses' | 'cards' | 'audit';
+
+const VIEW_LABELS: Record<VaultView, string> = {
+  passwords: '🔑 Contraseñas',
+  addresses: '📍 Direcciones',
+  cards: '💳 Tarjetas',
+  audit: '🛡 Auditoría',
+};
 
 export function FolderSidebar({ folders, activeFolder, onSelectFolder, tab, onTabChange }: Props) {
   return (
@@ -21,7 +30,7 @@ export function FolderSidebar({ folders, activeFolder, onSelectFolder, tab, onTa
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--vela-fg-muted)', padding: '4px 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Vistas
         </div>
-        {(['passwords', 'audit'] as const).map((t) => (
+        {(['passwords', 'addresses', 'cards', 'audit'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -42,11 +51,13 @@ export function FolderSidebar({ folders, activeFolder, onSelectFolder, tab, onTa
               marginBottom: 2,
             }}
           >
-            {t === 'passwords' ? '🔑 Contraseñas' : '🛡 Auditoría'}
+            {VIEW_LABELS[t]}
           </button>
         ))}
       </div>
 
+      {/* Las carpetas solo agrupan contraseñas. */}
+      {tab === 'passwords' && (
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px 0' }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--vela-fg-muted)', padding: '4px 8px 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Carpetas
@@ -69,6 +80,7 @@ export function FolderSidebar({ folders, activeFolder, onSelectFolder, tab, onTa
           </button>
         ))}
       </div>
+      )}
     </aside>
   );
 }

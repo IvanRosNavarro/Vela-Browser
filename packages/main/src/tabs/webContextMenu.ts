@@ -4,6 +4,7 @@ import {
   searchEngineLabel,
   SEARCH_ENGINE_DEFAULT,
   SEARCH_ENGINE_IDS,
+  darkModeHostOf,
   type SearchEngineId,
   type SearchSettings,
   type ContextMenuShowPayload,
@@ -81,12 +82,36 @@ export function attachWebContextMenu(
       image = { url: params.srcURL };
     }
 
+    let video: ContextMenuShowPayload['video'] = null;
+    if (
+      params.mediaType === 'video' &&
+      params.mediaFlags.canShowPictureInPicture &&
+      params.frame &&
+      !params.frame.detached
+    ) {
+      video = {
+        inPip: params.mediaFlags.isShowingPictureInPicture,
+        frameProcessId: params.frame.processId,
+        frameToken: params.frame.frameToken,
+      };
+    }
+
     let selection: ContextMenuShowPayload['selection'] = null;
     if (params.selectionText) {
       selection = {
         text: params.selectionText,
         searchLabel: searchEngineLabel(settings),
         searchUrl: buildSearchUrl(settings, params.selectionText),
+      };
+    }
+
+    // misspelledWord solo viene relleno si el corrector de la sesión está
+    // activo y el clic cae sobre una palabra subrayada.
+    let spelling: ContextMenuShowPayload['spelling'] = null;
+    if (params.isEditable && params.misspelledWord) {
+      spelling = {
+        misspelledWord: params.misspelledWord,
+        suggestions: params.dictionarySuggestions.slice(0, 5),
       };
     }
 
@@ -101,7 +126,9 @@ export function attachWebContextMenu(
       activeTabId,
       link,
       image,
+      video,
       selection,
+      spelling,
       isEditable: params.isEditable,
       editFlags: {
         canCut: params.editFlags.canCut,
@@ -111,6 +138,10 @@ export function attachWebContextMenu(
       },
       currentUrl: webContents.getURL() || null,
       currentTitle: webContents.getTitle() || null,
+      darkMode:
+        ctx.darkMode.isAttached(webContents) && darkModeHostOf(webContents.getURL())
+          ? { active: ctx.darkMode.isEffectiveFor(webContents) }
+          : null,
     };
 
     getPopup(ctx).show(payload, win, webContents, workspaceId);
