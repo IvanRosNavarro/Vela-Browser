@@ -15,6 +15,53 @@ const SERVER_URL = 'https://sync.vela-browser.com';
 // para que getStatus() lo devuelva incluso tras un reload del renderer.
 let pendingCallbackToken: string | null = null;
 
+// Sondeo del login (servidor ≥ migración 005). El deep link vela://sync-callback
+// no llega si el correo se abre en otro navegador u otro equipo, así que la app
+// pregunta al servidor hasta que se pulse el enlace. Solo hay uno activo: pedir
+// otro enlace sustituye al anterior.
+let loginPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopLoginPoll(): void {
+  if (loginPollTimer !== null) clearTimeout(loginPollTimer);
+  loginPollTimer = null;
+}
+
+function startLoginPoll(
+  loginId: string,
+  intervalMs: number,
+  expiresAt: number,
+  onToken: (token: string) => void,
+): void {
+  stopLoginPoll();
+  // Margen tras la caducidad por si el enlace se pulsó en el último momento.
+  const deadline = expiresAt + 60_000;
+  const tick = async (): Promise<void> => {
+    loginPollTimer = null;
+    if (Date.now() > deadline) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/auth/magic-link/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login_id: loginId }),
+      });
+      if (res.status === 410 || res.status === 400) return;
+      if (res.ok) {
+        const body = (await res.json()) as { status?: string; token?: string };
+        if (body.status === 'verified' && body.token) {
+          onToken(body.token);
+          return;
+        }
+      }
+    } catch {
+      // Red caída: se reintenta en la siguiente vuelta.
+    }
+    loginPollTimer = setTimeout(() => void tick(), intervalMs);
+    if (typeof loginPollTimer.unref === 'function') loginPollTimer.unref();
+  };
+  loginPollTimer = setTimeout(() => void tick(), intervalMs);
+  if (typeof loginPollTimer.unref === 'function') loginPollTimer.unref();
+}
+
 const updateDeviceNameSchema = z.object({ name: z.string().min(1).max(100) });
 const recoveryCardPdfSchema = z.object({ email: z.string(), date: z.string() });
 
@@ -77,6 +124,8 @@ export function registerSyncHandlers(ctx: IpcContext): void {
   // Cuando el protocolo vela:// recibe vela://sync-callback?token=X, reenviar
   // el token al renderer para que la UI de settings avance al siguiente paso.
   syncEvents.on('callback:sync', ({ token }: { token: string }) => {
+    // Llegue por deep link o por sondeo, el login ya está hecho.
+    stopLoginPoll();
     pendingCallbackToken = token;
     ctx.events.emit(IPC_EVENTS.SYNC_CALLBACK_RECEIVED, { token });
   });
@@ -118,6 +167,20 @@ export function registerSyncHandlers(ctx: IpcContext): void {
 
         if (!res.ok) {
           return { ok: false, error: 'INTERNAL', details: `Status ${res.status}` };
+        }
+        // Servidores anteriores al sondeo no mandan login_id: queda solo el deep link.
+        const body = (await res.json().catch(() => ({}))) as {
+          login_id?: string;
+          poll_interval_ms?: number;
+          expires_at?: number;
+        };
+        if (typeof body.login_id === 'string') {
+          startLoginPoll(
+            body.login_id,
+            Math.max(1_000, body.poll_interval_ms ?? 2_000),
+            body.expires_at ?? Date.now() + 15 * 60_000,
+            (token) => syncEvents.emit('callback:sync', { token }),
+          );
         }
         return { ok: true, data: undefined };
       } catch (err) {

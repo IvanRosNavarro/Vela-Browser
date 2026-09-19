@@ -96,6 +96,15 @@ export const rateLimitVerify = createLimiter({
   message: 'Demasiados intentos. Espera unos minutos.',
 });
 
+// Sondeo del login (/auth/magic-link/poll): la app pregunta cada 2 s durante
+// como mucho 15 min (450). Holgura para varios dispositivos tras la misma IP.
+export const rateLimitLoginPoll = createLimiter({
+  windowMs: 10 * 60 * 1000,
+  limit: 900,
+  keyFn: (req) => req.ip ?? 'unknown',
+  message: 'Demasiadas comprobaciones. Espera unos minutos.',
+});
+
 // Relay de push (/push/:token): 60 entregas por minuto y token. Evita usar un
 // token (que viaja por la infraestructura de push y es semi-público) como
 // vector de flood/amplificación contra los dispositivos de la víctima.
