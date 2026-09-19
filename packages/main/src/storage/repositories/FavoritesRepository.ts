@@ -1,6 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { generateKeyBetween } from 'fractional-indexing';
+import { transaction } from 'vela-kit/storage';
 import type { Favorite } from '@vela/shared';
-import { syncEvents } from '../../sync/syncEvents';
+import { CycleError, InvariantViolationError, NotFoundError } from '../../lib/errors';
+import { syncEvents, type SyncEntityEvent } from '../../sync/syncEvents';
 import { serializers } from '../../sync/serializers';
 
 interface FavoriteRow {
@@ -15,7 +18,9 @@ interface FavoriteRow {
   parent_id: string | null;
 }
 
-function rowToFavorite(row: FavoriteRow): Favorite & { updatedAt: number } {
+export type StoredFavorite = Favorite & { updatedAt: number };
+
+function rowToFavorite(row: FavoriteRow): StoredFavorite {
   return {
     id: row.id,
     url: row.url,
@@ -29,9 +34,24 @@ function rowToFavorite(row: FavoriteRow): Favorite & { updatedAt: number } {
   };
 }
 
+/** La URL ya pertenece a otro favorito (índice único `idx_favorites_url_unique`). */
+export class DuplicateFavoriteUrlError extends Error {
+  constructor(readonly url: string) {
+    super(`Ya hay un favorito con la URL ${url}`);
+    this.name = 'DuplicateFavoriteUrlError';
+  }
+}
+
 export class FavoritesRepository {
   private readonly selectCols: string;
   private readonly hasUpdatedAt: boolean;
+  /**
+   * Mientras corre `runBatch`, los cambios para sync se acumulan aquí en vez
+   * de emitirse uno a uno: una importación de miles de marcadores no debe
+   * disparar miles de peticiones al servidor.
+   */
+  private collected: SyncEntityEvent[] | null = null;
+  private inTransaction = false;
 
   constructor(
     private readonly db: DatabaseSync,
@@ -46,24 +66,58 @@ export class FavoritesRepository {
       : 'id, url, title, favicon, position, created_at, created_at as updated_at, type, parent_id';
   }
 
-  list(): (Favorite & { updatedAt: number })[] {
+  list(): StoredFavorite[] {
     return (this.db
       .prepare(`SELECT ${this.selectCols} FROM profile_favorites ORDER BY position ASC`)
       .all() as FavoriteRow[]).map(rowToFavorite);
   }
 
-  getByUrl(url: string): (Favorite & { updatedAt: number }) | null {
+  getByUrl(url: string): StoredFavorite | null {
     const row = this.db
       .prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE url = ? AND type = 'bookmark'`)
       .get(url) as FavoriteRow | undefined;
     return row ? rowToFavorite(row) : null;
   }
 
-  getById(id: string): (Favorite & { updatedAt: number }) | null {
+  getById(id: string): StoredFavorite | null {
     const row = this.db
       .prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE id = ?`)
       .get(id) as FavoriteRow | undefined;
     return row ? rowToFavorite(row) : null;
+  }
+
+  /** Carpeta hija directa de `parentId` con ese título exacto, si la hay. */
+  findFolder(parentId: string | null, title: string): StoredFavorite | null {
+    const row = (parentId
+      ? this.db
+          .prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE type = 'folder' AND parent_id = ? AND title = ? ORDER BY position LIMIT 1`)
+          .get(parentId, title)
+      : this.db
+          .prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE type = 'folder' AND parent_id IS NULL AND title = ? ORDER BY position LIMIT 1`)
+          .get(title)) as FavoriteRow | undefined;
+    return row ? rowToFavorite(row) : null;
+  }
+
+  childrenOf(parentId: string | null): StoredFavorite[] {
+    const rows = parentId
+      ? this.db.prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE parent_id = ? ORDER BY position ASC`).all(parentId)
+      : this.db.prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE parent_id IS NULL ORDER BY position ASC`).all();
+    return (rows as FavoriteRow[]).map(rowToFavorite);
+  }
+
+  /** Ids de todo lo que cuelga de `id`, a cualquier profundidad (sin incluirlo). */
+  descendantIds(id: string): string[] {
+    const rows = this.db
+      .prepare(
+        `WITH RECURSIVE sub(id) AS (
+           SELECT id FROM profile_favorites WHERE parent_id = ?
+           UNION
+           SELECT f.id FROM profile_favorites f JOIN sub ON f.parent_id = sub.id
+         )
+         SELECT id FROM sub`,
+      )
+      .all(id) as { id: string }[];
+    return rows.map((r) => r.id);
   }
 
   lastPositionInParent(parentId: string | null): string | null {
@@ -73,12 +127,7 @@ export class FavoritesRepository {
     return row?.position ?? null;
   }
 
-  /** @deprecated use lastPositionInParent(null) */
-  lastPosition(): string | null {
-    return this.lastPositionInParent(null);
-  }
-
-  add(data: { id: string; url: string; title: string; favicon?: string | null; position: string; parentId?: string | null }): Favorite & { updatedAt: number } {
+  add(data: { id: string; url: string; title: string; favicon?: string | null; position: string; parentId?: string | null }): StoredFavorite {
     const now = Date.now();
     if (this.hasUpdatedAt) {
       this.db
@@ -101,12 +150,13 @@ export class FavoritesRepository {
       .prepare(`SELECT ${this.selectCols} FROM profile_favorites WHERE url = ?`)
       .get(data.url) as FavoriteRow;
     const result = rowToFavorite(fav);
-    this.emitSyncChange(result);
+    if (result.id === data.id) this.emitSyncChange(result);
     return result;
   }
 
-  createFolder(data: { id: string; title: string; position: string; parentId?: string | null }): Favorite & { updatedAt: number } {
+  createFolder(data: { id: string; title: string; position: string; parentId?: string | null }): StoredFavorite {
     const now = Date.now();
+    if (data.parentId) this.assertFolder(data.parentId);
     if (this.hasUpdatedAt) {
       this.db
         .prepare(
@@ -130,13 +180,32 @@ export class FavoritesRepository {
     return result;
   }
 
-  remove(id: string): void {
+  /**
+   * Elimina un favorito. Si es una carpeta, `cascade` decide qué pasa con su
+   * contenido: `true` lo borra entero; `false` lo sube al nivel de la carpeta,
+   * detrás de lo que ya hubiera allí y en el mismo orden.
+   */
+  remove(id: string, opts: { cascade?: boolean } = {}): void {
     const item = this.getById(id);
-    if (item?.type === 'folder') {
-      this.db.prepare('UPDATE profile_favorites SET parent_id = ? WHERE parent_id = ?').run(item.parentId, id);
-    }
-    this.db.prepare('DELETE FROM profile_favorites WHERE id = ?').run(id);
-    this.emitSyncDelete(id);
+    if (!item) return;
+    this.tx(() => {
+      if (item.type === 'folder') {
+        if (opts.cascade) {
+          for (const childId of this.descendantIds(id)) {
+            this.db.prepare('DELETE FROM profile_favorites WHERE id = ?').run(childId);
+            this.emitSyncDelete(childId);
+          }
+        } else {
+          let last = this.lastPositionInParent(item.parentId);
+          for (const child of this.childrenOf(id)) {
+            last = generateKeyBetween(last, null);
+            this.writeParentAndPosition(child.id, item.parentId, last);
+          }
+        }
+      }
+      this.db.prepare('DELETE FROM profile_favorites WHERE id = ?').run(id);
+      this.emitSyncDelete(id);
+    });
   }
 
   reorder(id: string, newPosition: string): void {
@@ -150,56 +219,81 @@ export class FavoritesRepository {
     if (fav) this.emitSyncChange(fav);
   }
 
+  /**
+   * Mueve un favorito o una carpeta a otra carpeta (o a la raíz con null).
+   * Rechaza destinos que no sean carpetas y los ciclos: una carpeta no puede
+   * acabar dentro de sí misma ni de una de sus subcarpetas.
+   */
   move(id: string, parentId: string | null, newPosition: string): void {
-    const now = Date.now();
-    if (this.hasUpdatedAt) {
-      this.db.prepare('UPDATE profile_favorites SET parent_id = ?, position = ?, updated_at = ? WHERE id = ?').run(parentId, newPosition, now, id);
-    } else {
-      this.db.prepare('UPDATE profile_favorites SET parent_id = ?, position = ? WHERE id = ?').run(parentId, newPosition, id);
+    const item = this.getById(id);
+    if (!item) throw new NotFoundError('Favorite', id);
+    if (parentId !== null) {
+      if (parentId === id) throw new CycleError('Una carpeta no puede contenerse a sí misma');
+      this.assertFolder(parentId);
+      if (item.type === 'folder' && this.descendantIds(id).includes(parentId)) {
+        throw new CycleError('No se puede mover una carpeta dentro de una de sus subcarpetas');
+      }
     }
-    const fav = this.getById(id);
-    if (fav) this.emitSyncChange(fav);
+    this.writeParentAndPosition(id, parentId, newPosition);
   }
 
-  updateTitle(id: string, title: string): void {
-    const now = Date.now();
-    if (this.hasUpdatedAt) {
-      this.db.prepare('UPDATE profile_favorites SET title = ?, updated_at = ? WHERE id = ?').run(title, now, id);
-    } else {
-      this.db.prepare('UPDATE profile_favorites SET title = ? WHERE id = ?').run(title, id);
-    }
-    const fav = this.getById(id);
-    if (fav) this.emitSyncChange(fav);
-  }
-
-  update(id: string, data: { url?: string | null; title?: string; favicon?: string | null }): void {
-    const now = Date.now();
+  update(id: string, data: { url?: string; title?: string; favicon?: string | null }): void {
+    const current = this.getById(id);
+    if (!current) throw new NotFoundError('Favorite', id);
     if (data.url !== undefined) {
-      if (this.hasUpdatedAt) {
-        this.db.prepare('UPDATE profile_favorites SET url = ?, updated_at = ? WHERE id = ?').run(data.url, now, id);
-      } else {
-        this.db.prepare('UPDATE profile_favorites SET url = ? WHERE id = ?').run(data.url, id);
+      if (current.type === 'folder') {
+        throw new InvariantViolationError('Las carpetas de favoritos no tienen dirección');
       }
+      const clash = this.getByUrl(data.url);
+      if (clash && clash.id !== id) throw new DuplicateFavoriteUrlError(data.url);
     }
-    if (data.title !== undefined) {
-      if (this.hasUpdatedAt) {
-        this.db.prepare('UPDATE profile_favorites SET title = ?, updated_at = ? WHERE id = ?').run(data.title, now, id);
-      } else {
-        this.db.prepare('UPDATE profile_favorites SET title = ? WHERE id = ?').run(data.title, id);
-      }
-    }
-    if (data.favicon !== undefined) {
-      if (this.hasUpdatedAt) {
-        this.db.prepare('UPDATE profile_favorites SET favicon = ?, updated_at = ? WHERE id = ?').run(data.favicon, now, id);
-      } else {
-        this.db.prepare('UPDATE profile_favorites SET favicon = ? WHERE id = ?').run(data.favicon, id);
-      }
+    const next = {
+      url: data.url !== undefined ? data.url : current.url,
+      title: data.title !== undefined ? data.title : current.title,
+      favicon: data.favicon !== undefined ? data.favicon : current.favicon,
+    };
+    if (this.hasUpdatedAt) {
+      this.db
+        .prepare('UPDATE profile_favorites SET url = ?, title = ?, favicon = ?, updated_at = ? WHERE id = ?')
+        .run(next.url, next.title, next.favicon, Date.now(), id);
+    } else {
+      this.db
+        .prepare('UPDATE profile_favorites SET url = ?, title = ?, favicon = ? WHERE id = ?')
+        .run(next.url, next.title, next.favicon, id);
     }
     const fav = this.getById(id);
     if (fav) this.emitSyncChange(fav);
   }
 
-  /** Upsert desde sync remoto — no emite syncEvents. */
+  /**
+   * Ejecuta `fn` en una transacción y devuelve, en vez de emitirlos, los
+   * cambios de sync que haya producido. Quien llama decide cómo subirlos
+   * (`SyncManager.pushChanges`, que los agrupa en lotes).
+   */
+  runBatch<T>(fn: () => T): { result: T; changes: SyncEntityEvent[] } {
+    if (this.collected) return { result: fn(), changes: [] };
+    const changes: SyncEntityEvent[] = [];
+    this.collected = changes;
+    try {
+      const result = this.tx(fn);
+      return { result, changes };
+    } finally {
+      this.collected = null;
+    }
+  }
+
+  /** Transacción que tolera anidarse (remove dentro de runBatch). */
+  private tx<T>(fn: () => T): T {
+    if (this.inTransaction) return fn();
+    this.inTransaction = true;
+    try {
+      return transaction(this.db, fn);
+    } finally {
+      this.inTransaction = false;
+    }
+  }
+
+  /** Upsert desde sync remoto — no emite syncEvents salvo al resolver un duplicado. */
   syncUpsert(data: {
     id: string;
     url: string | null;
@@ -210,6 +304,18 @@ export class FavoritesRepository {
     type?: string;
     parentId?: string | null;
   }): void {
+    // La URL es única. Si dos dispositivos guardaron la misma dirección con
+    // ids distintos (p. ej. importaron el mismo navegador), ganan siempre los
+    // mismos: el id menor. Así todos convergen al mismo favorito en vez de
+    // chocar con el índice único o intercambiarse los ids.
+    if (data.url && (data.type ?? 'bookmark') === 'bookmark') {
+      const clash = this.getByUrl(data.url);
+      if (clash && clash.id !== data.id) {
+        if (data.id > clash.id) return;
+        this.db.prepare('DELETE FROM profile_favorites WHERE id = ?').run(clash.id);
+        this.emitSyncDelete(clash.id);
+      }
+    }
     if (this.hasUpdatedAt) {
       this.db
         .prepare(
@@ -243,9 +349,42 @@ export class FavoritesRepository {
     }
   }
 
-  private emitSyncChange(fav: Favorite & { updatedAt: number }): void {
+  /**
+   * Borrado llegado por sync: solo la fila. Si era una carpeta, el otro
+   * dispositivo envía aparte lo que pasó con su contenido (borrado o movido).
+   */
+  syncDelete(id: string): void {
+    this.db.prepare('DELETE FROM profile_favorites WHERE id = ?').run(id);
+  }
+
+  private assertFolder(id: string): void {
+    const parent = this.getById(id);
+    if (!parent) throw new NotFoundError('Favorite', id);
+    if (parent.type !== 'folder') {
+      throw new InvariantViolationError('El destino no es una carpeta de favoritos');
+    }
+  }
+
+  private writeParentAndPosition(id: string, parentId: string | null, position: string): void {
+    if (this.hasUpdatedAt) {
+      this.db
+        .prepare('UPDATE profile_favorites SET parent_id = ?, position = ?, updated_at = ? WHERE id = ?')
+        .run(parentId, position, Date.now(), id);
+    } else {
+      this.db.prepare('UPDATE profile_favorites SET parent_id = ?, position = ? WHERE id = ?').run(parentId, position, id);
+    }
+    const fav = this.getById(id);
+    if (fav) this.emitSyncChange(fav);
+  }
+
+  private emit(evt: SyncEntityEvent): void {
+    if (this.collected) this.collected.push(evt);
+    else syncEvents.emit('entity:changed', evt);
+  }
+
+  private emitSyncChange(fav: StoredFavorite): void {
     if (!this.profileId) return;
-    syncEvents.emit('entity:changed', {
+    this.emit({
       profileId: this.profileId,
       type: 'favorite',
       id: fav.id,
@@ -256,7 +395,7 @@ export class FavoritesRepository {
 
   private emitSyncDelete(id: string): void {
     if (!this.profileId) return;
-    syncEvents.emit('entity:changed', {
+    this.emit({
       profileId: this.profileId,
       type: 'favorite',
       id,

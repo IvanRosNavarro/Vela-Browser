@@ -38,6 +38,32 @@ function readMruScope(ipc: IpcContext, ctx: CommandContext): MruScope {
   }
 }
 
+/**
+ * Activa la pestaña del workspace visible que ya muestra `url` (una página
+ * interna sin parámetros propios) o, si no la hay, la abre en una nueva.
+ */
+async function openOrActivateInternalPage(
+  ipc: IpcContext,
+  ctx: CommandContext,
+  url: string,
+): Promise<void> {
+  if (ctx.windowId === null || ctx.activeWorkspaceId === null) return;
+  const repos = reposForCommand(ipc, ctx);
+  const existing = repos?.treeNodes
+    .getByWorkspace(ctx.activeWorkspaceId)
+    .find((n) => n.kind === 'tab' && (n.url === url || n.url.startsWith(`${url}?`) || n.url.startsWith(`${url}#`)));
+  if (existing) {
+    await ipc.tabManager.activateTab(ctx.windowId, existing.id);
+    return;
+  }
+  await ipc.tabManager.createTab(ctx.windowId, {
+    workspaceId: ctx.activeWorkspaceId,
+    parentId: null,
+    url,
+    activate: true,
+  });
+}
+
 function readMruBehavior(ipc: IpcContext, ctx: CommandContext): 'modal' | 'direct' {
   const repos = reposForCommand(ipc, ctx);
   if (!repos) return 'modal';
@@ -1047,19 +1073,27 @@ export function registerCoreCommands(
     }),
   );
 
+  // Favoritos no vive en ninguna barra: solo se abre desde aquí (menú de
+  // Vela, paleta o atajo). Mismo atajo que el gestor de marcadores de Chrome.
   registry.register(
     defineCommand({
       id: 'internal.openFavorites',
       title: 'Ver favoritos',
       category: 'internal',
+      defaultShortcut: 'Ctrl+Shift+O',
       run: async (ctx) => {
-        if (ctx.windowId === null || ctx.activeWorkspaceId === null) return;
-        await ipc.tabManager.createTab(ctx.windowId, {
-          workspaceId: ctx.activeWorkspaceId,
-          parentId: null,
-          url: 'vela://favorites',
-          activate: true,
-        });
+        await openOrActivateInternalPage(ipc, ctx, 'vela://favorites');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'internal.openBrowserImport',
+      title: 'Importar datos de otro navegador',
+      category: 'internal',
+      run: async (ctx) => {
+        await openOrActivateInternalPage(ipc, ctx, 'vela://import-data');
       },
     }),
   );

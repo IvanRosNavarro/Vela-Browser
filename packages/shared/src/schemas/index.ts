@@ -13,5 +13,6 @@ export * from './darkmode';
 export * from './shortcuts';
 export * from './devtools';
 export * from './cookies';
+export * from './favorites';
 export * from './zoom';
 export * from './trackpad';

@@ -481,9 +481,10 @@ export function App() {
                 Historial
                 <span style={arrowStyle}><IcoChevronRight /></span>
               </MenuItem>
-              <MenuItem onClick={() => { void window.api.window.openUrlInNewTab({ url: 'vela://favorites' }); window.close(); }}>
+              <MenuItem onClick={() => exec('internal.openFavorites')}>
                 <span style={iconWrap}><IcoStar /></span>
                 Favoritos
+                <span style={kbdStyle}>Ctrl+Shift+O</span>
               </MenuItem>
               <MenuItem onClick={() => { void window.api.vault.openManager({ windowId: parentWindowId }); window.close(); }}>
                 <span style={iconWrap}><IcoKey /></span>

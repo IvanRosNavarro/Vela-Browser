@@ -285,11 +285,12 @@ export const IPC_CHANNELS = {
   FAVORITES_ADD: 'favorites:add',
   FAVORITES_REMOVE: 'favorites:remove',
   FAVORITES_REORDER: 'favorites:reorder',
-  FAVORITES_UPDATE_TITLE: 'favorites:update-title',
   FAVORITES_CREATE_FOLDER: 'favorites:create-folder',
   FAVORITES_MOVE: 'favorites:move',
   FAVORITES_UPDATE: 'favorites:update',
   FAVORITES_EXPORT_FILE: 'favorites:export-file',
+  BROWSER_IMPORT_DETECT: 'browser-import:detect',
+  BROWSER_IMPORT_RUN: 'browser-import:run',
 
   TAB_CREATE_SECURE: 'tab:create-secure',
   TAB_ANCHOR: 'tab:anchor',

@@ -21,6 +21,7 @@ export * from './media';
 export * from './recentlyClosedTab';
 export * from './quickNote';
 export * from './favorite';
+export * from './browserImport';
 export * from './adblocker';
 export * from './vault';
 export * from './autofill';

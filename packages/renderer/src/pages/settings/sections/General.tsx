@@ -132,6 +132,21 @@ export function General({ settings }: Props) {
         </SettingRow>
       </SettingSection>
 
+      <SettingSection title="Importar datos">
+        <SettingRow
+          label="Importar datos de otro navegador"
+          description="Marcadores, historial y contraseñas de Chrome, Edge, Brave, Vivaldi, Opera o Firefox."
+        >
+          <button
+            onClick={() => void window.api.commands.execute('internal.openBrowserImport')}
+            className="flex items-center gap-1 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-3 py-1 text-sm text-[var(--vela-fg)] hover:bg-[var(--vela-border)]/50"
+          >
+            Importar
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </SettingRow>
+      </SettingSection>
+
       <SettingSection title="Idioma">
         <SettingRow label="Idioma de la interfaz">
           <Select

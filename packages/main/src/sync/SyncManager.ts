@@ -525,6 +525,48 @@ export class SyncManager {
     }
   }
 
+  /**
+   * Variante en bloque de `pushChange` para operaciones que tocan cientos de
+   * entidades a la vez (importar marcadores, borrar una carpeta llena): sube
+   * todo en los lotes de `pushEntities` en vez de una petición por entidad.
+   * Mismas reglas: respeta las categorías desactivadas y encola si no hay
+   * conexión o la subida falla.
+   */
+  async pushChanges(changes: SyncEntityEvent[]): Promise<void> {
+    if (!this.config || changes.length === 0) return;
+    const disabled = this.disabledCategories();
+    const own = changes.filter(
+      (c) => c.profileId === this.profileId && this.isTypeEnabled(c.type, disabled),
+    );
+    if (own.length === 0) return;
+
+    const enqueueAll = (): void => {
+      const pending = this.getRepos().syncPending;
+      for (const c of own) {
+        pending.upsert(c.type, c.id, c.data ? JSON.stringify(c.data) : null, c.updatedAt);
+      }
+    };
+
+    if (!this.isConnected()) {
+      enqueueAll();
+      return;
+    }
+
+    const key = this.config.syncKey;
+    try {
+      await this.pushEntities(own.map((c) => ({
+        id: c.id,
+        entity_type: c.type,
+        data_ct: c.data ? encrypt(JSON.stringify(c.data), key).toString('base64') : null,
+        updated_at: c.updatedAt,
+        deleted: c.data === null ? 1 : 0,
+      })));
+    } catch (err) {
+      this.logger.warn(`[sync] push en bloque de ${own.length} cambios falló, encolado:`, err);
+      enqueueAll();
+    }
+  }
+
   private async pushEntities(entities: RemoteEntity[]): Promise<void> {
     if (!this.config || entities.length === 0) return;
 

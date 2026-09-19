@@ -16,6 +16,7 @@ import { mapError } from './errors';
 import { guardTrustedFrame } from './validate';
 import { applyGlassUrlParams, applyNativeMaterial } from './popupUtils';
 import type { GlassParams } from './popupUtils';
+import { parsePasswordCsv } from '../passwords/passwordCsv';
 
 function readGlass(repos: { settings: { get(key: string): string | null | undefined } }): GlassParams | null {
   if (repos.settings.get('ui:glassmorphism') !== 'true') return null;
@@ -624,7 +625,7 @@ export function registerVaultHandlers(ctx: IpcContext): void {
         if (!filePaths.length) return { ok: true, data: { imported: 0, skipped: 0 } };
 
         const content = fs.readFileSync(filePaths[0]!, 'utf-8');
-        const parsed = parseCsv(content);
+        const parsed = parsePasswordCsv(content);
 
         let imported = 0;
         let skipped = 0;
@@ -998,71 +999,4 @@ export function registerVaultHandlers(ctx: IpcContext): void {
       }
     },
   );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-interface CsvRow {
-  domain: string;
-  url: string;
-  username: string;
-  password: string;
-  notes: string;
-}
-
-function parseCsv(content: string): CsvRow[] {
-  const lines = content.split(/\r?\n/);
-  if (lines.length < 2) return [];
-
-  const header = lines[0]!.split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
-  const results: CsvRow[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i]!.trim();
-    if (!line) continue;
-    const cols = parseCsvLine(line);
-    const row: Record<string, string> = {};
-    header.forEach((h, idx) => { row[h] = cols[idx] ?? ''; });
-
-    // Chrome CSV: name, url, username, password
-    // Firefox CSV: url, username, password, httpRealm, formActionOrigin, guid, timeCreated, timeLastUsed, timePasswordChanged
-    // Bitwarden CSV: folder, favorite, type, name, notes, fields, reprompt, login_uri, login_username, login_password
-
-    const url = row['url'] ?? row['login_uri'] ?? '';
-    const username = row['username'] ?? row['login_username'] ?? '';
-    const password = row['password'] ?? row['login_password'] ?? '';
-    const notes = row['notes'] ?? '';
-
-    let domain = '';
-    try { domain = new URL(url).hostname; } catch { domain = url; }
-
-    results.push({ domain, url, username, password, notes });
-  }
-
-  return results;
-}
-
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
 }
