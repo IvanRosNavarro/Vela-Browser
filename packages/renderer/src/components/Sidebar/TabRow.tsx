@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Volume2, VolumeOff } from 'lucide-react';
 import type { SidebarMode, TabNode } from '@vela/shared';
 import { useNodeDrag } from './useNodeDrag';
 import { useNodeDrop } from './useNodeDrop';
@@ -9,6 +10,9 @@ import { InlineRename } from './InlineRename';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { useTreeStore } from '../../stores/treeStore';
 import { useMediaStore } from '../../stores/mediaStore';
+import { useTabSelectionStore } from '../../stores/tabSelectionStore';
+import { selectVisibleFlatListWithDepth } from './flatList';
+import { isFolderLike } from '@vela/shared';
 import { toast } from '../../stores/toastStore';
 import { showTabContextMenu } from './tabContextMenu';
 import type { ActiveDrop } from './types';
@@ -77,6 +81,13 @@ export function TabRow({
   const mediaSource = tabIndicatorEnabled
     ? mediaSources.find((s) => s.tabId === node.id)
     : undefined;
+  const isMuted = useMediaStore((s) => s.mutedTabIds.has(node.id));
+  const toggleMuted = useMediaStore((s) => s.toggleMuted);
+  const isSelected = useTabSelectionStore((s) => s.ids.includes(node.id));
+  // El altavoz aparece si la pestaña suena (con el indicador activado) o si
+  // está silenciada: el silencio lo decidió el usuario y debe verse siempre.
+  const showSpeaker = !renaming && (isMuted || mediaSource !== undefined);
+  const speakerLabel = isMuted ? 'Activar sonido' : 'Silenciar pestaña';
   const closeTab = useRuntimeStore((s) => s.closeTab);
   const renameNode = useTreeStore((s) => s.renameNode);
   const compact = mode === 'compact';
@@ -98,9 +109,17 @@ export function TabRow({
     opacity,
     background: isActive
       ? 'var(--vela-tab-active-bg)'
-      : node.isSecure
-        ? 'color-mix(in srgb, var(--vela-accent) 8%, transparent)'
-        : undefined,
+      : isSelected
+        ? 'color-mix(in srgb, var(--vela-accent) 16%, transparent)'
+        : node.isSecure
+          ? 'color-mix(in srgb, var(--vela-accent) 8%, transparent)'
+          : undefined,
+    // Seleccionada: contorno de accent, distinto del fondo de la activa, para
+    // que se vea también cuando la activa forma parte de la selección.
+    boxShadow: isSelected
+      ? 'inset 0 0 0 1px color-mix(in srgb, var(--vela-accent) 55%, transparent)'
+      : undefined,
+    borderRadius: isSelected ? 4 : undefined,
     color: isActive ? 'var(--vela-tab-active-fg)' : 'var(--vela-fg)',
   };
 
@@ -115,6 +134,49 @@ export function TabRow({
     void closeTab(node.id);
   }
 
+  function handleToggleMute(e: React.MouseEvent) {
+    e.stopPropagation();
+    void toggleMuted(node.id);
+  }
+
+  /**
+   * Ctrl/Cmd+clic alterna la pestaña en la selección múltiple; Shift+clic
+   * selecciona el rango desde la última pulsada (o desde la activa) en el
+   * orden visible del árbol. Clic normal: limpia la selección y activa.
+   */
+  function handleClick(e: React.MouseEvent) {
+    if (renaming) return;
+    const selection = useTabSelectionStore.getState();
+    if (e.ctrlKey || e.metaKey) {
+      selection.toggle(node.workspaceId, node.id);
+      return;
+    }
+    if (e.shiftKey) {
+      const flat = selectVisibleFlatListWithDepth(
+        useTreeStore.getState(),
+        node.workspaceId,
+      );
+      const byId = new Map(flat.map((f) => [f.node.id, f.node] as const));
+      const activeTabId =
+        currentWindowId !== null
+          ? (useRuntimeStore.getState().activeTabIdByWindow[currentWindowId] ?? null)
+          : null;
+      selection.selectRange(
+        node.workspaceId,
+        flat.map((f) => f.node.id),
+        node.id,
+        (id) => {
+          const n = byId.get(id);
+          return n !== undefined && !isFolderLike(n);
+        },
+        activeTabId,
+      );
+      return;
+    }
+    selection.clear();
+    void activateTab(node.id);
+  }
+
   function handleAuxClick(e: React.MouseEvent) {
     if (e.button !== 1) return;
     e.preventDefault();
@@ -125,6 +187,9 @@ export function TabRow({
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    // Clic derecho fuera de la selección: se descarta, como en Chrome, y el
+    // menú actúa solo sobre esta pestaña.
+    if (!isSelected) useTabSelectionStore.getState().clear();
 
     if (_showTimer) { clearTimeout(_showTimer); _showTimer = null; }
     if (currentWindowId && _previewWindowId === currentWindowId) {
@@ -197,9 +262,7 @@ export function TabRow({
       ref={(el) => { drag.setNodeRef(el); rowRef.current = el; }}
       {...drag.listeners}
       {...drag.attributes}
-      onClick={() => {
-        if (!renaming) void activateTab(node.id);
-      }}
+      onClick={handleClick}
       onAuxClick={handleAuxClick}
       onDoubleClick={(e) => {
         e.preventDefault();
@@ -209,6 +272,7 @@ export function TabRow({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       title={node.discarded ? 'Pestaña suspendida · Click para recargar' : undefined}
+      aria-selected={isSelected || undefined}
       className="group relative flex cursor-default items-center select-none hover:bg-[var(--vela-bg-row-hover)]"
       style={{ ...rowStyle, ...transformStyle }}
       data-tab-id={node.id}
@@ -259,13 +323,35 @@ export function TabRow({
       />
 
       {compact ? (
-        <div className="mx-auto flex items-center justify-center" style={faviconStyle}>
-          <Favicon
-            src={faviconSrc}
-            alt={title}
-            size={20}
-            fallbackChar={fallbackChar}
-          />
+        <div className="relative mx-auto flex items-center justify-center">
+          <span style={faviconStyle}>
+            <Favicon
+              src={faviconSrc}
+              alt={title}
+              size={20}
+              fallbackChar={fallbackChar}
+            />
+          </span>
+          {showSpeaker && (
+            <button
+              type="button"
+              aria-label={speakerLabel}
+              title={speakerLabel}
+              onClick={handleToggleMute}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="absolute -bottom-1 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
+              style={{
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                background: 'var(--vela-bg-sidebar)',
+                color: isMuted ? 'var(--vela-fg-muted)' : 'var(--vela-accent)',
+              }}
+            >
+              {isMuted ? <VolumeOff size={10} /> : <Volume2 size={10} />}
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -315,24 +401,32 @@ export function TabRow({
               {node.isSecure ? `[Fantasma] ${title}` : title}
             </span>
           )}
-          {mediaSource && !renaming && (
-            <span
-              title={mediaSource.isPlaying ? 'Reproduciendo audio' : 'Audio pausado'}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 group-hover:hidden"
+          {showSpeaker && (
+            <button
+              type="button"
+              aria-label={speakerLabel}
+              title={speakerLabel}
+              onClick={handleToggleMute}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded hover:bg-[var(--vela-border-strong)] group-hover:right-7"
               style={{
-                fontSize: 13,
-                color: mediaSource.isPlaying
-                  ? 'var(--vela-accent, #4f8ef7)'
-                  : 'var(--vela-fg-muted)',
-                animation: mediaSource.isPlaying
-                  ? 'media-pulse 1.8s ease-in-out infinite'
-                  : 'none',
-                pointerEvents: 'none',
-                userSelect: 'none',
-              } as CSSProperties}
+                border: 'none',
+                padding: 0,
+                background: 'transparent',
+                cursor: 'pointer',
+                color:
+                  !isMuted && mediaSource?.isPlaying
+                    ? 'var(--vela-accent, #4f8ef7)'
+                    : 'var(--vela-fg-muted)',
+                animation:
+                  !isMuted && mediaSource?.isPlaying
+                    ? 'media-pulse 1.8s ease-in-out infinite'
+                    : 'none',
+              }}
             >
-              {mediaSource.isPlaying ? '♪' : '♩'}
-            </span>
+              {isMuted ? <VolumeOff size={13} /> : <Volume2 size={13} />}
+            </button>
           )}
           <button
             type="button"

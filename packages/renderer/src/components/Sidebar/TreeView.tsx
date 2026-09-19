@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { List, type RowComponentProps } from 'react-window';
 import type { SidebarMode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
+import { useTabSelectionStore } from '../../stores/tabSelectionStore';
 import { TreeNodeRow } from './TreeNodeRow';
 import { EmptyState } from './EmptyState';
 import {
@@ -79,6 +80,17 @@ export function TreeView({ workspaceId, mode, activeDrop }: TreeViewProps) {
       ? (s.activeTabIdByWindow[currentWindowId] ?? null)
       : null,
   );
+
+  // La selección múltiple es del workspace visible: se vacía al cambiar de
+  // workspace y pierde las pestañas que se cierran o salen de él.
+  useEffect(() => {
+    useTabSelectionStore.getState().clear();
+  }, [workspaceId]);
+  useEffect(() => {
+    useTabSelectionStore
+      .getState()
+      .prune(workspaceId, new Set(allNodes.map((n) => n.id)));
+  }, [workspaceId, allNodes]);
 
   const compact = mode === 'compact';
   const rowHeight = compact ? 40 : 32;

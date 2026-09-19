@@ -5,7 +5,9 @@ import {
   folderCreateInputSchema,
   folderTabCreateInputSchema,
   nodeDeleteInputSchema,
+  nodeGroupIntoFolderInputSchema,
   nodeMoveInputSchema,
+  nodeMoveManyInputSchema,
   nodeRenameInputSchema,
   nodeReorderInputSchema,
   nodeToggleCollapseInputSchema,
@@ -19,6 +21,7 @@ import {
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getReposForFrame, getFrameContext } from './helpers';
+import { guardTrustedFrame } from './validate';
 
 export function registerNodeHandlers(ctx: IpcContext): void {
   ipcMain.handle(
@@ -186,6 +189,66 @@ export function registerNodeHandlers(ctx: IpcContext): void {
         return { ok: true, data: result.node };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.NODE_MOVE);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.NODE_MOVE_MANY,
+    async (event, payload): Promise<IpcResponse<TreeNode[]>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.NODE_MOVE_MANY);
+      const parsed = nodeMoveManyInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: 'INVALID_INPUT',
+          details: parsed.error.flatten(),
+        };
+      }
+      try {
+        const repos = getReposForFrame(event, ctx);
+        const { ids, newParentId, prevPosition, nextPosition, newWorkspaceId } =
+          parsed.data;
+        const result = repos.treeNodes.moveMany(
+          ids,
+          newParentId,
+          { prev: prevPosition, next: nextPosition },
+          newWorkspaceId,
+        );
+        for (const workspaceId of result.affectedWorkspaceIds) {
+          ctx.events.emit(IPC_EVENTS.TREE_CHANGED, { workspaceId });
+        }
+        return { ok: true, data: result.nodes };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NODE_MOVE_MANY);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.NODE_GROUP_INTO_FOLDER,
+    async (event, payload): Promise<IpcResponse<TabNode>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.NODE_GROUP_INTO_FOLDER);
+      const parsed = nodeGroupIntoFolderInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: 'INVALID_INPUT',
+          details: parsed.error.flatten(),
+        };
+      }
+      try {
+        const repos = getReposForFrame(event, ctx);
+        const { folder } = repos.treeNodes.groupIntoFolder(
+          parsed.data.ids,
+          parsed.data.name,
+        );
+        ctx.events.emit(IPC_EVENTS.TREE_CHANGED, {
+          workspaceId: folder.workspaceId,
+        });
+        return { ok: true, data: folder };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.NODE_GROUP_INTO_FOLDER);
       }
     },
   );

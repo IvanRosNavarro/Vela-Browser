@@ -4,10 +4,17 @@ import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { useWorkspacesStore } from '../../stores/workspacesStore';
 import { useSidebarStore } from '../../stores/sidebarStore';
+import { useMediaStore } from '../../stores/mediaStore';
+import {
+  bulkSelectionFor,
+  useTabSelectionStore,
+} from '../../stores/tabSelectionStore';
 import { toast } from '../../stores/toastStore';
 import { call, IpcError } from '../../lib/ipc';
 import { showContextMenu, type MenuActionMap } from '../../lib/contextMenu';
 import { writeToClipboard } from '../../lib/clipboard';
+import { orderByVisible } from '@vela/shared';
+import { selectVisibleFlatListWithDepth } from './flatList';
 
 /**
  * Menú contextual de una pestaña. Es el mismo para el árbol de la sidebar,
@@ -44,11 +51,156 @@ function lastRootPosition(workspaceId: string): string | null {
   );
 }
 
+/**
+ * Menú de una selección múltiple (2 o más pestañas del árbol). Solo lleva las
+ * acciones que tienen sentido en bloque; las de una sola pestaña (renombrar,
+ * estibar, anclar, copiar enlace…) se ocultan.
+ */
+async function showBulkTabContextMenu(
+  node: TabNode,
+  selectedIds: string[],
+): Promise<void> {
+  const workspaces = useWorkspacesStore.getState().workspaces;
+  const visible = selectVisibleFlatListWithDepth(
+    useTreeStore.getState(),
+    node.workspaceId,
+  ).map((f) => f.node.id);
+  const ids = orderByVisible(selectedIds, visible);
+  const n = ids.length;
+  const nodesById = new Map(
+    (useTreeStore.getState().nodesByWorkspace[node.workspaceId] ?? []).map(
+      (t) => [t.id, t] as const,
+    ),
+  );
+  const tabs = ids
+    .map((id) => nodesById.get(id))
+    .filter((t): t is TabNode => t !== undefined && t.kind === 'tab');
+  const mutedTabIds = useMediaStore.getState().mutedTabIds;
+  const allMuted = ids.every((id) => mutedTabIds.has(id));
+
+  const otherWorkspaces = workspaces.filter((w) => w.id !== node.workspaceId);
+  const moveSubmenu: MenuItemSpec[] =
+    otherWorkspaces.length === 0
+      ? [
+          {
+            type: 'normal',
+            id: 'noop:no-other-workspaces',
+            label: '(solo hay un workspace)',
+            enabled: false,
+          },
+        ]
+      : otherWorkspaces.map((w) => ({
+          type: 'normal' as const,
+          id: `move-to-workspace:${w.id}`,
+          label: w.name,
+        }));
+
+  const items: MenuItemSpec[] = [
+    { type: 'normal', id: 'close', label: `Cerrar ${n} pestañas` },
+    { type: 'separator' },
+    {
+      type: 'normal',
+      id: 'group',
+      label: `Nueva carpeta con ${n} pestañas`,
+    },
+    { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
+    { type: 'separator' },
+    {
+      type: 'normal',
+      id: 'toggle-mute',
+      label: allMuted
+        ? `Activar sonido de ${n} pestañas`
+        : `Silenciar ${n} pestañas`,
+    },
+    { type: 'normal', id: 'duplicate', label: `Duplicar ${n} pestañas` },
+    { type: 'separator' },
+    {
+      type: 'normal',
+      id: 'discard',
+      label: `Suspender ${n} pestañas`,
+    },
+    { type: 'separator' },
+    { type: 'normal', id: 'clear-selection', label: 'Quitar selección' },
+  ];
+
+  const clearSelection = (): void => useTabSelectionStore.getState().clear();
+
+  const actions: MenuActionMap = {
+    close: () => {
+      clearSelection();
+      void call(() => window.api.tab.closeMany({ ids }));
+    },
+    group: () =>
+      void (async () => {
+        const folder = await call(() =>
+          window.api.node.groupIntoFolder({ ids, name: 'Nueva carpeta' }),
+        );
+        clearSelection();
+        useSidebarStore.getState().setPendingRenameId(folder.id);
+      })(),
+    'toggle-mute': () => void useMediaStore.getState().setMuted(ids, !allMuted),
+    duplicate: () =>
+      void (async () => {
+        // Cada duplicado es una pestaña nueva con su WCV: no hay atajo en
+        // bloque que ahorre trabajo real, así que se abren en orden.
+        for (const t of tabs) {
+          await call(() =>
+            window.api.window.openUrlInNewTab({
+              url: t.url,
+              parentId: t.parentId,
+            }),
+          );
+        }
+      })(),
+    discard: () =>
+      void (async () => {
+        let skippedActive = false;
+        for (const t of tabs) {
+          if (t.discarded) continue;
+          try {
+            await call(() => window.api.discard.discardTab({ tabId: t.id }));
+          } catch (err) {
+            if (err instanceof IpcError && err.code === 'INVARIANT') {
+              skippedActive = true;
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (skippedActive) {
+          toast('La pestaña activa no se ha suspendido', 'warning');
+        }
+      })(),
+    'clear-selection': clearSelection,
+  };
+
+  for (const w of otherWorkspaces) {
+    actions[`move-to-workspace:${w.id}`] = () => {
+      clearSelection();
+      void call(() =>
+        window.api.node.moveMany({
+          ids,
+          newParentId: null,
+          newWorkspaceId: w.id,
+        }),
+      );
+    };
+  }
+
+  await showContextMenu(items, actions);
+}
+
 export async function showTabContextMenu({
   node,
   isActive,
   onRename,
 }: TabContextMenuOptions): Promise<void> {
+  const selectedIds = bulkSelectionFor(node.id);
+  if (selectedIds) {
+    await showBulkTabContextMenu(node, selectedIds);
+    return;
+  }
+
   const treeStore = useTreeStore.getState();
   const runtimeStore = useRuntimeStore.getState();
   const workspaces = useWorkspacesStore.getState().workspaces;
@@ -56,6 +208,7 @@ export async function showTabContextMenu({
   const isAnchor = treeStore.anchoredTabs.some((t) => t.id === node.id);
   const isHttp =
     node.url.startsWith('http://') || node.url.startsWith('https://');
+  const isMuted = useMediaStore.getState().mutedTabIds.has(node.id);
 
   // El estado de whitelist permanente solo hace falta para etiquetar el ítem,
   // así que se consulta al abrir el menú y no al montar cada fila.
@@ -225,6 +378,11 @@ export async function showTabContextMenu({
     { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
     { type: 'separator' },
     { type: 'normal', id: 'copy-url', label: 'Copiar enlace', enabled: isHttp },
+    {
+      type: 'normal',
+      id: 'toggle-mute',
+      label: isMuted ? 'Activar sonido' : 'Silenciar pestaña',
+    },
     { type: 'normal', id: 'duplicate', label: 'Duplicar' },
     {
       type: 'normal',
@@ -286,6 +444,7 @@ export async function showTabContextMenu({
         toast('Enlace copiado al portapapeles', 'success');
       });
     },
+    'toggle-mute': () => void useMediaStore.getState().toggleMuted(node.id),
     duplicate: () =>
       void window.api.window.openUrlInNewTab({
         url: node.url,
