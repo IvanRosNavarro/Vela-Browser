@@ -190,6 +190,13 @@ function resolveInitialSidebarWidth(repos: ProfileRepositories): number {
 export class TabManager {
   private readonly windows = new Map<number, PerWindow>();
   private readonly tabToWindow = new Map<string, number>();
+  /**
+   * Ventanas emergentes (window.open permitido: OAuth, accesos con
+   * certificado) → pestaña que las abrió, por id de su WebContents. No son
+   * pestañas, pero quien atienda sus peticiones necesita saber de qué
+   * pestaña, ventana y perfil vienen.
+   */
+  private readonly popupOwners = new Map<number, string>();
   /** UUID generado al arrancar la app; cambia en cada reinicio para agrupar visitas por sesión en historial. */
   private readonly sessionId = crypto.randomUUID();
   // Pilas MRU globales por perfil. Cada perfil tiene su propia pila porque
@@ -325,6 +332,11 @@ export class TabManager {
       }
     }
     return null;
+  }
+
+  /** Pestaña que abrió la ventana emergente de este WebContents, si lo es. */
+  getOwnerTabForPopup(webContentsId: number): string | null {
+    return this.popupOwners.get(webContentsId) ?? null;
   }
 
   getWindowIdForTab(tabId: string): number | null {
@@ -2552,6 +2564,9 @@ export class TabManager {
     // La lógica de UA para Google OAuth la gestiona onBeforeSendHeaders en sessions.ts.
     wc.on('did-create-window', (childWin) => {
       childWin.setMenuBarVisibility(false);
+      const popupWcId = childWin.webContents.id;
+      this.popupOwners.set(popupWcId, tabId);
+      childWin.once('closed', () => this.popupOwners.delete(popupWcId));
     });
 
     wc.on('dom-ready', () => {
