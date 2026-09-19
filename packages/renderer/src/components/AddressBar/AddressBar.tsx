@@ -52,8 +52,8 @@ export function AddressBar() {
     return node?.kind === 'tab' ? node.isSecure : false;
   });
 
-  const ctrl = useAddressBar();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const ctrl = useAddressBar(inputRef);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const urlBarRef = useRef<HTMLDivElement | null>(null);
 
@@ -97,15 +97,22 @@ export function AddressBar() {
     const onKeyDown = (e: globalThis.KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
+      // Con texto autocompletado, el primer Escape solo lo quita.
+      if (ctrl.dismissInlineCompletion()) {
+        e.stopPropagation();
+        return;
+      }
       inputRef.current?.blur();
       ctrl.cancelEditing();
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [ctrl.editing, ctrl.cancelEditing]);
+  }, [ctrl.editing, ctrl.cancelEditing, ctrl.dismissInlineCompletion]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      // →/Fin/←/Inicio aceptan la compleción inline (sin anular la tecla).
+      if (ctrl.handleInlineCompletionKey(e)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         inputRef.current?.blur();
@@ -263,6 +270,8 @@ export function AddressBar() {
                 compact={compact}
                 onChange={ctrl.setInputValue}
                 onKeyDown={handleKeyDown}
+                onCompositionStart={ctrl.inputCompositionHandlers.onCompositionStart}
+                onCompositionEnd={ctrl.inputCompositionHandlers.onCompositionEnd}
                 onFocus={() => {
                   /* el input solo existe en editing; nada que hacer */
                 }}
