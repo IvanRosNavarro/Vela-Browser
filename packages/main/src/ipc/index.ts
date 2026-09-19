@@ -1,4 +1,5 @@
 import { safeStorage, app, type BrowserWindow, type Session } from 'electron';
+import { IPC_EVENTS } from '@vela/shared';
 import { WindowStateRepository } from '../storage/repositories/WindowStateRepository';
 import { getDb } from '../storage/db';
 import {
@@ -71,6 +72,8 @@ import { ClientCertificateManager } from '../security/ClientCertificateManager';
 import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
 import { TrackpadGestures } from '../gestures/TrackpadGestures';
+import { ZoomManager } from '../zoom/ZoomManager';
+import { registerZoomHandlers } from './zoom';
 import { MediaSessionManager } from '../media/MediaSessionManager';
 import { PipManager } from '../media/PipManager';
 import { GlobalSettings } from '../settings';
@@ -139,6 +142,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   // Los managers que dependen de tabManager se conectan vía closure para
   // evitar dependencia circular en la construcción.
   let mediaManagerRef: MediaSessionManager | null = null;
+  let zoomManagerRef: ZoomManager | null = null;
   let pipManagerRef: PipManager | null = null;
   let notificationManagerRef: import('../notifications/NotificationManager').NotificationManager | null = null;
 
@@ -153,6 +157,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
       pipManagerRef?.attachToTab(tabId, view.webContents);
       notificationManagerRef?.attachToWebContents(view.webContents, profileId);
       trackpadGestures.attach(view.webContents);
+      zoomManagerRef?.attach(tabId, view.webContents, profileId);
     },
     onVisibleTabsChanged: (windowId, visibleTabIds) => {
       pipManagerRef?.onVisibleTabsChanged(windowId, visibleTabIds);
@@ -173,6 +178,23 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
         logger.warn('[secure] error cargando extensiones permitidas', err);
       }
     },
+  });
+  const zoomManager = new ZoomManager({
+    getSettings: (profileId) => {
+      try {
+        return profileManager.getRepositories(profileId).settings;
+      } catch {
+        return null; // perfil cerrado
+      }
+    },
+    isSecureTab: (tabId) => tabManager.isSecureTab(tabId),
+    emit: (state) => events.emit(IPC_EVENTS.TAB_ZOOM_CHANGED, state),
+    logger,
+  });
+  zoomManagerRef = zoomManager;
+  // Al cambiar de pestaña activa, el renderer necesita su zoom para el indicador.
+  events.on(IPC_EVENTS.ACTIVE_TAB_CHANGED, ({ tabId }) => {
+    if (tabId) zoomManager.notify(tabId);
   });
   const layoutManager = new LayoutManager(tabManager);
   const glanceManager = new GlanceManager(tabManager, repositories.appMetadata, logger);
@@ -281,6 +303,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     layoutManager,
     glanceManager,
     trackpadGestures,
+    zoomManager,
     mediaManager,
     mediaPopupWindow,
     pipManager,
@@ -330,6 +353,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerFilePickerHandlers(ctx);
   registerGlanceHandlers(ctx);
   registerTrackpadHandlers(ctx);
+  registerZoomHandlers(ctx);
   registerMediaHandlers(ctx);
   registerHoverUrlHandlers(ctx);
   registerNotesHandlers(ctx);

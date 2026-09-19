@@ -339,6 +339,13 @@ const api: PreloadApi = {
     openPanel: (params) => call(IPC_CHANNELS.COOKIES_OPEN_PANEL, params),
     closePanel: (params) => call(IPC_CHANNELS.COOKIES_CLOSE_PANEL, params),
   },
+  zoom: {
+    get: (input) => call(IPC_CHANNELS.ZOOM_GET, input),
+    step: (input) => call(IPC_CHANNELS.ZOOM_STEP, input),
+    reset: (input) => call(IPC_CHANNELS.ZOOM_RESET, input),
+    openPopup: (input) => call(IPC_CHANNELS.ZOOM_OPEN_POPUP, input),
+    closePopup: (input) => call(IPC_CHANNELS.ZOOM_CLOSE_POPUP, input),
+  },
   favorites: {
     list: () => call(IPC_CHANNELS.FAVORITES_LIST),
     add: (input) => call(IPC_CHANNELS.FAVORITES_ADD, input),

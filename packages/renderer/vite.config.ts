@@ -40,6 +40,7 @@ export default defineConfig({
         'media-popup': resolve(__dirname, 'src/pages/media-popup/index.html'),
         history: resolve(__dirname, 'src/pages/history/index.html'),
         cookiepanel: resolve(__dirname, 'src/pages/cookiepanel/index.html'),
+        'zoom-popup': resolve(__dirname, 'src/pages/zoom-popup/index.html'),
         favorites: resolve(__dirname, 'src/pages/favorites/index.html'),
         anchors: resolve(__dirname, 'src/pages/anchors/index.html'),
         'adblocker-panel': resolve(__dirname, 'src/pages/adblocker-panel/index.html'),

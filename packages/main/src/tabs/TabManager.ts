@@ -233,6 +233,11 @@ export class TabManager {
     return this.secureTabs.size;
   }
 
+  /** Pestaña fantasma (sesión en memoria): nada suyo debe llegar a disco. */
+  isSecureTab(tabId: string): boolean {
+    return this.secureTabs.has(tabId);
+  }
+
   /** Marca una ventana como blindada: todas sus pestañas nuevas serán seguras. */
   markWindowAsBlinded(electronWindowId: number): void {
     this.blindedWindows.add(electronWindowId);

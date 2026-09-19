@@ -68,6 +68,7 @@ import type { MenuShowResult } from './types/menu';
 import type { AutoGroupRule } from './types/autoGroupRule';
 import type { Suggestion } from './types/suggestion';
 import type { TabRuntime } from './types/tabRuntime';
+import type { TabZoomState } from './types/zoom';
 import type { Profile } from './types/profile';
 import type { CustomEngineAlias } from './types/searchEngine';
 import type { ExtensionAction, InstalledExtension } from './types/extension';
@@ -639,6 +640,16 @@ export interface CookiesApi {
   closePanel(params: { windowId: number }): Promise<IpcResponse<void>>;
 }
 
+/** Zoom de página por pestaña. Los factores van de 0.25 a 5 (1 = 100 %). */
+export interface ZoomApi {
+  /** Factor actual de la pestaña (1 si no tiene WebContents vivo). */
+  get(input: { tabId: string }): Promise<IpcResponse<TabZoomState>>;
+  step(input: { tabId: string; direction: 'in' | 'out' }): Promise<IpcResponse<TabZoomState>>;
+  reset(input: { tabId: string }): Promise<IpcResponse<TabZoomState>>;
+  openPopup(input: { windowId: number; tabId: string; anchorRect: { right: number; bottom: number } }): Promise<IpcResponse<void>>;
+  closePopup(input: { windowId: number }): Promise<IpcResponse<void>>;
+}
+
 export interface FavoritesApi {
   list(): Promise<IpcResponse<Favorite[]>>;
   add(input: { url: string; title: string; favicon?: string | null; parentId?: string | null; windowId?: number }): Promise<IpcResponse<Favorite>>;
@@ -775,6 +786,7 @@ export interface PreloadApi {
   notes: NotesApi;
   history: HistoryApi;
   cookies: CookiesApi;
+  zoom: ZoomApi;
   favorites: FavoritesApi;
   adblocker: AdBlockerApi;
   vault: VaultApi;

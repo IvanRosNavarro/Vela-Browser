@@ -11,4 +11,5 @@ export * from './theme';
 export * from './shortcuts';
 export * from './devtools';
 export * from './cookies';
+export * from './zoom';
 export * from './trackpad';

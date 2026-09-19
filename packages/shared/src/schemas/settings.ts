@@ -88,6 +88,7 @@ export const SETTINGS_KEYS = [
   'aparejo:adblocker:enabled',
   'aparejo:cookies:enabled',
   'urlbar:icon-config',
+  'zoom:per-site',
   'titlebar:icon-visibility',
   'sync:recovery-card-saved',
   'sync:disabled-categories',
@@ -205,6 +206,10 @@ export const SETTINGS_DEFAULT_SCOPE: Record<SettingsKey, SettingsScope> = {
   'aparejo:adblocker:enabled': 'profile',
   'aparejo:cookies:enabled': 'profile',
   'urlbar:icon-config': 'profile',
+  // Mapa host → factor de zoom de página. Por perfil y NO sincronizable
+  // (prefijo `zoom:` en NON_SYNCABLE_PREFIXES): depende de la pantalla de
+  // cada equipo. Lo escribe ZoomManager en main.
+  'zoom:per-site': 'profile',
   'titlebar:icon-visibility': 'profile',
   'sync:recovery-card-saved': 'profile',
   'sync:disabled-categories': 'profile',

@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   DEFAULT_URLBAR_CONFIG,
+  URLBAR_ICON_IDS,
   type UrlBarIconConfig,
   type IpcResponse,
 } from '@vela/shared';
@@ -15,9 +16,20 @@ import { guardTrustedFrame } from './validate';
 function loadConfig(settingsRepo: { get(k: string): string | null }): UrlBarIconConfig[] {
   try {
     const raw = settingsRepo.get('urlbar:icon-config');
-    if (raw) return JSON.parse(raw) as UrlBarIconConfig[];
+    if (raw) return withNewDefaults(JSON.parse(raw) as UrlBarIconConfig[]);
   } catch { /* usar default */ }
   return DEFAULT_URLBAR_CONFIG;
+}
+
+/**
+ * Una configuración guardada antes de que existiera un icono no lo lista, y
+ * el configurador de Ajustes solo pinta lo guardado. Se añaden los que falten
+ * con su valor por defecto (al final, por su posición por defecto).
+ */
+function withNewDefaults(stored: UrlBarIconConfig[]): UrlBarIconConfig[] {
+  const known = new Set(stored.map((c) => c.id));
+  const missing = DEFAULT_URLBAR_CONFIG.filter((c) => !known.has(c.id));
+  return missing.length === 0 ? stored : [...stored, ...missing];
 }
 
 function broadcastConfig(config: UrlBarIconConfig[], windowId: number): void {
@@ -28,7 +40,7 @@ function broadcastConfig(config: UrlBarIconConfig[], windowId: number): void {
 }
 
 const urlBarIconConfigSchema = z.object({
-  id: z.enum(['cookie', 'adblocker', 'favorites', 'developer', 'copy-url', 'vault', 'page-indicators']),
+  id: z.enum(URLBAR_ICON_IDS),
   visible: z.boolean(),
   position: z.string(),
 });
