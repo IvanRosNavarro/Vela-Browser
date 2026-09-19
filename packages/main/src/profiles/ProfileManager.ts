@@ -39,6 +39,7 @@ import {
   configureSessionDefaults,
   getSessionForProfile,
 } from './sessions';
+import { applySpellcheckSettings } from '../spellcheck';
 
 export interface ProfileRepositories {
   workspaces: WorkspaceRepository;
@@ -278,6 +279,7 @@ export class ProfileManager {
 
         const ses = getSessionForProfile(profile.partitionId);
         await configureSessionDefaults(ses, profileId, this.ctx.notificationManager, this.ctx.mediaPermissionManager);
+        applySpellcheckSettings(ses, repos.settings, profileId);
         this.sessionsByProfile.set(profileId, ses);
         this.ctx.onProfileSessionReady?.(profileId, ses);
 

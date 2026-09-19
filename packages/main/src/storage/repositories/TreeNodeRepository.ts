@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { FolderNode, TabNode, TreeNode } from '@vela/shared';
 import {
   positionsAtEnd,
+  positionsBetween,
   positionsNBetween,
   wouldCreateCycle,
 } from '../../lib/tree';
@@ -135,6 +136,24 @@ export type DeleteMode = 'subtree' | 'promote-children';
 export interface MoveResult {
   node: TreeNode;
   pinnedDeactivated: boolean;
+}
+
+export interface MoveManyResult {
+  /** Nodos movidos (ya releídos), en el orden en que quedaron. */
+  nodes: TreeNode[];
+  /** Workspaces cuyo árbol cambió: los de origen y el de destino. */
+  affectedWorkspaceIds: string[];
+}
+
+export interface GroupIntoFolderResult {
+  folder: TabNode;
+  nodes: TreeNode[];
+}
+
+/** Hueco entre dos hermanos; sin ninguno de los dos, al final del padre. */
+export interface MoveSlot {
+  prev?: string | null;
+  next?: string | null;
 }
 
 // TODO(deuda): migrar a UUID v7 cuando esté disponible nativamente.
@@ -290,6 +309,13 @@ export class TreeNodeRepository {
   }
 
   createFolderTab(input: FolderCreateInput): TabNode {
+    const created = this.insertFolderTab(input);
+    this.emitSyncChange(created);
+    return created;
+  }
+
+  /** Inserta la carpeta-pestaña sin avisar a sync (lo hace quien llama). */
+  private insertFolderTab(input: FolderCreateInput): TabNode {
     this.assertParent(input.workspaceId, input.parentId);
     const id = newId();
     const now = Date.now();
@@ -321,7 +347,6 @@ export class TreeNodeRepository {
     if (!created || created.kind !== 'tab') {
       throw new InvariantViolationError(`createFolderTab: failed to read back ${id}`);
     }
-    this.emitSyncChange(created);
     return created;
   }
 
@@ -657,6 +682,99 @@ export class TreeNodeRepository {
     return updated;
   }
 
+  // ---------- operaciones en bloque (selección múltiple) ----------
+
+  /**
+   * Mueve varios nodos, en el orden dado, al hueco `slot` de `newParentId`
+   * (sin hueco, al final del padre). Una sola transacción: o se mueven todos
+   * o ninguno. Los nodos cuyo ancestro también está en la lista se ignoran,
+   * porque ya viajan con él. Mismas reglas que `move`: una Carga que entra
+   * en una carpeta deja de estar estibada.
+   */
+  moveMany(
+    ids: readonly string[],
+    newParentId: string | null,
+    slot?: MoveSlot,
+    newWorkspaceIdOverride?: string,
+  ): MoveManyResult {
+    const nodes = this.resolveBulkNodes(ids);
+    const targetWorkspaceId = this.resolveBulkTarget(
+      nodes,
+      newParentId,
+      newWorkspaceIdOverride,
+    );
+    const touched = this.inTransaction(() =>
+      this.moveRows(nodes, newParentId, targetWorkspaceId, slot),
+    );
+    this.emitSyncForIds(touched);
+
+    const affected = new Set<string>(nodes.map((n) => n.workspaceId));
+    affected.add(targetWorkspaceId);
+    return {
+      nodes: nodes
+        .map((n) => this.getById(n.id))
+        .filter((n): n is TreeNode => n !== null),
+      affectedWorkspaceIds: [...affected],
+    };
+  }
+
+  /**
+   * Crea una carpeta-pestaña en el sitio del primer nodo y mete dentro todos
+   * los nodos, en el orden dado. Todos deben ser del mismo workspace.
+   */
+  groupIntoFolder(ids: readonly string[], name: string): GroupIntoFolderResult {
+    const nodes = this.resolveBulkNodes(ids);
+    const first = nodes[0];
+    if (!first) {
+      throw new InvariantViolationError('groupIntoFolder: no hay nodos que agrupar');
+    }
+    if (nodes.some((n) => n.workspaceId !== first.workspaceId)) {
+      throw new InvariantViolationError(
+        'groupIntoFolder: los nodos pertenecen a workspaces distintos',
+      );
+    }
+    const movingIds = new Set(nodes.map((n) => n.id));
+    // La carpeta ocupa el hueco que deja el primer nodo: justo antes de él.
+    const prev = this.siblingPositions(first.workspaceId, first.parentId, movingIds)
+      .filter((p) => p < first.position)
+      .pop() ?? null;
+    const position = positionsBetween(prev, first.position);
+
+    const { folder, touched } = this.inTransaction(() => {
+      const created = this.insertFolderTab({
+        workspaceId: first.workspaceId,
+        parentId: first.parentId,
+        name,
+        position,
+      });
+      const moved = this.moveRows(nodes, created.id, first.workspaceId, undefined);
+      return { folder: created, touched: moved };
+    });
+    this.emitSyncChange(folder);
+    this.emitSyncForIds(touched);
+    return {
+      folder,
+      nodes: nodes
+        .map((n) => this.getById(n.id))
+        .filter((n): n is TreeNode => n !== null),
+    };
+  }
+
+  /**
+   * Borra varios nodos (con sus subárboles) en una transacción. Ignora los que
+   * ya no existen y devuelve los ids borrados.
+   */
+  deleteMany(ids: readonly string[]): string[] {
+    const existing = [...new Set(ids)].filter((id) => this.getById(id) !== null);
+    if (existing.length === 0) return [];
+    this.inTransaction(() => {
+      const del = this.db.prepare('DELETE FROM tree_nodes WHERE id = ?');
+      for (const id of existing) del.run(id);
+    });
+    for (const id of existing) this.emitSyncDelete(id);
+    return existing;
+  }
+
   setPinned(id: string, pinned: boolean, pinnedUrl?: string | null): TabNode {
     const node = this.getById(id);
     if (!node) throw new NotFoundError('Node', id);
@@ -893,6 +1011,175 @@ export class TreeNodeRepository {
       data: null,
       updatedAt: Date.now(),
     });
+  }
+
+  private emitSyncForIds(ids: readonly string[]): void {
+    for (const id of new Set(ids)) {
+      const node = this.getById(id);
+      if (node) this.emitSyncChange(node);
+    }
+  }
+
+  private inTransaction<T>(fn: () => T): T {
+    this.db.exec('BEGIN');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK');
+      } catch {
+        // dejar que se propague el error original
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Lee los nodos de una operación en bloque en el orden dado, sin
+   * duplicados y sin los que ya van dentro de otro nodo de la lista.
+   */
+  private resolveBulkNodes(ids: readonly string[]): TreeNode[] {
+    const nodes: TreeNode[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const node = this.getById(id);
+      if (!node) throw new NotFoundError('Node', id);
+      nodes.push(node);
+    }
+    return nodes.filter(
+      (n) => !this.getAncestors(n.id).some((a) => seen.has(a.id)),
+    );
+  }
+
+  /** Valida el destino de un movimiento en bloque y devuelve su workspace. */
+  private resolveBulkTarget(
+    nodes: readonly TreeNode[],
+    newParentId: string | null,
+    newWorkspaceIdOverride: string | undefined,
+  ): string {
+    if (newParentId !== null) {
+      const parent = this.getById(newParentId);
+      if (!parent) throw new NotFoundError('Node', newParentId);
+      if (parent.kind !== 'folder' && !isFolderTabUrl(parent.kind === 'tab' ? parent.url : null)) {
+        throw new InvariantViolationError(
+          `moveMany: parent ${newParentId} is not a folder`,
+        );
+      }
+      const getNode = (nid: string): Pick<TreeNode, 'id' | 'parentId'> | null => {
+        const n = this.getById(nid);
+        return n ? { id: n.id, parentId: n.parentId } : null;
+      };
+      for (const node of nodes) {
+        if (wouldCreateCycle(node.id, newParentId, getNode)) {
+          throw new CycleError(
+            `moveMany: would create cycle (id=${node.id} -> parent=${newParentId})`,
+          );
+        }
+      }
+      return parent.workspaceId;
+    }
+    if (newWorkspaceIdOverride) return newWorkspaceIdOverride;
+    const first = nodes[0];
+    if (!first) throw new InvariantViolationError('moveMany: no hay nodos que mover');
+    if (nodes.some((n) => n.workspaceId !== first.workspaceId)) {
+      throw new InvariantViolationError(
+        'moveMany: los nodos pertenecen a workspaces distintos; indica newWorkspaceId',
+      );
+    }
+    return first.workspaceId;
+  }
+
+  /** Posiciones ordenadas de los hijos de un padre, sin los ids excluidos. */
+  private siblingPositions(
+    workspaceId: string,
+    parentId: string | null,
+    exclude: ReadonlySet<string>,
+  ): string[] {
+    const rows = (
+      parentId === null
+        ? this.db
+            .prepare(
+              `SELECT id, position FROM tree_nodes
+               WHERE workspace_id = ? AND parent_id IS NULL`,
+            )
+            .all(workspaceId)
+        : this.db
+            .prepare('SELECT id, position FROM tree_nodes WHERE parent_id = ?')
+            .all(parentId)
+    ) as { id: string; position: string }[];
+    return rows
+      .filter((r) => !exclude.has(r.id))
+      .map((r) => r.position)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  /**
+   * Escribe el movimiento de `nodes` (debe ir dentro de una transacción).
+   * Devuelve los ids tocados, incluidos los descendientes que cambian de
+   * workspace, para avisar a sync tras el commit.
+   */
+  private moveRows(
+    nodes: readonly TreeNode[],
+    newParentId: string | null,
+    workspaceId: string,
+    slot: MoveSlot | undefined,
+  ): string[] {
+    const movingIds = new Set(nodes.map((n) => n.id));
+    let prev: string | null;
+    let next: string | null;
+    if (!slot || (slot.prev === undefined && slot.next === undefined)) {
+      prev = this.siblingPositions(workspaceId, newParentId, movingIds).pop() ?? null;
+      next = null;
+    } else {
+      prev = slot.prev ?? null;
+      next = slot.next ?? null;
+    }
+    if (prev !== null && next !== null && prev >= next) {
+      throw new InvariantViolationError(
+        `moveMany: hueco inválido (prev=${prev} >= next=${next})`,
+      );
+    }
+    const positions = positionsNBetween(prev, next, nodes.length);
+    const now = Date.now();
+    const upd = this.db.prepare(
+      `UPDATE tree_nodes
+         SET parent_id = ?, position = ?, workspace_id = ?,
+             pinned = ?, updated_at = ?
+       WHERE id = ?`,
+    );
+    const descendantsOf = this.db.prepare(
+      `WITH RECURSIVE d(id) AS (
+         SELECT id FROM tree_nodes WHERE parent_id = ?
+         UNION ALL
+         SELECT t.id FROM tree_nodes t JOIN d ON t.parent_id = d.id
+       )
+       SELECT id FROM d`,
+    );
+    const moveToWorkspace = this.db.prepare(
+      'UPDATE tree_nodes SET workspace_id = ?, updated_at = ? WHERE id = ?',
+    );
+
+    const touched: string[] = [];
+    nodes.forEach((node, i) => {
+      const position = positions[i];
+      if (position === undefined) return;
+      const pinnedAfter =
+        node.kind === 'tab' && node.pinned && newParentId === null;
+      upd.run(newParentId, position, workspaceId, pinnedAfter ? 1 : 0, now, node.id);
+      touched.push(node.id);
+      if (node.workspaceId !== workspaceId) {
+        const desc = descendantsOf.all(node.id) as { id: string }[];
+        for (const d of desc) {
+          moveToWorkspace.run(workspaceId, now, d.id);
+          touched.push(d.id);
+        }
+      }
+    });
+    return touched;
   }
 
   private assertParent(workspaceId: string, parentId: string | null): void {

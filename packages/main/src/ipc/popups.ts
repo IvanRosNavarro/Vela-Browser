@@ -670,6 +670,9 @@ export function registerPopupHandlers(ctx: IpcContext): void {
         if (ctx.tabManager.isBlindedWindow(parentWindowId)) {
           pageUrl.searchParams.set('isBlinded', '1');
         }
+        // Pestaña activa, para la fila de zoom del menú.
+        const menuActiveTabId = ctx.tabManager.getActiveTabId(parentWindowId);
+        if (menuActiveTabId) pageUrl.searchParams.set('activeTabId', menuActiveTabId);
         if (glass) applyGlassUrlParams(pageUrl, glass);
 
         await popup.loadURL(pageUrl.toString());

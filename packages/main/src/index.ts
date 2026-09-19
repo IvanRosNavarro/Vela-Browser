@@ -884,6 +884,7 @@ app.whenReady().then(async () => {
     tabManager: ipcCtx.tabManager,
     profileManager: ipcCtx.profileManager,
     logger,
+    isTabInPip: (tabId) => ipcCtx!.pipManager.isTabInPip(tabId),
   });
   discardManager.start();
 

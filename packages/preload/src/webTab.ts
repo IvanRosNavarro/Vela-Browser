@@ -267,6 +267,20 @@ ipcRenderer.on('media:command', (_event, command: string) => {
   }
 });
 
+// ─── Imagen en imagen ─────────────────────────────────────────────────────────
+// Informa al main de si el documento tiene un vídeo en PiP, entre otras cosas
+// para que el DiscardManager no descarte la pestaña. Se escucha en captura
+// sobre window porque los eventos se disparan en el <video>. Solo cubre el
+// frame principal: un PiP dentro de un iframe lo registra el main al pedirlo.
+
+window.addEventListener('enterpictureinpicture', () => {
+  ipcRenderer.send('media:pip-changed', { active: true });
+}, true);
+
+window.addEventListener('leavepictureinpicture', () => {
+  ipcRenderer.send('media:pip-changed', { active: document.pictureInPictureElement != null });
+}, true);
+
 // ─── Credential detection (password manager) ─────────────────────────────────
 // El envío se comunica al main de inmediato ("provisional"). Es el main quien
 // decide si la oferta de guardado llega a mostrarse, observando la navegación

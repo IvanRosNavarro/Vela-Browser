@@ -280,6 +280,15 @@ export function Search({ settings }: Props) {
             onChange={(v) => void set('search:suggestions', v)}
           />
         </SettingRow>
+        <SettingRow
+          label="Autocompletar direcciones"
+          description="Completa dentro de la barra de direcciones la web más visitada que empieza por lo que escribes. → o Fin aceptan; Retroceso o Escape la descartan."
+        >
+          <Toggle
+            value={get<boolean>('addressbar:inline-autocomplete', true)}
+            onChange={(v) => void set('addressbar:inline-autocomplete', v)}
+          />
+        </SettingRow>
       </SettingSection>
 
       <SettingSection title="Alias de búsqueda">

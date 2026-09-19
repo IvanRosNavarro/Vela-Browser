@@ -3,7 +3,7 @@ import { SYNC_TYPE_TO_CATEGORY, type SyncCategory } from '@vela/shared';
 import * as os from 'node:os';
 import { encrypt, decrypt, deriveKey } from './crypto';
 import { serializers } from './serializers';
-import { syncEvents, type SyncEntityEvent } from './syncEvents';
+import { syncEvents, type SyncEntityAppliedEvent, type SyncEntityEvent } from './syncEvents';
 import type { ProfileRepositories } from '../profiles/ProfileManager';
 import { applyVaultSnapshot, buildVaultSnapshot } from '../passwords/vaultSnapshot';
 import type { Logger } from '../logger';
@@ -806,6 +806,8 @@ export class SyncManager {
     }
 
     this.events.emit('state:sync-entity-updated' as any, { type, id, deleted });
+    const applied: SyncEntityAppliedEvent = { profileId: this.profileId, type, id, deleted };
+    syncEvents.emit('entity:applied', applied);
   }
 
   // ── Cola offline ───────────────────────────────────────────────────────────

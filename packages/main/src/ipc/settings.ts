@@ -7,15 +7,24 @@ import {
   settingsGetAllInputSchema,
   settingsGetInputSchema,
   settingsSetInputSchema,
+  spellcheckGetInfoInputSchema,
+  spellcheckLanguagesValueSchema,
   type IpcResponse,
   type SettingsKey,
   type SettingsScope,
+  type SpellcheckInfo,
 } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
-import { getReposForFrame } from './helpers';
+import { getFrameContext, getReposForFrame } from './helpers';
 import { guardTrustedFrame } from './validate';
 import { GlobalSettings, ProfileSettings, type SettingsStore } from '../settings';
+import {
+  applySpellcheckForProfile,
+  getSpellcheckInfo,
+  isSpellcheckSettingKey,
+  watchSpellcheckSync,
+} from '../spellcheck';
 
 /**
  * Resuelve el scope efectivo: el caller puede forzar uno explícito o, por
@@ -45,6 +54,8 @@ function storeFor(
 const UI_SETTING_PREFIX = 'ui:';
 
 export function registerSettingsHandlers(ctx: IpcContext): void {
+  watchSpellcheckSync(ctx.profileManager);
+
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET,
     async (event, payload): Promise<IpcResponse<{ value: unknown }>> => {
@@ -79,6 +90,12 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
           details: parsed.error.flatten(),
         };
       }
+      if (
+        parsed.data.key === 'spellcheck:languages' &&
+        !spellcheckLanguagesValueSchema.safeParse(parsed.data.value).success
+      ) {
+        return { ok: false, error: 'INVALID_INPUT' };
+      }
       try {
         const scope = resolveScope(parsed.data.key, parsed.data.scope);
         const store = storeFor(ctx, event, scope);
@@ -94,6 +111,10 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
         }
         if (parsed.data.key === 'gestures:pinch-zoom') {
           ctx.trackpadGestures.applyPinchZoomToAll();
+        }
+        if (scope === 'profile' && isSpellcheckSettingKey(parsed.data.key)) {
+          const { profileId } = getFrameContext(event, ctx);
+          applySpellcheckForProfile(ctx.profileManager, profileId);
         }
         return { ok: true, data: { key: parsed.data.key } };
       } catch (err) {
@@ -124,6 +145,28 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
         return { ok: true, data: out };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SETTINGS_GET_ALL);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SPELLCHECK_GET_INFO,
+    async (event, payload): Promise<IpcResponse<SpellcheckInfo>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.SPELLCHECK_GET_INFO);
+      const parsed = spellcheckGetInfoInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: 'INVALID_INPUT',
+          details: parsed.error.flatten(),
+        };
+      }
+      try {
+        const { profileId, repos } = getFrameContext(event, ctx);
+        const ses = ctx.profileManager.getSession(profileId);
+        return { ok: true, data: getSpellcheckInfo(ses, repos.settings) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SPELLCHECK_GET_INFO);
       }
     },
   );

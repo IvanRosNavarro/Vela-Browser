@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { getGlassStyle } from '../../lib/popupGlass';
-import type { Profile, Workspace, HistorySearchEntry } from '@vela/shared';
+import { IPC_EVENTS, type Profile, type Workspace, type HistorySearchEntry } from '@vela/shared';
 
 const params = new URLSearchParams(window.location.search);
 const parentWindowId = parseInt(params.get('windowId') ?? '0', 10);
 const IS_BLINDED_WINDOW = params.get('isBlinded') === '1';
+const ACTIVE_TAB_ID = params.get('activeTabId');
 
 type SubView = 'workspaces' | 'history' | 'profiles' | 'developer';
 
@@ -83,6 +84,23 @@ function IcoDownload() {
     </svg>
   );
 }
+function IcoPrinter() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
+function IcoSave() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
+    </svg>
+  );
+}
 function IcoStar() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -118,6 +136,14 @@ function IcoSettings() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+function IcoZoom() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="8" y1="11" x2="14" y2="11" /><line x1="11" y1="8" x2="11" y2="14" />
     </svg>
   );
 }
@@ -244,6 +270,65 @@ function MenuItem({ onClick, children }: { onClick?: () => void; children: React
   );
 }
 
+// ── ZoomRow ───────────────────────────────────────────────────────────────────
+
+const zoomBtnStyle: CSSProperties = {
+  width: 26, height: 24, padding: 0, flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  border: '1px solid var(--vela-border, rgba(255,255,255,0.09))', borderRadius: 5,
+  background: 'transparent', color: 'var(--vela-fg, #e0e0e0)',
+  fontSize: 13, cursor: 'default', outline: 'none',
+};
+
+/**
+ * Fila de zoom de página estilo Chrome: −, porcentaje, +. No cierra el menú,
+ * para poder pulsar varias veces; «100 %» restablece. Solo si hay pestaña.
+ */
+function ZoomRow({ tabId }: { tabId: string }) {
+  const [factor, setFactor] = useState(1);
+
+  useEffect(() => {
+    void window.api.zoom.get({ tabId }).then((res) => {
+      if (res.ok) setFactor(res.data.factor);
+    });
+    return window.api.on(IPC_EVENTS.TAB_ZOOM_CHANGED, (payload) => {
+      if (payload.tabId === tabId) setFactor(payload.factor);
+    });
+  }, [tabId]);
+
+  const apply = (p: ReturnType<typeof window.api.zoom.reset>) => {
+    void p.then((res) => { if (res.ok) setFactor(res.data.factor); });
+  };
+  const hover = (e: React.MouseEvent<HTMLButtonElement>, on: boolean) => {
+    e.currentTarget.style.background = on ? 'var(--vela-hover, rgba(255,255,255,0.07))' : 'transparent';
+  };
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      height: 32, padding: '0 10px', flexShrink: 0,
+      fontSize: 13, color: 'var(--vela-fg, #e0e0e0)', userSelect: 'none',
+    }}>
+      <span style={iconWrap}><IcoZoom /></span>
+      Zoom
+      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" title="Alejar (Ctrl+-)" aria-label="Alejar" style={zoomBtnStyle}
+          onMouseEnter={(e) => hover(e, true)} onMouseLeave={(e) => hover(e, false)}
+          onClick={() => apply(window.api.zoom.step({ tabId, direction: 'out' }))}>−</button>
+        <button type="button" title="Restablecer (Ctrl+0)" aria-label="Restablecer zoom"
+          style={{ ...zoomBtnStyle, width: 52, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+          onMouseEnter={(e) => hover(e, true)} onMouseLeave={(e) => hover(e, false)}
+          onClick={() => apply(window.api.zoom.reset({ tabId }))}>
+          {Math.round(factor * 100)} %
+        </button>
+        <button type="button" title="Acercar (Ctrl+=)" aria-label="Acercar" style={zoomBtnStyle}
+          onMouseEnter={(e) => hover(e, true)} onMouseLeave={(e) => hover(e, false)}
+          onClick={() => apply(window.api.zoom.step({ tabId, direction: 'in' }))}>+</button>
+      </span>
+    </div>
+  );
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export function App() {
@@ -326,6 +411,21 @@ export function App() {
                 Nueva ventana fantasma
               </MenuItem>
               <div style={sepStyle} />
+              {ACTIVE_TAB_ID && <>
+                <ZoomRow tabId={ACTIVE_TAB_ID} />
+                <div style={sepStyle} />
+              </>}
+              <MenuItem onClick={() => exec('page.print')}>
+                <span style={iconWrap}><IcoPrinter /></span>
+                Imprimir…
+                <span style={kbdStyle}>Ctrl+P</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('page.save')}>
+                <span style={iconWrap}><IcoSave /></span>
+                Guardar página como…
+                <span style={kbdStyle}>Ctrl+S</span>
+              </MenuItem>
+              <div style={sepStyle} />
               <MenuItem onClick={() => setSubView('developer')}>
                 <span style={iconWrap}><IcoCode /></span>
                 Desarrollador
@@ -366,6 +466,10 @@ export function App() {
                 Nueva ventana fantasma
               </MenuItem>
               <div style={sepStyle} />
+              {ACTIVE_TAB_ID && <>
+                <ZoomRow tabId={ACTIVE_TAB_ID} />
+                <div style={sepStyle} />
+              </>}
               <MenuItem onClick={() => setSubView('workspaces')}>
                 <span style={iconWrap}><IcoSidebar /></span>
                 Workspaces
@@ -389,6 +493,17 @@ export function App() {
                 <span style={iconWrap}><IcoDownload /></span>
                 Descargas
                 <span style={kbdStyle}>Ctrl+J</span>
+              </MenuItem>
+              <div style={sepStyle} />
+              <MenuItem onClick={() => exec('page.print')}>
+                <span style={iconWrap}><IcoPrinter /></span>
+                Imprimir…
+                <span style={kbdStyle}>Ctrl+P</span>
+              </MenuItem>
+              <MenuItem onClick={() => exec('page.save')}>
+                <span style={iconWrap}><IcoSave /></span>
+                Guardar página como…
+                <span style={kbdStyle}>Ctrl+S</span>
               </MenuItem>
               <div style={sepStyle} />
               <MenuItem onClick={() => setSubView('profiles')}>

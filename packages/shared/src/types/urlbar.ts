@@ -5,7 +5,20 @@ export type UrlBarIconId =
   | 'developer'
   | 'copy-url'
   | 'vault'
-  | 'page-indicators';
+  | 'page-indicators'
+  | 'zoom';
+
+/** Todos los ids de icono, en el orden por defecto. Fuente del z.enum de IPC. */
+export const URLBAR_ICON_IDS = [
+  'cookie',
+  'adblocker',
+  'favorites',
+  'developer',
+  'copy-url',
+  'vault',
+  'page-indicators',
+  'zoom',
+] as const satisfies readonly UrlBarIconId[];
 
 export interface UrlBarIconConfig {
   id: UrlBarIconId;
@@ -21,6 +34,7 @@ export const DEFAULT_URLBAR_CONFIG: UrlBarIconConfig[] = [
   { id: 'copy-url',        visible: true,  position: 'e' },
   { id: 'vault',           visible: true,  position: 'f' },
   { id: 'page-indicators', visible: true,  position: 'g' },
+  { id: 'zoom',            visible: true,  position: 'h' },
 ];
 
 export const URLBAR_ICON_LABELS: Record<UrlBarIconId, string> = {
@@ -31,4 +45,5 @@ export const URLBAR_ICON_LABELS: Record<UrlBarIconId, string> = {
   'copy-url':        'Copiar URL',
   'vault':           'Gestor de contraseñas',
   'page-indicators': 'Indicadores de página',
+  'zoom':            'Indicador de zoom',
 };
