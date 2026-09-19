@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react';
 import {
   IPC_EVENTS,
   SEARCH_ENGINE_IDS,
@@ -26,6 +34,12 @@ import {
   type FormattedUrl,
   type ParsedScheme,
 } from './url';
+import {
+  INLINE_AUTOCOMPLETE_SETTING,
+  inlineDisplayValue,
+  useInlineAutocomplete,
+  type InlineCompletion,
+} from './useInlineAutocomplete';
 
 export type AddressBarMode = 'url' | 'search' | 'command' | 'history' | 'tabs' | 'engine';
 
@@ -59,10 +73,24 @@ export interface AddressBarController {
   canGoForward: boolean;
   activeTabId: string | null;
   editing: boolean;
+  /** Valor que pinta el input: lo escrito más la compleción inline, si la hay. */
   inputValue: string;
   enterEditing: () => void;
   cancelEditing: () => void;
-  setInputValue: (value: string) => void;
+  /**
+   * `allowComplete` (de `canInlineComplete`) indica si el cambio puede
+   * disparar la compleción inline: solo al teclear con el cursor al final.
+   */
+  setInputValue: (value: string, allowComplete?: boolean) => void;
+  inlineCompletion: InlineCompletion | null;
+  /** Teclas de la compleción inline; true si la tecla la aceptó. */
+  handleInlineCompletionKey: (e: KeyboardEvent<HTMLInputElement>) => boolean;
+  /** Escape: quita el texto completado. True si había algo que quitar. */
+  dismissInlineCompletion: () => boolean;
+  inputCompositionHandlers: {
+    onCompositionStart: () => void;
+    onCompositionEnd: () => void;
+  };
   suggestions: ExtendedSuggestion[];
   selectedSuggestionIndex: number;
   moveSuggestionCursor: (delta: 1 | -1) => void;
@@ -135,7 +163,9 @@ function fuzzyMatch(query: string, text: string): boolean {
   return t.includes(q);
 }
 
-export function useAddressBar(): AddressBarController {
+export function useAddressBar(
+  inputRef: RefObject<HTMLInputElement | null>,
+): AddressBarController {
   const currentWindowId = useRuntimeStore((s) => s.currentWindowId);
   const activeTabId = useRuntimeStore((s) =>
     currentWindowId !== null
@@ -174,6 +204,14 @@ export function useAddressBar(): AddressBarController {
   const [customEngines, setCustomEngines] = useState<CustomEngineAlias[]>([]);
   const [allCommands, setAllCommands] = useState<ShortcutCommandInfo[]>([]);
   const [hoverUrl, setHoverUrl] = useState<HoverUrlState>({ url: null, isExternal: false });
+  const [inlineEnabled, setInlineEnabled] = useState(true);
+  const inline = useInlineAutocomplete(inputRef, inlineEnabled);
+  const {
+    onTyped: onInlineTyped,
+    acceptOnKey: acceptInlineOnKey,
+    dismiss: dismissInline,
+    reset: resetInline,
+  } = inline;
 
   const activeTabRef = useRef<string | null>(null);
   activeTabRef.current = activeTabId;
@@ -208,6 +246,19 @@ export function useAddressBar(): AddressBarController {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // El ajuste de compleción inline se relee al empezar cada edición, así un
+  // cambio en vela://settings surte efecto sin recargar la shell.
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    void call(() => window.api.settings.get({ key: INLINE_AUTOCOMPLETE_SETTING }))
+      .then((res) => {
+        if (!cancelled) setInlineEnabled(res.value !== false);
+      })
+      .catch(() => { /* mantener activo */ });
+    return () => { cancelled = true; };
+  }, [editing]);
 
   // Hydrate nav state when active tab changes
   useEffect(() => {
@@ -273,6 +324,11 @@ export function useAddressBar(): AddressBarController {
     if (editing) setHoverUrl({ url: null, isExternal: false });
   }, [editing]);
 
+  // Al salir de edición (Escape, navegar, cambio de pestaña) no queda compleción.
+  useEffect(() => {
+    if (!editing) resetInline();
+  }, [editing, resetInline]);
+
   const displayUrl = useMemo(() => formatUrlForDisplay(activeTabUrl), [activeTabUrl]);
   const security = useMemo(() => parseScheme(activeTabUrl), [activeTabUrl]);
 
@@ -285,7 +341,8 @@ export function useAddressBar(): AddressBarController {
     setEditing(true);
     setInputValueState(activeTabUrl);
     setSelectedSuggestionIndex(-1);
-  }, [activeTabUrl]);
+    resetInline();
+  }, [activeTabUrl, resetInline]);
 
   const cancelEditing = useCallback(() => {
     setEditing(false);
@@ -422,7 +479,8 @@ export function useAddressBar(): AddressBarController {
   );
 
   const setInputValue = useCallback(
-    (value: string) => {
+    (value: string, allowComplete = false) => {
+      onInlineTyped(value, allowComplete);
       // @ mode → show chip 150ms then open Tab Switcher
       if (value === '@') {
         setInputValueState('@');
@@ -447,21 +505,63 @@ export function useAddressBar(): AddressBarController {
         void fetchSuggestions(value);
       }, DEBOUNCE_MS);
     },
-    [fetchSuggestions],
+    [fetchSuggestions, onInlineTyped],
   );
+
+  // Compleción vigente solo si corresponde a lo escrito y al modo normal.
+  const activeCompletion =
+    inline.completion &&
+    inline.completion.typed === inputValue &&
+    modeInfo.mode === 'search'
+      ? inline.completion
+      : null;
+
+  // La compleción encabeza la lista y queda resaltada por defecto, para que
+  // lo que se ve en el input y lo que hace Enter coincidan.
+  const visibleSuggestions = useMemo((): ExtendedSuggestion[] => {
+    if (!activeCompletion) return suggestions;
+    const url = activeCompletion.url;
+    const rest = suggestions.filter(
+      (s) => !((s.type === 'navigate' || s.type === 'history') && s.url === url),
+    );
+    return [{ type: 'navigate', url }, ...rest];
+  }, [activeCompletion, suggestions]);
+
+  const effectiveSelectedIndex =
+    selectedSuggestionIndex === -1 && activeCompletion ? 0 : selectedSuggestionIndex;
 
   const moveSuggestionCursor = useCallback(
     (delta: 1 | -1) => {
-      setSelectedSuggestionIndex((prev) => {
-        if (suggestions.length === 0) return -1;
-        if (prev === -1) return delta === 1 ? 0 : suggestions.length - 1;
-        const next = prev + delta;
-        if (next < 0) return suggestions.length - 1;
-        if (next >= suggestions.length) return 0;
-        return next;
-      });
+      const count = visibleSuggestions.length;
+      if (count === 0) {
+        setSelectedSuggestionIndex(-1);
+        return;
+      }
+      const prev = effectiveSelectedIndex;
+      if (prev === -1) {
+        setSelectedSuggestionIndex(delta === 1 ? 0 : count - 1);
+        return;
+      }
+      const next = prev + delta;
+      setSelectedSuggestionIndex(next < 0 ? count - 1 : next >= count ? 0 : next);
     },
-    [suggestions.length],
+    [visibleSuggestions.length, effectiveSelectedIndex],
+  );
+
+  const handleInlineCompletionKey = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>): boolean => {
+      const accepted = acceptInlineOnKey(e);
+      if (accepted === null) return false;
+      // Aceptar convierte el texto completado en texto escrito; la compleción
+      // se conserva (sin resto) para que Enter siga yendo a su URL.
+      setInputValueState(accepted);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        void fetchSuggestions(accepted);
+      }, DEBOUNCE_MS);
+      return true;
+    },
+    [acceptInlineOnKey, fetchSuggestions],
   );
 
   const performNavigate = useCallback(
@@ -487,9 +587,9 @@ export function useAddressBar(): AddressBarController {
     }: { newTab?: boolean; suggestion?: ExtendedSuggestion } = {}): Promise<void> => {
       const target =
         suggestion ??
-        (selectedSuggestionIndex >= 0
-          ? suggestions[selectedSuggestionIndex]
-          : suggestions[0]);
+        (effectiveSelectedIndex >= 0
+          ? visibleSuggestions[effectiveSelectedIndex]
+          : visibleSuggestions[0]);
 
       const close = (): void => {
         setEditing(false);
@@ -578,8 +678,8 @@ export function useAddressBar(): AddressBarController {
       activeWorkspaceId,
       performNavigate,
       searchSettings,
-      selectedSuggestionIndex,
-      suggestions,
+      effectiveSelectedIndex,
+      visibleSuggestions,
       modeInfo,
       inputValue,
       buildCommandSuggestions,
@@ -649,10 +749,11 @@ export function useAddressBar(): AddressBarController {
     setEditing(true);
     setInputValueState(prefix);
     setSelectedSuggestionIndex(-1);
+    resetInline();
     if (prefix) {
       void fetchSuggestions(prefix);
     }
-  }, [focusRequestId, prefixOnFocus, fetchSuggestions]);
+  }, [focusRequestId, prefixOnFocus, fetchSuggestions, resetInline]);
 
   return {
     displayUrl,
@@ -662,12 +763,16 @@ export function useAddressBar(): AddressBarController {
     canGoForward: navState.canGoForward,
     activeTabId,
     editing,
-    inputValue,
+    inputValue: inlineDisplayValue(inputValue, activeCompletion),
     enterEditing,
     cancelEditing,
     setInputValue,
-    suggestions,
-    selectedSuggestionIndex,
+    inlineCompletion: activeCompletion,
+    handleInlineCompletionKey,
+    dismissInlineCompletion: dismissInline,
+    inputCompositionHandlers: inline.compositionHandlers,
+    suggestions: visibleSuggestions,
+    selectedSuggestionIndex: effectiveSelectedIndex,
     moveSuggestionCursor,
     setSelectedSuggestionIndex,
     submit,

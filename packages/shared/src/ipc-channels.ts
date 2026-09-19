@@ -250,6 +250,7 @@ export const IPC_CHANNELS = {
   HISTORY_DELETE_DOMAIN: 'history:delete-domain',
   HISTORY_DELETE_ALL: 'history:delete-all',
   HISTORY_GET_FOR_PERIOD: 'history:get-for-period',
+  HISTORY_AUTOCOMPLETE: 'history:autocomplete',
 
   COOKIES_GET_FOR_URL: 'cookies:get-for-url',
   COOKIES_SET: 'cookies:set',
