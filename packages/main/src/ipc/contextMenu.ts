@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { IPC_CHANNELS, z, type IpcResponse } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { guardTrustedFrame } from './validate';
+import { printPage, savePageAs } from '../tabs/pageActions';
 
 const execActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('image:copy'), wcvX: z.number(), wcvY: z.number() }),
@@ -46,19 +47,12 @@ export function registerContextMenuHandlers(ctx: IpcContext): void {
             break;
           }
 
-          case 'page:save': {
-            const { filePath, canceled } = await dialog.showSaveDialog({
-              defaultPath: 'pagina.html',
-              filters: [{ name: 'Página web', extensions: ['html', 'htm'] }],
-            });
-            if (!canceled && filePath) {
-              wc?.savePage(filePath, 'HTMLComplete').catch(() => {});
-            }
+          case 'page:save':
+            await savePageAs(wc, BrowserWindow.fromId(windowId), ctx.events);
             break;
-          }
 
           case 'page:print':
-            wc?.print();
+            printPage(wc);
             break;
 
           case 'devtools:inspect':

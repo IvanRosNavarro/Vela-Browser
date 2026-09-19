@@ -14,6 +14,7 @@ import { ensurePreviewProtocolOnSession } from '../protocols/previewProtocol';
 import {
   IPC_EVENTS,
   type TabNode,
+  type TreeNode,
   type TabRuntime,
   type WindowLayout,
   type LayoutMode,
@@ -29,6 +30,7 @@ import { applyRulesToTab } from '../groups/autoGrouping';
 import type { Logger } from '../logger';
 import type { ProfileManager, ProfileRepositories } from '../profiles/ProfileManager';
 import { PreviewStore } from '../previews/PreviewStore';
+import { applySpellcheckSettings } from '../spellcheck';
 import { PreviewCapturer, type CaptureSettings } from '../previews/PreviewCapturer';
 
 export const SIDEBAR_WIDTH_DEFAULT = 240;
@@ -80,6 +82,14 @@ export interface TabManagerCtx {
   onTabActivated?: (webContents: WebContents, window: BrowserWindow) => void;
   /** Hook llamado al crear la sesión de una tab blindada para cargar extensiones permitidas. */
   onSecureSessionReady?: (profileId: string, repos: ProfileRepositories, secureSession: Session) => Promise<void>;
+  /**
+   * Hook con el conjunto de pestañas que se ven en una ventana (la activa en
+   * modo single, las de cada panel en Split View) tras cualquier cambio de
+   * layout; `null` cuando la ventana se desengancha. Lo usa la imagen en
+   * imagen automática. Puede llamarse sin cambios reales: el consumidor
+   * compara con el estado anterior.
+   */
+  onVisibleTabsChanged?: (windowId: number, visibleTabIds: ReadonlySet<string> | null) => void;
 }
 
 export interface CreateTabInput {
@@ -203,6 +213,10 @@ export class TabManager {
   private readonly secureTabs = new Set<string>();
   // IDs de ventanas blindadas: todas sus pestañas se crean como seguras automáticamente.
   private readonly blindedWindows = new Set<number>();
+  // Pestañas silenciadas por el usuario. Vive en memoria, como en Chrome: no
+  // sobrevive a un reinicio. Se aplica también a pestañas sin WCV (suspendidas
+  // o aún sin materializar) en cuanto se crea su vista (wireListeners).
+  private readonly mutedTabs = new Set<string>();
   private readonly secureTabManager: SecureTabManager;
 
   constructor(private readonly ctx: TabManagerCtx) {
@@ -422,6 +436,7 @@ export class TabManager {
 
     this.windows.delete(windowId);
     this.blindedWindows.delete(windowId);
+    this.reportVisibleTabs(windowId, null);
 
     this.ctx.logger.info(`[tabs] window ${windowId} detached`);
   }
@@ -480,6 +495,10 @@ export class TabManager {
     } catch (err) {
       this.ctx.logger.warn('[layout] restoreLayoutForWorkspace falló', err);
     }
+
+    // Si el workspace nuevo está vacío no ha habido recalculateBounds: la
+    // pestaña que se dejaba de ver tiene que notificarse igualmente.
+    this.reportVisibleTabs(windowId, this.visibleTabIdsOf(state));
 
     this.ctx.logger.info(
       `[tabs] window ${windowId} cambia workspace ${previousWorkspaceId} → ${newWorkspaceId}`,
@@ -855,6 +874,103 @@ export class TabManager {
     const repos = this.reposFor(state);
     const node = repos.treeNodes.getById(tabId);
 
+    this.teardownTab(state, tabId, node);
+
+    if (node) {
+      repos.treeNodes.delete(tabId, 'subtree');
+    }
+
+    if (state.activeTabId === tabId) {
+      state.activeTabId = null;
+      const next = this.pickNextTab(state, tabId);
+      if (next) {
+        await this.activateTab(windowId, next);
+      } else {
+        this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
+          windowId,
+          tabId: null,
+        });
+        repos.metadata.delete(lastActiveTabKey(state.workspaceId));
+      }
+    }
+
+    if (node) {
+      this.ctx.events.emit(IPC_EVENTS.TREE_CHANGED, {
+        workspaceId: node.workspaceId,
+      });
+      if (node.kind === 'tab' && node.anchored) {
+        this.emitAnchoredTabsChanged(state.profileId, repos);
+      }
+    }
+  }
+
+  /**
+   * Cierra varias pestañas de una vez (selección múltiple). Cada pestaña se
+   * cierra en la ventana que tiene su WCV (o en `windowId` si no tiene), el
+   * árbol se borra en una transacción por ventana y se emite un solo
+   * TREE_CHANGED por workspace afectado. Devuelve los ids cerrados.
+   */
+  async closeTabs(windowId: number, tabIds: readonly string[]): Promise<string[]> {
+    const byWindow = new Map<number, string[]>();
+    for (const tabId of new Set(tabIds)) {
+      const wid = this.tabToWindow.get(tabId) ?? windowId;
+      const list = byWindow.get(wid) ?? [];
+      list.push(tabId);
+      byWindow.set(wid, list);
+    }
+
+    const closed: string[] = [];
+    const touchedWorkspaces = new Set<string>();
+    const anchorProfiles = new Map<string, ProfileRepositories>();
+
+    for (const [wid, ids] of byWindow) {
+      const state = this.requireWindow(wid);
+      const repos = this.reposFor(state);
+      const nodes = ids.map((id) => repos.treeNodes.getById(id));
+
+      ids.forEach((id, i) => this.teardownTab(state, id, nodes[i] ?? null));
+      closed.push(...repos.treeNodes.deleteMany(ids));
+
+      for (const node of nodes) {
+        if (!node) continue;
+        touchedWorkspaces.add(node.workspaceId);
+        if (node.kind === 'tab' && node.anchored) {
+          anchorProfiles.set(state.profileId, repos);
+        }
+      }
+
+      const activeId = state.activeTabId;
+      if (activeId !== null && ids.includes(activeId)) {
+        state.activeTabId = null;
+        const next = this.pickNextTab(state, activeId);
+        if (next) {
+          await this.activateTab(wid, next);
+        } else {
+          this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
+            windowId: wid,
+            tabId: null,
+          });
+          repos.metadata.delete(lastActiveTabKey(state.workspaceId));
+        }
+      }
+    }
+
+    for (const workspaceId of touchedWorkspaces) {
+      this.ctx.events.emit(IPC_EVENTS.TREE_CHANGED, { workspaceId });
+    }
+    for (const [profileId, repos] of anchorProfiles) {
+      this.emitAnchoredTabsChanged(profileId, repos);
+    }
+    return closed;
+  }
+
+  /**
+   * Libera todo lo que una pestaña tiene en memoria al cerrarse (WCV, MRU,
+   * previews, estado de silencio…) sin tocar el árbol: quien llama decide
+   * cómo borrar el nodo y qué eventos emitir.
+   */
+  private teardownTab(state: PerWindow, tabId: string, node: TreeNode | null): void {
+    const windowId = state.windowId;
     // Save to recently-closed buffer before deletion (max 10 per window, FIFO).
     // Excludes transient/blank pages; internal vela:// pages like settings are kept.
     if (node && node.kind === 'tab' &&
@@ -896,32 +1012,7 @@ export class TabManager {
     previewStore.delete(tabId).catch(() => {});
     previewCapturer.clearThrottle(tabId);
 
-    if (node) {
-      repos.treeNodes.delete(tabId, 'subtree');
-    }
-
-    if (state.activeTabId === tabId) {
-      state.activeTabId = null;
-      const next = this.pickNextTab(state, tabId);
-      if (next) {
-        await this.activateTab(windowId, next);
-      } else {
-        this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
-          windowId,
-          tabId: null,
-        });
-        repos.metadata.delete(lastActiveTabKey(state.workspaceId));
-      }
-    }
-
-    if (node) {
-      this.ctx.events.emit(IPC_EVENTS.TREE_CHANGED, {
-        workspaceId: node.workspaceId,
-      });
-      if (node.kind === 'tab' && node.anchored) {
-        this.emitAnchoredTabsChanged(state.profileId, repos);
-      }
-    }
+    if (this.mutedTabs.delete(tabId)) this.emitMutedChanged();
   }
 
   async reopenLastClosed(windowId: number): Promise<void> {
@@ -1562,6 +1653,11 @@ export class TabManager {
     }
   }
 
+  /** true mientras un modal de la shell mantiene oculto el WCV (overlay). */
+  isOverlayActive(windowId: number): boolean {
+    return this.windows.get(windowId)?.overlayActive === true;
+  }
+
   setNotificationPanelWidth(windowId: number, width: number): void {
     const state = this.windows.get(windowId);
     if (!state) return;
@@ -1997,11 +2093,59 @@ export class TabManager {
     return null;
   }
 
+  /**
+   * WCV vivo de la tab tanto si está en una ventana como si está suspendida
+   * (workspace no visible). Para la imagen en imagen, que actúa justo sobre
+   * las pestañas que se acaban de dejar de ver.
+   */
+  getLiveViewForTab(tabId: string): WebContentsView | null {
+    return this.findViewAnywhere(tabId);
+  }
+
   /** Devuelve true si la tab tiene audio activo en su WebContentsView. */
   isTabCurrentlyAudible(tabId: string): boolean {
     const view = this.findViewAnywhere(tabId);
     if (!view || view.webContents.isDestroyed()) return false;
     return view.webContents.isCurrentlyAudible();
+  }
+
+  /**
+   * Silencia o reactiva el sonido de varias pestañas. Las que aún no tienen
+   * WCV quedan marcadas y se silencian al crearlo. Devuelve la lista completa
+   * de pestañas silenciadas.
+   */
+  setTabsMuted(tabIds: readonly string[], muted: boolean): string[] {
+    let changed = false;
+    for (const tabId of tabIds) {
+      if (muted ? !this.mutedTabs.has(tabId) : this.mutedTabs.has(tabId)) {
+        changed = true;
+      }
+      if (muted) this.mutedTabs.add(tabId);
+      else this.mutedTabs.delete(tabId);
+      const view = this.findViewAnywhere(tabId);
+      if (view && !view.webContents.isDestroyed()) {
+        view.webContents.setAudioMuted(muted);
+      }
+    }
+    if (changed) this.emitMutedChanged();
+    return this.getMutedTabIds();
+  }
+
+  /** Alterna el silencio de una pestaña; devuelve el estado nuevo. */
+  toggleTabMuted(tabId: string): boolean {
+    const muted = !this.mutedTabs.has(tabId);
+    this.setTabsMuted([tabId], muted);
+    return muted;
+  }
+
+  getMutedTabIds(): string[] {
+    return [...this.mutedTabs];
+  }
+
+  private emitMutedChanged(): void {
+    this.ctx.events.emit(IPC_EVENTS.TAB_MUTED_CHANGED, {
+      mutedTabIds: this.getMutedTabIds(),
+    });
   }
 
   // ---------- internos ----------
@@ -2143,6 +2287,15 @@ export class TabManager {
     ensureVelaProtocolOnSession(view.webContents.session);
     ensurePreviewProtocolOnSession(view.webContents.session);
 
+    // La sesión en memoria de la pestaña fantasma nace con el corrector por
+    // defecto de Electron; se le aplican los ajustes del perfil para que
+    // desactivarlo (o cambiar idiomas) valga también aquí.
+    try {
+      applySpellcheckSettings(secureSession, this.reposFor(state).settings, `secure-${tab.id}`);
+    } catch (err) {
+      this.ctx.logger.warn(`[tabs] no se pudo aplicar el corrector a la pestaña fantasma ${tab.id}`, err);
+    }
+
     state.window.contentView.addChildView(view);
     view.setBounds({ ...HIDDEN_BOUNDS });
     // Fondo opaco blanco: ver nota en spawnView.
@@ -2266,6 +2419,10 @@ export class TabManager {
     view: WebContentsView,
   ): void {
     const wc = view.webContents;
+
+    // Una pestaña silenciada sigue silenciada si se recrea su vista
+    // (suspendida y reactivada, o materializada más tarde).
+    if (this.mutedTabs.has(tabId)) wc.setAudioMuted(true);
 
     // ── Guard de navegación (seguridad) ──────────────────────────────────────
     // El contenido web no debe poder auto-navegar (top frame o subframe) hacia
@@ -2864,6 +3021,28 @@ export class TabManager {
       this.applySingleBounds(state);
     } else {
       this.applySplitBounds(state);
+    }
+    this.reportVisibleTabs(windowId, this.visibleTabIdsOf(state));
+  }
+
+  /**
+   * Pestañas que el usuario ve en la ventana: la activa en modo single y las
+   * de cada panel en Split View. Un overlay que oculta el WCV un momento
+   * (paleta, modales) no cuenta como dejar de verla.
+   */
+  private visibleTabIdsOf(state: PerWindow): Set<string> {
+    if (state.layoutMode === 'single') {
+      return new Set(state.activeTabId ? [state.activeTabId] : []);
+    }
+    return new Set(state.panelTabIds.values());
+  }
+
+  private reportVisibleTabs(windowId: number, visible: ReadonlySet<string> | null): void {
+    if (!this.ctx.onVisibleTabsChanged) return;
+    try {
+      this.ctx.onVisibleTabsChanged(windowId, visible);
+    } catch (err) {
+      this.ctx.logger.warn('[tabs] onVisibleTabsChanged lanzó', err);
     }
   }
 

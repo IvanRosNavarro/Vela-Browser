@@ -194,11 +194,9 @@ export async function configureSessionDefaults(
     callback(false);
   });
 
-  try {
-    s.setSpellCheckerEnabled(false);
-  } catch (err) {
-    logger.warn(`[session ${profileId}] setSpellCheckerEnabled falló`, err);
-  }
+  // El corrector ortográfico ya no se apaga aquí: depende de los ajustes
+  // `spellcheck:*` del perfil y lo aplica ProfileManager justo después, con
+  // applySpellcheckSettings (ver packages/main/src/spellcheck/).
 }
 
 /**

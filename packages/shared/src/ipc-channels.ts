@@ -51,6 +51,8 @@ export const IPC_CHANNELS = {
   NODE_REORDER: 'node:reorder',
   NODE_TOGGLE_COLLAPSE: 'node:toggle-collapse',
   NODE_RENAME: 'node:rename',
+  NODE_MOVE_MANY: 'node:move-many',
+  NODE_GROUP_INTO_FOLDER: 'node:group-into-folder',
 
   TAB_ACTIVATE: 'tab:activate',
   TAB_CLOSE: 'tab:close',
@@ -60,6 +62,9 @@ export const IPC_CHANNELS = {
   TAB_UNPIN: 'tab:unpin',
   TAB_RESTORE_PINNED_URL: 'tab:restore-pinned-url',
   TAB_REPLACE_PINNED_URL: 'tab:replace-pinned-url',
+  TAB_CLOSE_MANY: 'tab:close-many',
+  TAB_SET_MUTED: 'tab:set-muted',
+  TAB_GET_MUTED: 'tab:get-muted',
 
   TREE_GET_BY_WORKSPACE: 'tree:get-by-workspace',
   TREE_GET_DESCENDANTS: 'tree:get-descendants',
@@ -96,6 +101,7 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
+  SPELLCHECK_GET_INFO: 'spellcheck:get-info',
 
   UPDATE_GET_STATUS: 'update:get-status',
   UPDATE_CHECK_NOW: 'update:check-now',
@@ -221,6 +227,7 @@ export const IPC_CHANNELS = {
   MEDIA_ACTIVATE_TAB: 'media:activate-tab',
   MEDIA_GET_CURRENT_TIME: 'media:get-current-time',
   MEDIA_SEEK_BY: 'media:seek-by',
+  MEDIA_TOGGLE_PIP: 'media:toggle-pip',
   MEDIA_OPEN_POPUP: 'media:open-popup',
   MEDIA_CLOSE_POPUP: 'media:close-popup',
 
@@ -250,6 +257,7 @@ export const IPC_CHANNELS = {
   HISTORY_DELETE_DOMAIN: 'history:delete-domain',
   HISTORY_DELETE_ALL: 'history:delete-all',
   HISTORY_GET_FOR_PERIOD: 'history:get-for-period',
+  HISTORY_AUTOCOMPLETE: 'history:autocomplete',
 
   COOKIES_GET_FOR_URL: 'cookies:get-for-url',
   COOKIES_SET: 'cookies:set',
@@ -485,6 +493,7 @@ export const IPC_EVENTS = {
   TAB_FEATURES_CHANGED: 'state:tab-features-changed',
   /** Zoom de página de una pestaña (al cambiarlo, al navegar y al activarla). */
   TAB_ZOOM_CHANGED: 'state:tab-zoom-changed',
+  TAB_MUTED_CHANGED: 'state:tab-muted-changed',
   NOTIFICATIONS_CHANGED: 'state:notifications-changed',
   NOTIFICATION_PERMISSION_PENDING: 'state:notification-permission-pending',
   NOTIFICATION_PERMISSION_CHANGED: 'state:notification-permission-changed',
@@ -519,6 +528,7 @@ export const IPC_EVENTS = {
   PROFILE_MODAL_TRIGGER: 'state:profile-modal-trigger',
   BUG_SNAPSHOT_COMPLETE: 'state:bug-snapshot-complete',
   SELECTION_SAVED_TO_FILE: 'state:selection-saved-to-file',
+  PAGE_SAVED: 'state:page-saved',
   LINK_OPENED_IN_WORKSPACE: 'state:link-opened-in-workspace',
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
@@ -580,6 +590,8 @@ export interface MainEventPayloads {
     features: Array<'rss' | 'form' | 'media'>;
   };
   [IPC_EVENTS.TAB_ZOOM_CHANGED]: TabZoomState;
+  /** Lista completa de pestañas silenciadas (no se persiste entre reinicios). */
+  [IPC_EVENTS.TAB_MUTED_CHANGED]: { mutedTabIds: string[] };
   [IPC_EVENTS.NOTIFICATIONS_CHANGED]: { profileId: string; unreadCount: number };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_PENDING]: { origin: string; windowId: number; hasPushRequest: boolean };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_CHANGED]: {
@@ -624,6 +636,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.PROFILE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'unlock'; profileId?: string };
   [IPC_EVENTS.BUG_SNAPSHOT_COMPLETE]: { zipPath: string };
   [IPC_EVENTS.SELECTION_SAVED_TO_FILE]: { filePath: string };
+  [IPC_EVENTS.PAGE_SAVED]: { filePath: string };
   [IPC_EVENTS.LINK_OPENED_IN_WORKSPACE]: { workspaceId: string; workspaceName: string };
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };

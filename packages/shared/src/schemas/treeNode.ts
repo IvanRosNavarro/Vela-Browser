@@ -114,6 +114,37 @@ export const nodeMoveInputSchema = z.object({
   newWorkspaceId: z.string().min(1).optional(),
 });
 
+/** Tope de nodos por operación en bloque: acota el trabajo de una sola llamada. */
+const BULK_MAX = 500;
+
+/**
+ * Mueve varios nodos a la vez, en el orden dado, al hueco entre
+ * `prevPosition` y `nextPosition` del padre destino. Sin ninguno de los dos
+ * se colocan al final del padre.
+ */
+export const nodeMoveManyInputSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_MAX),
+  newParentId: z.string().min(1).nullable(),
+  prevPosition: z.string().min(1).nullable().optional(),
+  nextPosition: z.string().min(1).nullable().optional(),
+  newWorkspaceId: z.string().min(1).optional(),
+});
+
+/** Crea una carpeta en el sitio del primer nodo y mete dentro todos, en orden. */
+export const nodeGroupIntoFolderInputSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_MAX),
+  name: z.string().min(1).max(200),
+});
+
+export const tabIdsInputSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_MAX),
+});
+
+export const tabSetMutedInputSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(BULK_MAX),
+  muted: z.boolean(),
+});
+
 export const nodeReorderInputSchema = z.object({
   id: z.string().min(1),
   newPosition: z.string().min(1),

@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { ContextMenuExecAction } from './types/contextMenu';
 import type { WindowLayout, LayoutMode, PanelId } from './types/layout';
 import type { CustomThemeExport } from './schemas/theme';
+import type { SpellcheckInfo } from './schemas/spellcheck';
 import type { DeviceEmulationParams } from './types/deviceEmulation';
 import type { ShortcutCommandInfo } from './types/command';
 import type {
@@ -16,7 +17,9 @@ import type {
   navGotoInputSchema,
   navSimpleInputSchema,
   nodeDeleteInputSchema,
+  nodeGroupIntoFolderInputSchema,
   nodeMoveInputSchema,
+  nodeMoveManyInputSchema,
   nodeRenameInputSchema,
   nodeReorderInputSchema,
   nodeToggleCollapseInputSchema,
@@ -40,6 +43,8 @@ import type {
   suggestQueryInputSchema,
   tabActivateInputSchema,
   tabCreateInputSchema,
+  tabIdsInputSchema,
+  tabSetMutedInputSchema,
   tabSimpleInputSchema,
   treeGetByWorkspaceInputSchema,
   treeNodeIdInputSchema,
@@ -67,9 +72,9 @@ import type { TabZoomState } from './types/zoom';
 import type { Profile } from './types/profile';
 import type { CustomEngineAlias } from './types/searchEngine';
 import type { ExtensionAction, InstalledExtension } from './types/extension';
-import type { MediaSource } from './types/media';
+import type { MediaSource, PipToggleResult } from './types/media';
 import type { RecentlyClosedTab } from './types/recentlyClosedTab';
-import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat } from './types/quickNote';
+import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat, HistoryAutocompleteMatch } from './types/quickNote';
 import type { Favorite } from './types/favorite';
 import type { AdBlockerStatus } from './types/adblocker';
 import type { VaultEntry, VaultEntrySummary, VaultPendingInfo } from './types/vault';
@@ -107,9 +112,15 @@ export type NodeToggleCollapseInput = z.input<
   typeof nodeToggleCollapseInputSchema
 >;
 export type NodeRenameInput = z.input<typeof nodeRenameInputSchema>;
+export type NodeMoveManyInput = z.input<typeof nodeMoveManyInputSchema>;
+export type NodeGroupIntoFolderInput = z.input<
+  typeof nodeGroupIntoFolderInputSchema
+>;
 
 export type TabActivateInput = z.input<typeof tabActivateInputSchema>;
 export type TabSimpleInput = z.input<typeof tabSimpleInputSchema>;
+export type TabIdsInput = z.input<typeof tabIdsInputSchema>;
+export type TabSetMutedInput = z.input<typeof tabSetMutedInputSchema>;
 
 export type TreeGetByWorkspaceInput = z.input<
   typeof treeGetByWorkspaceInputSchema
@@ -192,6 +203,10 @@ export interface NodeApi {
     input: NodeToggleCollapseInput,
   ): Promise<IpcResponse<TreeNode>>;
   rename(input: NodeRenameInput): Promise<IpcResponse<TreeNode>>;
+  /** Mueve varios nodos en una sola transacción (selección múltiple). */
+  moveMany(input: NodeMoveManyInput): Promise<IpcResponse<TreeNode[]>>;
+  /** Crea una carpeta-pestaña y mete dentro los nodos dados, en orden. */
+  groupIntoFolder(input: NodeGroupIntoFolderInput): Promise<IpcResponse<TabNode>>;
 }
 
 export interface TabApi {
@@ -203,6 +218,11 @@ export interface TabApi {
   unpin(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;
   restorePinnedUrl(input: TabSimpleInput): Promise<IpcResponse<void>>;
   replacePinnedUrl(input: TabSimpleInput): Promise<IpcResponse<void>>;
+  /** Cierra varias pestañas con un único refresco del árbol. */
+  closeMany(input: TabIdsInput): Promise<IpcResponse<{ ids: string[] }>>;
+  /** Silencia o reactiva el sonido; devuelve la lista completa de silenciadas. */
+  setMuted(input: TabSetMutedInput): Promise<IpcResponse<{ mutedTabIds: string[] }>>;
+  getMuted(): Promise<IpcResponse<{ mutedTabIds: string[] }>>;
   recentlyClosed(): Promise<IpcResponse<RecentlyClosedTab[]>>;
   reopenById(input: { closedTabId: string }): Promise<IpcResponse<{ id: string }>>;
   anchor(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;
@@ -486,6 +506,8 @@ export interface MediaApi {
   activateTab(input: { tabId: string; windowId: number }): Promise<IpcResponse<void>>;
   getCurrentTime(input: { tabId: string }): Promise<IpcResponse<{ currentTime: number; duration: number | null }>>;
   seekBy(input: { tabId: string; delta: number }): Promise<IpcResponse<void>>;
+  /** Alterna la imagen en imagen del vídeo principal de la pestaña. */
+  togglePictureInPicture(input: { tabId: string }): Promise<IpcResponse<PipToggleResult>>;
 }
 
 export interface DiscardApi {
@@ -527,6 +549,8 @@ export interface SettingsApi {
   getAll(
     input?: SettingsGetAllInput,
   ): Promise<IpcResponse<Record<SettingsKey, unknown>>>;
+  /** Estado del corrector ortográfico del perfil de la ventana. */
+  getSpellcheckInfo(): Promise<IpcResponse<SpellcheckInfo>>;
 }
 
 export interface MenuApi {
@@ -692,6 +716,7 @@ export interface HistoryApi {
   deleteDomain(input: { domain: string }): Promise<IpcResponse<void>>;
   deleteAll(input: { workspaceId?: string }): Promise<IpcResponse<void>>;
   getForPeriod(input: { from: number; to: number; workspaceId?: string }): Promise<IpcResponse<HistorySearchEntry[]>>;
+  autocomplete(input: { prefix: string }): Promise<IpcResponse<HistoryAutocompleteMatch | null>>;
 }
 
 export interface FindApi {

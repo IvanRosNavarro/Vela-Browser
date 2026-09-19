@@ -277,6 +277,11 @@ export class MediaSessionManager {
     return [...this.sources.values()];
   }
 
+  /** La tab tiene una fuente multimedia reproduciéndose (según Chromium). */
+  isTabPlaying(tabId: string): boolean {
+    return this.sources.get(tabId)?.isPlaying === true;
+  }
+
   getActiveCount(): number {
     return [...this.sources.values()].filter((s) => s.isPlaying).length;
   }
