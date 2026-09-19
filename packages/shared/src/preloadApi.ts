@@ -66,7 +66,7 @@ import type { TabRuntime } from './types/tabRuntime';
 import type { Profile } from './types/profile';
 import type { CustomEngineAlias } from './types/searchEngine';
 import type { ExtensionAction, InstalledExtension } from './types/extension';
-import type { MediaSource } from './types/media';
+import type { MediaSource, PipToggleResult } from './types/media';
 import type { RecentlyClosedTab } from './types/recentlyClosedTab';
 import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat, HistoryAutocompleteMatch } from './types/quickNote';
 import type { Favorite } from './types/favorite';
@@ -485,6 +485,8 @@ export interface MediaApi {
   activateTab(input: { tabId: string; windowId: number }): Promise<IpcResponse<void>>;
   getCurrentTime(input: { tabId: string }): Promise<IpcResponse<{ currentTime: number; duration: number | null }>>;
   seekBy(input: { tabId: string; delta: number }): Promise<IpcResponse<void>>;
+  /** Alterna la imagen en imagen del vídeo principal de la pestaña. */
+  togglePictureInPicture(input: { tabId: string }): Promise<IpcResponse<PipToggleResult>>;
 }
 
 export interface DiscardApi {

@@ -1,3 +1,6 @@
+/** Resultado de alternar la imagen en imagen de una pestaña. */
+export type PipToggleResult = 'entered' | 'exited' | 'none';
+
 export interface MediaSource {
   tabId: string;
   profileId: string;

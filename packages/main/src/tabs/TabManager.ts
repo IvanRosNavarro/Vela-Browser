@@ -80,6 +80,14 @@ export interface TabManagerCtx {
   onTabActivated?: (webContents: WebContents, window: BrowserWindow) => void;
   /** Hook llamado al crear la sesión de una tab blindada para cargar extensiones permitidas. */
   onSecureSessionReady?: (profileId: string, repos: ProfileRepositories, secureSession: Session) => Promise<void>;
+  /**
+   * Hook con el conjunto de pestañas que se ven en una ventana (la activa en
+   * modo single, las de cada panel en Split View) tras cualquier cambio de
+   * layout; `null` cuando la ventana se desengancha. Lo usa la imagen en
+   * imagen automática. Puede llamarse sin cambios reales: el consumidor
+   * compara con el estado anterior.
+   */
+  onVisibleTabsChanged?: (windowId: number, visibleTabIds: ReadonlySet<string> | null) => void;
 }
 
 export interface CreateTabInput {
@@ -417,6 +425,7 @@ export class TabManager {
 
     this.windows.delete(windowId);
     this.blindedWindows.delete(windowId);
+    this.reportVisibleTabs(windowId, null);
 
     this.ctx.logger.info(`[tabs] window ${windowId} detached`);
   }
@@ -475,6 +484,10 @@ export class TabManager {
     } catch (err) {
       this.ctx.logger.warn('[layout] restoreLayoutForWorkspace falló', err);
     }
+
+    // Si el workspace nuevo está vacío no ha habido recalculateBounds: la
+    // pestaña que se dejaba de ver tiene que notificarse igualmente.
+    this.reportVisibleTabs(windowId, this.visibleTabIdsOf(state));
 
     this.ctx.logger.info(
       `[tabs] window ${windowId} cambia workspace ${previousWorkspaceId} → ${newWorkspaceId}`,
@@ -1992,6 +2005,15 @@ export class TabManager {
     return null;
   }
 
+  /**
+   * WCV vivo de la tab tanto si está en una ventana como si está suspendida
+   * (workspace no visible). Para la imagen en imagen, que actúa justo sobre
+   * las pestañas que se acaban de dejar de ver.
+   */
+  getLiveViewForTab(tabId: string): WebContentsView | null {
+    return this.findViewAnywhere(tabId);
+  }
+
   /** Devuelve true si la tab tiene audio activo en su WebContentsView. */
   isTabCurrentlyAudible(tabId: string): boolean {
     const view = this.findViewAnywhere(tabId);
@@ -2859,6 +2881,28 @@ export class TabManager {
       this.applySingleBounds(state);
     } else {
       this.applySplitBounds(state);
+    }
+    this.reportVisibleTabs(windowId, this.visibleTabIdsOf(state));
+  }
+
+  /**
+   * Pestañas que el usuario ve en la ventana: la activa en modo single y las
+   * de cada panel en Split View. Un overlay que oculta el WCV un momento
+   * (paleta, modales) no cuenta como dejar de verla.
+   */
+  private visibleTabIdsOf(state: PerWindow): Set<string> {
+    if (state.layoutMode === 'single') {
+      return new Set(state.activeTabId ? [state.activeTabId] : []);
+    }
+    return new Set(state.panelTabIds.values());
+  }
+
+  private reportVisibleTabs(windowId: number, visible: ReadonlySet<string> | null): void {
+    if (!this.ctx.onVisibleTabsChanged) return;
+    try {
+      this.ctx.onVisibleTabsChanged(windowId, visible);
+    } catch (err) {
+      this.ctx.logger.warn('[tabs] onVisibleTabsChanged lanzó', err);
     }
   }
 

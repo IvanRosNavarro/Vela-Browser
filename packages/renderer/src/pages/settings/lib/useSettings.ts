@@ -39,6 +39,7 @@ const DEFAULTS: SettingsMap = {
   'ui:workspace-swipe': true,
   'media:widget-enabled': true,
   'media:tab-indicator': true,
+  'media:auto-pip': true,
 };
 
 export function useSettings() {
