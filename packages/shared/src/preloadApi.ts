@@ -78,6 +78,15 @@ import type { QuickNote, HistorySearchEntry, HistorySession, DomainStat, History
 import type { Favorite } from './types/favorite';
 import type { AdBlockerStatus } from './types/adblocker';
 import type { VaultEntry, VaultEntrySummary, VaultPendingInfo } from './types/vault';
+import type {
+  AddressData,
+  AutofillPopupOptions,
+  AutofillSaveOffer,
+  CardData,
+  VaultAddress,
+  VaultCard,
+  VaultCardSummary,
+} from './types/autofill';
 import type { UserScript, UserScriptData, UserScriptMeta } from './types/userScript';
 import type { ResourcesSnapshot } from './types/tabResource';
 import type { AparejoId, AparejoStatus } from './types/aparejo';
@@ -707,6 +716,23 @@ export interface VaultApi {
   getPending(input: { windowId: number }): Promise<IpcResponse<VaultPendingInfo | null>>;
 }
 
+/** Direcciones y tarjetas del vault (gestión en vela://passwords y popups de relleno). */
+export interface AutofillApi {
+  listAddresses(): Promise<IpcResponse<VaultAddress[]>>;
+  saveAddress(input: { id?: string; data: AddressData }): Promise<IpcResponse<VaultAddress>>;
+  deleteAddress(input: { id: string }): Promise<IpcResponse<void>>;
+  listCards(): Promise<IpcResponse<VaultCardSummary[]>>;
+  getCard(input: { id: string }): Promise<IpcResponse<VaultCard | null>>;
+  saveCard(input: { id?: string; data: CardData }): Promise<IpcResponse<VaultCardSummary>>;
+  deleteCard(input: { id: string }): Promise<IpcResponse<void>>;
+  openManager(input: { view: 'addresses' | 'cards'; token?: string }): Promise<IpcResponse<void>>;
+  popupGetOptions(input: { token: string }): Promise<IpcResponse<AutofillPopupOptions | null>>;
+  popupFill(input: { token: string; id: string }): Promise<IpcResponse<void>>;
+  popupClose(input: { token: string }): Promise<IpcResponse<void>>;
+  saveOfferGet(input: { token: string }): Promise<IpcResponse<AutofillSaveOffer | null>>;
+  saveOfferDecide(input: { token: string; save: boolean }): Promise<IpcResponse<void>>;
+}
+
 export interface HistoryApi {
   search(input: { query: string; workspaceId?: string; limit?: number; offset?: number; from?: number; to?: number }): Promise<IpcResponse<HistorySearchEntry[]>>;
   getRecent(input: { limit?: number }): Promise<IpcResponse<HistorySearchEntry[]>>;
@@ -790,6 +816,7 @@ export interface PreloadApi {
   favorites: FavoritesApi;
   adblocker: AdBlockerApi;
   vault: VaultApi;
+  autofill: AutofillApi;
   scripts: UserScriptsApi;
   bugSnapshot: BugSnapshotApi;
   resources: ResourcesApi;

@@ -23,6 +23,7 @@ export * from './quickNote';
 export * from './favorite';
 export * from './adblocker';
 export * from './vault';
+export * from './autofill';
 export * from './userScript';
 export * from './tabResource';
 export * from './aparejo';

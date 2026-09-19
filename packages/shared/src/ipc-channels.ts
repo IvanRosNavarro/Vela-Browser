@@ -322,6 +322,29 @@ export const IPC_CHANNELS = {
   VAULT_COUNT_FOR_DOMAIN: 'vault:count-for-domain',
   VAULT_GET_PENDING: 'vault:get-pending',
 
+  // Autorrelleno de direcciones y tarjetas (guardadas en el vault).
+  AUTOFILL_LIST_ADDRESSES: 'autofill:list-addresses',
+  AUTOFILL_SAVE_ADDRESS: 'autofill:save-address',
+  AUTOFILL_DELETE_ADDRESS: 'autofill:delete-address',
+  AUTOFILL_LIST_CARDS: 'autofill:list-cards',
+  AUTOFILL_GET_CARD: 'autofill:get-card',
+  AUTOFILL_SAVE_CARD: 'autofill:save-card',
+  AUTOFILL_DELETE_CARD: 'autofill:delete-card',
+  AUTOFILL_OPEN_MANAGER: 'autofill:open-manager',
+  AUTOFILL_POPUP_GET_OPTIONS: 'autofill:popup-get-options',
+  AUTOFILL_POPUP_FILL: 'autofill:popup-fill',
+  AUTOFILL_POPUP_CLOSE: 'autofill:popup-close',
+  AUTOFILL_SAVE_OFFER_GET: 'autofill:save-offer-get',
+  AUTOFILL_SAVE_OFFER_DECIDE: 'autofill:save-offer-decide',
+  // Desde el preload de las pestañas web (ipcMain.on, remitente NO confiable).
+  AUTOFILL_FIELD_FOCUSED: 'autofill:field-focused',
+  AUTOFILL_FIELD_DISMISSED: 'autofill:field-dismissed',
+  AUTOFILL_POPUP_KEY: 'autofill:popup-key',
+  AUTOFILL_FORM_SUBMITTED: 'autofill:form-submitted',
+  // main → frame de la pestaña que pidió el relleno (WebFrameMain.send).
+  AUTOFILL_FILL_FRAME: 'autofill:fill-frame',
+  AUTOFILL_POPUP_CLOSED_FRAME: 'autofill:popup-closed',
+
   SCRIPTS_LIST: 'scripts:list',
   SCRIPTS_ADD: 'scripts:add',
   SCRIPTS_UPDATE: 'scripts:update',
@@ -514,6 +537,7 @@ export const IPC_EVENTS = {
   ADBLOCKER_COUNT_UPDATED: 'state:adblocker-count-updated',
   VAULT_CREDENTIALS_PENDING: 'state:vault-credentials-pending',
   VAULT_PENDING_CLEARED: 'state:vault-pending-cleared',
+  AUTOFILL_POPUP_KEY_PRESSED: 'state:autofill-popup-key-pressed',
   SCRIPT_ERROR: 'state:script-error',
   APAREJOS_CHANGED: 'state:aparejos-changed',
   URLBAR_CONFIG_CHANGED: 'state:urlbar-config-changed',
@@ -622,6 +646,7 @@ export interface MainEventPayloads {
     existingId: string | null;
   };
   [IPC_EVENTS.VAULT_PENDING_CLEARED]: { windowId: number };
+  [IPC_EVENTS.AUTOFILL_POPUP_KEY_PRESSED]: { key: 'ArrowDown' | 'ArrowUp' | 'Enter' };
   [IPC_EVENTS.SCRIPT_ERROR]: ScriptError;
   [IPC_EVENTS.APAREJOS_CHANGED]: { aparejos: AparejoStatus[] };
   [IPC_EVENTS.URLBAR_CONFIG_CHANGED]: { config: UrlBarIconConfig[] };
