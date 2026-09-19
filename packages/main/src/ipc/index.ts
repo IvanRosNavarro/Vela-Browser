@@ -1,4 +1,4 @@
-import { safeStorage, app, type BrowserWindow, type Session } from 'electron';
+import { safeStorage, app, nativeTheme, type BrowserWindow, type Session } from 'electron';
 import { IPC_EVENTS } from '@vela/shared';
 import { WindowStateRepository } from '../storage/repositories/WindowStateRepository';
 import { getDb } from '../storage/db';
@@ -42,6 +42,7 @@ import { registerContextMenuHandlers } from './contextMenu';
 import { registerFilePickerHandlers } from './filepicker';
 import { registerGlanceHandlers } from './glance';
 import { registerTrackpadHandlers } from './trackpad';
+import { registerDarkModeHandlers } from './darkmode';
 import { registerMediaHandlers } from './media';
 import { registerHoverUrlHandlers } from './hoverUrl';
 import { registerNotesHandlers } from './notes';
@@ -73,6 +74,7 @@ import { ClientCertificateManager } from '../security/ClientCertificateManager';
 import { LayoutManager } from '../layout/LayoutManager';
 import { GlanceManager } from '../glance/GlanceManager';
 import { TrackpadGestures } from '../gestures/TrackpadGestures';
+import { DarkModeManager } from '../darkmode/DarkModeManager';
 import { ZoomManager } from '../zoom/ZoomManager';
 import { registerZoomHandlers } from './zoom';
 import { MediaSessionManager } from '../media/MediaSessionManager';
@@ -140,6 +142,20 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
   });
   // Inyección tardía: extensionManager depende de profileManager y viceversa.
   profileManager.setExtensionManager(extensionManager);
+  const darkMode = new DarkModeManager({
+    getRepositories: (profileId) => {
+      try {
+        return profileManager.getRepositories(profileId);
+      } catch {
+        return null;
+      }
+    },
+    prefersDarkColors: () => nativeTheme.shouldUseDarkColors,
+    logger,
+  });
+  // El tema `system` de Vela sigue al SO: con "Seguir el tema de Vela", un
+  // cambio de claro a oscuro del sistema se aplica a las pestañas abiertas.
+  nativeTheme.on('updated', () => darkMode.refreshAll());
   // Los managers que dependen de tabManager se conectan vía closure para
   // evitar dependencia circular en la construcción.
   let mediaManagerRef: MediaSessionManager | null = null;
@@ -158,6 +174,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
       pipManagerRef?.attachToTab(tabId, view.webContents);
       notificationManagerRef?.attachToWebContents(view.webContents, profileId);
       trackpadGestures.attach(view.webContents);
+      darkMode.attach(view.webContents, profileId);
       zoomManagerRef?.attach(tabId, view.webContents, profileId);
     },
     onVisibleTabsChanged: (windowId, visibleTabIds) => {
@@ -304,6 +321,7 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     layoutManager,
     glanceManager,
     trackpadGestures,
+    darkMode,
     zoomManager,
     mediaManager,
     mediaPopupWindow,
@@ -354,6 +372,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerFilePickerHandlers(ctx);
   registerGlanceHandlers(ctx);
   registerTrackpadHandlers(ctx);
+  registerDarkModeHandlers(ctx);
   registerZoomHandlers(ctx);
   registerMediaHandlers(ctx);
   registerHoverUrlHandlers(ctx);

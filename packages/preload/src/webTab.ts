@@ -14,6 +14,10 @@ import {
   type AutofillFieldType,
 } from '@vela/shared/autofill/index';
 import type { AutofillFillPayload, AutofillKind } from '@vela/shared/types/autofill';
+import { initDarkMode } from './darkMode';
+
+// Lo primero: el modo oscuro tiene que decidirse antes de que se pinte nada.
+initDarkMode();
 
 // ─── Bug Snapshot console buffer ──────────────────────────────────────────────
 const MAX_CONSOLE_ENTRIES = 500;

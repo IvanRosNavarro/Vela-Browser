@@ -63,6 +63,11 @@ export interface ContextMenuShowPayload {
   editFlags: ContextMenuEditFlags;
   currentUrl: string | null;
   currentTitle: string | null;
+  /**
+   * Modo oscuro de las webs en el sitio de la página: `active` es lo que ve
+   * el usuario ahora. Ausente o null si la página no lo admite (vela://…).
+   */
+  darkMode?: { active: boolean } | null;
 }
 
 export type ContextMenuExecAction =

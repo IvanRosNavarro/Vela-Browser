@@ -43,6 +43,13 @@ module.exports = {
     '!**/node_modules/**/test/**',
     '!**/node_modules/**/tests/**',
     '!**/node_modules/**/.bin/**',
+    // Dark Reader va empaquetado dentro de packages/preload/dist/webTab.js por
+    // Vite: su copia en node_modules, su dependencia `malevic` (UI de la
+    // extensión) y los binarios de rollup que declara como opcionales no se
+    // usan en tiempo de ejecución.
+    '!**/node_modules/darkreader/**',
+    '!**/node_modules/malevic/**',
+    '!**/node_modules/@rollup/**',
     '!**/node_modules/**/{CHANGELOG.md,README.md,LICENSE.md}',
     '!packages/*/src/**',
     '!packages/*/tsconfig*.json',

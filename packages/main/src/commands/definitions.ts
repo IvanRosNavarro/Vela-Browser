@@ -898,6 +898,30 @@ export function registerCoreCommands(
     }),
   );
 
+  // ---------- modo oscuro de las webs ----------
+
+  registry.register(
+    defineCommand({
+      id: 'darkmode.toggleSite',
+      title: 'Alternar modo oscuro en este sitio',
+      category: 'view',
+      run: (ctx) => {
+        if (ctx.windowId === null) return;
+        const wc = ipc.tabManager.getActiveTabWebContents(ctx.windowId);
+        if (!wc || wc.isDestroyed()) return;
+        const result = ipc.darkMode.toggleSite(wc);
+        emitRendererAction(ipc, ctx, 'show-toast', result
+          ? {
+            message: result.applies
+              ? `Modo oscuro activado en ${result.host}`
+              : `Modo oscuro desactivado en ${result.host}`,
+            type: 'info',
+          }
+          : { message: 'El modo oscuro solo se aplica a páginas web', type: 'info' });
+      },
+    }),
+  );
+
   // ---------- multimedia ----------
 
   // Sin atajo por defecto: el usuario puede asignarle uno en Ajustes → Atajos.

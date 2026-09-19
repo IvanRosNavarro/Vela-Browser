@@ -219,6 +219,14 @@ export const IPC_CHANNELS = {
   TRACKPAD_GET_STATE: 'trackpad:get-state',
   TRACKPAD_NAVIGATE: 'trackpad:navigate',
 
+  // Modo oscuro de las webs (Dark Reader). Los invoca el preload de las
+  // pestañas (webTab.ts), que usa los literales. DARKMODE_UPDATE va de main a
+  // esa pestaña con `webContents.send`, no a la shell.
+  DARKMODE_GET_STATE_SYNC: 'darkmode:get-state-sync',
+  DARKMODE_FETCH: 'darkmode:fetch',
+  DARKMODE_NATIVE_DARK: 'darkmode:native-dark',
+  DARKMODE_UPDATE: 'darkmode:update',
+
   MEDIA_GET_SOURCES: 'media:get-sources',
   MEDIA_PLAY: 'media:play',
   MEDIA_PAUSE: 'media:pause',

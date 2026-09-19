@@ -4,6 +4,7 @@ import {
   searchEngineLabel,
   SEARCH_ENGINE_DEFAULT,
   SEARCH_ENGINE_IDS,
+  darkModeHostOf,
   type SearchEngineId,
   type SearchSettings,
   type ContextMenuShowPayload,
@@ -137,6 +138,10 @@ export function attachWebContextMenu(
       },
       currentUrl: webContents.getURL() || null,
       currentTitle: webContents.getTitle() || null,
+      darkMode:
+        ctx.darkMode.isAttached(webContents) && darkModeHostOf(webContents.getURL())
+          ? { active: ctx.darkMode.isEffectiveFor(webContents) }
+          : null,
     };
 
     getPopup(ctx).show(payload, win, webContents, workspaceId);

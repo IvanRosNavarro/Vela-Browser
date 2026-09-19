@@ -112,6 +112,14 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
         if (parsed.data.key === 'gestures:pinch-zoom') {
           ctx.trackpadGestures.applyPinchZoomToAll();
         }
+        if (
+          parsed.data.key.startsWith('darkmode:') ||
+          parsed.data.key === 'ui:theme' ||
+          parsed.data.key === 'ui:custom-themes'
+        ) {
+          // Modo oscuro de las webs: ajustes y tema de Vela en caliente.
+          ctx.darkMode.refreshAll();
+        }
         if (scope === 'profile' && isSpellcheckSettingKey(parsed.data.key)) {
           const { profileId } = getFrameContext(event, ctx);
           applySpellcheckForProfile(ctx.profileManager, profileId);

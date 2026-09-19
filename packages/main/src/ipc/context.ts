@@ -13,6 +13,7 @@ import type { MainEventBus } from './events';
 import type { LayoutManager } from '../layout/LayoutManager';
 import type { GlanceManager } from '../glance/GlanceManager';
 import type { TrackpadGestures } from '../gestures/TrackpadGestures';
+import type { DarkModeManager } from '../darkmode/DarkModeManager';
 import type { ZoomManager } from '../zoom/ZoomManager';
 import type { MediaSessionManager } from '../media/MediaSessionManager';
 import type { MediaPopupWindow } from '../media/MediaPopupWindow';
@@ -51,6 +52,7 @@ export interface IpcContext {
   layoutManager: LayoutManager;
   glanceManager: GlanceManager;
   trackpadGestures: TrackpadGestures;
+  darkMode: DarkModeManager;
   zoomManager: ZoomManager;
   mediaManager: MediaSessionManager;
   mediaPopupWindow: MediaPopupWindow;
