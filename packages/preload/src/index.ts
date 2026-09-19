@@ -84,6 +84,8 @@ const api: PreloadApi = {
     toggleCollapse: (input) =>
       call(IPC_CHANNELS.NODE_TOGGLE_COLLAPSE, input),
     rename: (input) => call(IPC_CHANNELS.NODE_RENAME, input),
+    moveMany: (input) => call(IPC_CHANNELS.NODE_MOVE_MANY, input),
+    groupIntoFolder: (input) => call(IPC_CHANNELS.NODE_GROUP_INTO_FOLDER, input),
   },
   tab: {
     activate: (input) => call(IPC_CHANNELS.TAB_ACTIVATE, input),
@@ -94,6 +96,9 @@ const api: PreloadApi = {
     unpin: (input) => call(IPC_CHANNELS.TAB_UNPIN, input),
     restorePinnedUrl: (input) => call(IPC_CHANNELS.TAB_RESTORE_PINNED_URL, input),
     replacePinnedUrl: (input) => call(IPC_CHANNELS.TAB_REPLACE_PINNED_URL, input),
+    closeMany: (input) => call(IPC_CHANNELS.TAB_CLOSE_MANY, input),
+    setMuted: (input) => call(IPC_CHANNELS.TAB_SET_MUTED, input),
+    getMuted: () => call(IPC_CHANNELS.TAB_GET_MUTED, {}),
     recentlyClosed: () => call(IPC_CHANNELS.TABS_GET_RECENTLY_CLOSED),
     reopenById: (input) => call(IPC_CHANNELS.TABS_REOPEN_BY_ID, input),
     anchor: (input) => call(IPC_CHANNELS.TAB_ANCHOR, input),
@@ -166,6 +171,7 @@ const api: PreloadApi = {
     get: (input) => call(IPC_CHANNELS.SETTINGS_GET, input),
     set: (input) => call(IPC_CHANNELS.SETTINGS_SET, input),
     getAll: (input) => call(IPC_CHANNELS.SETTINGS_GET_ALL, input ?? {}),
+    getSpellcheckInfo: () => call(IPC_CHANNELS.SPELLCHECK_GET_INFO),
   },
   menu: {
     show: (input) => call(IPC_CHANNELS.MENU_SHOW, input),
@@ -304,6 +310,7 @@ const api: PreloadApi = {
     activateTab: (input) => call(IPC_CHANNELS.MEDIA_ACTIVATE_TAB, input),
     getCurrentTime: (input) => call(IPC_CHANNELS.MEDIA_GET_CURRENT_TIME, input),
     seekBy: (input) => call(IPC_CHANNELS.MEDIA_SEEK_BY, input),
+    togglePictureInPicture: (input) => call(IPC_CHANNELS.MEDIA_TOGGLE_PIP, input),
     openPopup: (input) => call(IPC_CHANNELS.MEDIA_OPEN_POPUP, input),
     closePopup: () => call(IPC_CHANNELS.MEDIA_CLOSE_POPUP),
   },
@@ -321,6 +328,7 @@ const api: PreloadApi = {
     deleteDomain: (input) => call(IPC_CHANNELS.HISTORY_DELETE_DOMAIN, input),
     deleteAll: (input) => call(IPC_CHANNELS.HISTORY_DELETE_ALL, input),
     getForPeriod: (input) => call(IPC_CHANNELS.HISTORY_GET_FOR_PERIOD, input),
+    autocomplete: (input) => call(IPC_CHANNELS.HISTORY_AUTOCOMPLETE, input),
   },
   cookies: {
     getForUrl: (url) => call(IPC_CHANNELS.COOKIES_GET_FOR_URL, { url }),
@@ -330,6 +338,13 @@ const api: PreloadApi = {
     clearAll: () => call(IPC_CHANNELS.COOKIES_CLEAR_ALL),
     openPanel: (params) => call(IPC_CHANNELS.COOKIES_OPEN_PANEL, params),
     closePanel: (params) => call(IPC_CHANNELS.COOKIES_CLOSE_PANEL, params),
+  },
+  zoom: {
+    get: (input) => call(IPC_CHANNELS.ZOOM_GET, input),
+    step: (input) => call(IPC_CHANNELS.ZOOM_STEP, input),
+    reset: (input) => call(IPC_CHANNELS.ZOOM_RESET, input),
+    openPopup: (input) => call(IPC_CHANNELS.ZOOM_OPEN_POPUP, input),
+    closePopup: (input) => call(IPC_CHANNELS.ZOOM_CLOSE_POPUP, input),
   },
   favorites: {
     list: () => call(IPC_CHANNELS.FAVORITES_LIST),
@@ -375,6 +390,21 @@ const api: PreloadApi = {
     openAndFill: (input) => call(IPC_CHANNELS.VAULT_OPEN_AND_FILL, input),
     countForDomain: (input) => call(IPC_CHANNELS.VAULT_COUNT_FOR_DOMAIN, input),
     getPending: (input) => call(IPC_CHANNELS.VAULT_GET_PENDING, input),
+  },
+  autofill: {
+    listAddresses: () => call(IPC_CHANNELS.AUTOFILL_LIST_ADDRESSES),
+    saveAddress: (input) => call(IPC_CHANNELS.AUTOFILL_SAVE_ADDRESS, input),
+    deleteAddress: (input) => call(IPC_CHANNELS.AUTOFILL_DELETE_ADDRESS, input),
+    listCards: () => call(IPC_CHANNELS.AUTOFILL_LIST_CARDS),
+    getCard: (input) => call(IPC_CHANNELS.AUTOFILL_GET_CARD, input),
+    saveCard: (input) => call(IPC_CHANNELS.AUTOFILL_SAVE_CARD, input),
+    deleteCard: (input) => call(IPC_CHANNELS.AUTOFILL_DELETE_CARD, input),
+    openManager: (input) => call(IPC_CHANNELS.AUTOFILL_OPEN_MANAGER, input),
+    popupGetOptions: (input) => call(IPC_CHANNELS.AUTOFILL_POPUP_GET_OPTIONS, input),
+    popupFill: (input) => call(IPC_CHANNELS.AUTOFILL_POPUP_FILL, input),
+    popupClose: (input) => call(IPC_CHANNELS.AUTOFILL_POPUP_CLOSE, input),
+    saveOfferGet: (input) => call(IPC_CHANNELS.AUTOFILL_SAVE_OFFER_GET, input),
+    saveOfferDecide: (input) => call(IPC_CHANNELS.AUTOFILL_SAVE_OFFER_DECIDE, input),
   },
   scripts: {
     list: () => call(IPC_CHANNELS.SCRIPTS_LIST),

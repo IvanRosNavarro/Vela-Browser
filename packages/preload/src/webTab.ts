@@ -1,6 +1,19 @@
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { SwipeTracker, type SwipeDirection, type SwipeUpdate } from '@vela/shared/gestures/swipe';
 import type { TrackpadState } from '@vela/shared/schemas/trackpad';
+import {
+  addressValueFor,
+  autocompleteSection,
+  cardValueFor,
+  classifyField,
+  fieldKind,
+  matchCountryOption,
+  matchMonthOption,
+  matchRegionOption,
+  matchYearOption,
+  type AutofillFieldType,
+} from '@vela/shared/autofill/index';
+import type { AutofillFillPayload, AutofillKind } from '@vela/shared/types/autofill';
 import { initDarkMode } from './darkMode';
 
 // Lo primero: el modo oscuro tiene que decidirse antes de que se pinte nada.
@@ -258,6 +271,20 @@ ipcRenderer.on('media:command', (_event, command: string) => {
   }
 });
 
+// ─── Imagen en imagen ─────────────────────────────────────────────────────────
+// Informa al main de si el documento tiene un vídeo en PiP, entre otras cosas
+// para que el DiscardManager no descarte la pestaña. Se escucha en captura
+// sobre window porque los eventos se disparan en el <video>. Solo cubre el
+// frame principal: un PiP dentro de un iframe lo registra el main al pedirlo.
+
+window.addEventListener('enterpictureinpicture', () => {
+  ipcRenderer.send('media:pip-changed', { active: true });
+}, true);
+
+window.addEventListener('leavepictureinpicture', () => {
+  ipcRenderer.send('media:pip-changed', { active: document.pictureInPictureElement != null });
+}, true);
+
 // ─── Credential detection (password manager) ─────────────────────────────────
 // El envío se comunica al main de inmediato ("provisional"). Es el main quien
 // decide si la oferta de guardado llega a mostrarse, observando la navegación
@@ -423,6 +450,318 @@ if (document.readyState === 'loading') {
 } else {
   reportNoPasswordForm();
 }
+
+// ─── Autorrelleno de direcciones y tarjetas ───────────────────────────────────
+// Al enfocar un campo de dirección o de tarjeta se pide a main que muestre el
+// popup de relleno (sin enviar ningún valor). Main decide si lo muestra y, tras
+// la elección del usuario, envía los datos SOLO a este frame por
+// `autofill:fill-frame`; aquí se reparten entre los campos del formulario.
+//
+// Al enviar un formulario se mandan a main los campos de dirección/tarjeta
+// escritos (nunca el código de seguridad) para ofrecer guardarlos.
+
+type AutofillFieldEl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+function isAutofillFieldEl(el: unknown): el is AutofillFieldEl {
+  return el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement;
+}
+
+function autofillLabelText(el: AutofillFieldEl): string {
+  const parts: string[] = [];
+  el.labels?.forEach((l) => parts.push(l.textContent ?? ''));
+  const aria = el.getAttribute('aria-label');
+  if (aria) parts.push(aria);
+  const labelledBy = el.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    for (const id of labelledBy.split(/\s+/)) {
+      const t = id ? document.getElementById(id)?.textContent : null;
+      if (t) parts.push(t);
+    }
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+function autofillTypeOf(el: AutofillFieldEl): AutofillFieldType | null {
+  return classifyField({
+    tagName: el.tagName,
+    type: el instanceof HTMLInputElement ? el.type : '',
+    autocomplete: el.getAttribute('autocomplete'),
+    name: el.getAttribute('name'),
+    id: el.id,
+    label: autofillLabelText(el),
+    placeholder: el.getAttribute('placeholder'),
+  });
+}
+
+/** Solo campos que el usuario ve y puede editar: nada de trampas ocultas. */
+function isFillableField(el: AutofillFieldEl): boolean {
+  if (el.disabled) return false;
+  if (!(el instanceof HTMLSelectElement) && el.readOnly) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return false;
+  const style = getComputedStyle(el);
+  return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) > 0.05;
+}
+
+function autofillScopeOf(el: AutofillFieldEl): ParentNode {
+  return el.form ?? document;
+}
+
+const AUTOFILL_MAX_FIELDS = 200;
+
+function autofillFieldsIn(scope: ParentNode): Array<{ el: AutofillFieldEl; type: AutofillFieldType }> {
+  const out: Array<{ el: AutofillFieldEl; type: AutofillFieldType }> = [];
+  const nodes = scope.querySelectorAll('input, select, textarea');
+  for (let i = 0; i < nodes.length && i < AUTOFILL_MAX_FIELDS; i++) {
+    const el = nodes[i];
+    if (!isAutofillFieldEl(el) || !isFillableField(el)) continue;
+    const type = autofillTypeOf(el);
+    if (type) out.push({ el, type });
+  }
+  return out;
+}
+
+function scopeHasPassword(scope: ParentNode): boolean {
+  return Array.from(scope.querySelectorAll('input[type="password"]')).some(
+    (el) => isAutofillFieldEl(el) && isFillableField(el),
+  );
+}
+
+/**
+ * ¿Merece la pena ofrecer relleno para este campo? Direcciones: formularios con
+ * al menos tres tipos de campo de dirección y sin contraseña (un login o un
+ * alta con solo el correo no es un formulario de dirección). Tarjetas: que
+ * haya un campo de número de tarjeta.
+ */
+function autofillWorthOffering(fields: Array<{ type: AutofillFieldType }>, kind: AutofillKind, scope: ParentNode): boolean {
+  if (kind === 'card') return fields.some((f) => f.type === 'cc-number');
+  if (scopeHasPassword(scope)) return false;
+  const types = new Set(fields.filter((f) => fieldKind(f.type) === 'address').map((f) => f.type));
+  return types.size >= 3;
+}
+
+let autofillAnchor: AutofillFieldEl | null = null;
+let autofillPopupOpen = false;
+let autofillPopupNavigated = false;
+let autofillSeq = 0;
+
+function requestAutofillPopup(el: AutofillFieldEl): void {
+  if (window.top !== window) return;
+  // Sin interacción previa del usuario (autofocus al cargar) no se ofrece nada.
+  const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  if (activation && !activation.hasBeenActive) return;
+  const type = autofillTypeOf(el);
+  if (!type || type === 'cc-csc' || !isFillableField(el)) return;
+  const kind = fieldKind(type);
+  const scope = autofillScopeOf(el);
+  if (!autofillWorthOffering(autofillFieldsIn(scope), kind, scope)) return;
+
+  autofillAnchor = el;
+  const seq = ++autofillSeq;
+  const r = el.getBoundingClientRect();
+  void (ipcRenderer.invoke('autofill:field-focused', {
+    kind,
+    rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+  }) as Promise<unknown>)
+    .then((shown) => {
+      if (seq !== autofillSeq) return;
+      autofillPopupOpen = shown === true;
+      autofillPopupNavigated = false;
+    })
+    .catch(() => { });
+}
+
+function dismissAutofillPopup(reason: 'blur' | 'escape' | 'input' | 'hidden'): void {
+  if (!autofillPopupOpen) return;
+  autofillPopupOpen = false;
+  autofillSeq++;
+  ipcRenderer.send('autofill:field-dismissed', { reason });
+}
+
+document.addEventListener(
+  'focusin',
+  (e) => {
+    if (isAutofillFieldEl(e.target)) requestAutofillPopup(e.target);
+  },
+  true,
+);
+
+// Clic en un campo que ya tenía el foco (tras cerrar el popup con Escape).
+document.addEventListener(
+  'mousedown',
+  (e) => {
+    const t = e.target;
+    if (e.button !== 0 || autofillPopupOpen || !isAutofillFieldEl(t)) return;
+    if (document.activeElement === t) requestAutofillPopup(t);
+  },
+  true,
+);
+
+document.addEventListener(
+  'focusout',
+  (e) => {
+    if (e.target === autofillAnchor) dismissAutofillPopup('blur');
+  },
+  true,
+);
+
+// Escribir a mano descarta el popup. Los eventos que dispara el propio relleno
+// no son de confianza (isTrusted = false) y no cuentan.
+document.addEventListener(
+  'input',
+  (e) => {
+    if (e.isTrusted && e.target === autofillAnchor) dismissAutofillPopup('input');
+  },
+  true,
+);
+
+document.addEventListener(
+  'keydown',
+  (e: KeyboardEvent) => {
+    if (!autofillPopupOpen || e.target !== autofillAnchor) return;
+    if (e.key === 'Escape') {
+      dismissAutofillPopup('escape');
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      autofillPopupNavigated = true;
+      ipcRenderer.send('autofill:popup-key', { key: e.key });
+    } else if (e.key === 'Enter' && autofillPopupNavigated) {
+      // Solo si el usuario eligió con las flechas; si no, Enter envía el formulario.
+      e.preventDefault();
+      e.stopPropagation();
+      ipcRenderer.send('autofill:popup-key', { key: 'Enter' });
+    }
+  },
+  true,
+);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') dismissAutofillPopup('hidden');
+});
+window.addEventListener('blur', () => dismissAutofillPopup('blur'));
+
+ipcRenderer.on('autofill:popup-closed', () => {
+  autofillPopupOpen = false;
+  autofillPopupNavigated = false;
+});
+
+/** Asigna el valor como lo haría el usuario, para que React & co. lo registren. */
+function setAutofillValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(el, value);
+  else el.value = value;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function selectAutofillOption(el: HTMLSelectElement, type: AutofillFieldType, payload: AutofillFillPayload): void {
+  const options = Array.from(el.options).map((o) => ({ value: o.value, text: o.text }));
+  let idx = -1;
+  if (payload.kind === 'address') {
+    if (type === 'country') idx = matchCountryOption(options, payload.address.country);
+    else if (type === 'address-level1') idx = matchRegionOption(options, payload.address.region);
+  } else {
+    if (type === 'cc-exp-month' && payload.card.expMonth != null) idx = matchMonthOption(options, payload.card.expMonth);
+    else if (type === 'cc-exp-year' && payload.card.expYear != null) idx = matchYearOption(options, payload.card.expYear);
+  }
+  if (idx < 0 || el.selectedIndex === idx) return;
+  el.selectedIndex = idx;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+ipcRenderer.on('autofill:fill-frame', (_event, payload: AutofillFillPayload) => {
+  autofillPopupOpen = false;
+  autofillPopupNavigated = false;
+  const anchor = autofillAnchor;
+  if (!anchor || !anchor.isConnected || !payload || (payload.kind !== 'address' && payload.kind !== 'card')) return;
+
+  // Con envío y facturación en el mismo formulario, solo la sección del campo.
+  const section = autocompleteSection(anchor.getAttribute('autocomplete'));
+  const fields = autofillFieldsIn(autofillScopeOf(anchor)).filter(
+    (f) =>
+      f.type !== 'cc-csc' &&
+      fieldKind(f.type) === payload.kind &&
+      (!section || autocompleteSection(f.el.getAttribute('autocomplete')) === section),
+  );
+  const hasFamilyField = fields.some((f) => f.type === 'family-name');
+
+  for (const { el, type } of fields) {
+    if (el instanceof HTMLSelectElement) {
+      selectAutofillOption(el, type, payload);
+      continue;
+    }
+    // Lo que el usuario ya ha escrito en otros campos se respeta.
+    if (el !== anchor && el.value.trim() !== '') continue;
+    const value = payload.kind === 'address'
+      ? addressValueFor(type, payload.address, { hasFamilyField })
+      : cardValueFor(type, payload.card, {
+        placeholder: el.getAttribute('placeholder'),
+        maxLength: el instanceof HTMLInputElement && el.maxLength > 0 ? el.maxLength : null,
+      });
+    if (value) setAutofillValue(el, value);
+  }
+});
+
+// ─── Captura para ofrecer guardar ─────────────────────────────────────────────
+
+// Lo ya enviado en esta página no se reenvía: los checkouts sin <form> hacen
+// clic en muchos botones con los mismos datos escritos.
+const sentAutofillCaptures = new Set<string>();
+
+function captureAutofillFields(scope: ParentNode): void {
+  if (window.top !== window) return;
+  const captured: Array<{ type: AutofillFieldType; value: string }> = [];
+  let hasCard = false;
+  let hasAddress = false;
+  for (const { el, type } of autofillFieldsIn(scope)) {
+    if (type === 'cc-csc') continue; // El CVV no sale nunca de la página.
+    let value: string;
+    if (el instanceof HTMLSelectElement) {
+      const opt = el.selectedOptions[0];
+      if (!opt || !opt.value) continue;
+      // País y provincia: el texto visible ("España") dice más que el código.
+      value = type === 'country' || type === 'address-level1' ? opt.text : opt.value;
+    } else {
+      value = el.value;
+    }
+    value = value.trim();
+    if (!value) continue;
+    if (type === 'cc-number') hasCard = true;
+    if (type === 'address-line1' || type === 'street-address') hasAddress = true;
+    captured.push({ type, value: value.slice(0, 400) });
+  }
+  if (!hasCard && !(hasAddress && !scopeHasPassword(scope))) return;
+
+  const fingerprint = JSON.stringify(captured);
+  if (sentAutofillCaptures.has(fingerprint)) return;
+  sentAutofillCaptures.add(fingerprint);
+  ipcRenderer.send('autofill:form-submitted', { fields: captured.slice(0, 60) });
+}
+
+document.addEventListener(
+  'submit',
+  (e: SubmitEvent) => {
+    const form = e.target;
+    if (form instanceof HTMLFormElement) captureAutofillFields(form);
+  },
+  true,
+);
+
+// Pagos y checkouts sin <form>: el clic en el botón es la señal de envío.
+document.addEventListener(
+  'click',
+  (e: MouseEvent) => {
+    const target = e.target as Element | null;
+    if (!target || typeof target.closest !== 'function') return;
+    const trigger = target.closest('button, input[type="submit"], [role="button"]');
+    if (!trigger) return;
+    if (trigger instanceof HTMLButtonElement && trigger.type !== 'submit' && trigger.form) return;
+    captureAutofillFields(trigger.closest('form') ?? document);
+  },
+  true,
+);
 
 // ─── Dirty form tracking (auto-discard exclusion) ─────────────────────────────
 // Reports to main whether the user has typed unsent data into a form field, so

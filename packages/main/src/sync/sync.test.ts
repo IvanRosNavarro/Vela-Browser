@@ -60,6 +60,7 @@ describe('ProfileSettingsRepository — emisión de sync', () => {
     repo.set('keyring:wrapped-key', 'yyy');
     repo.set('client-cert:choices', '{}');
     repo.set('extensions:disabled', '[]');
+    repo.set('zoom:per-site', '{"example.com":1.25}');
 
     expect(captured).toHaveLength(0);
     expect(repo.listSyncable()).toHaveLength(0);

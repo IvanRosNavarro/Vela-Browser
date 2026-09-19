@@ -13,6 +13,7 @@ import { CommandRegistry, defineCommand } from './registry';
 import { reposForCommand } from './context';
 import { BugSnapshotService, initConsoleBuffers } from '../devtools/BugSnapshotService';
 import { translateAndShow } from '../ipc/translation';
+import { printPage, savePageAs } from '../tabs/pageActions';
 
 const ACTIVE_WORKSPACE_KEY = 'active-workspace';
 const MRU_SCOPE_KEY = 'mru:scope';
@@ -313,6 +314,22 @@ export function registerCoreCommands(
     }),
   );
 
+  // Sin atajo por defecto: Chrome no trae ninguno y Ctrl+M (Firefox) lo usan
+  // bastantes webs. Se puede asignar desde vela://settings#shortcuts.
+  registry.register(
+    defineCommand({
+      id: 'tab.toggleMute',
+      title: 'Silenciar / activar sonido de la pestaña',
+      category: 'tab',
+      argsSchema: z.object({ tabId: z.string().optional() }),
+      run: (ctx, args) => {
+        const tabId = args.tabId ?? ctx.activeTabId;
+        if (!tabId) return;
+        ipc.tabManager.toggleTabMuted(tabId);
+      },
+    }),
+  );
+
   registry.register(
     defineCommand({
       id: 'tab.rename',
@@ -479,6 +496,10 @@ export function registerCoreCommands(
       run: (ctx) => {
         if (ctx.windowId === null) return;
         ipc.tabManager.stop(ctx.windowId);
+        // Escape llega aquí y no al renderer (la tabla de atajos lo consume
+        // en la shell), así que también es quien vacía la selección múltiple
+        // de pestañas de la sidebar.
+        emitRendererAction(ipc, ctx, 'clear-tab-selection');
       },
     }),
   );
@@ -502,6 +523,43 @@ export function registerCoreCommands(
           }
         }
         emitRendererAction(ipc, ctx, 'focus-address-bar');
+      },
+    }),
+  );
+
+  // ---------- página ----------
+  // Actúan sobre la pestaña activa. El despacho de atajos no los intercepta
+  // mientras un overlay oculta el WCV (ver PAGE_SCOPED_COMMANDS en
+  // shortcuts/index.ts): así Ctrl+S sigue llegando al editor de capturas.
+
+  registry.register(
+    defineCommand({
+      id: 'page.print',
+      title: 'Imprimir…',
+      category: 'navigation',
+      defaultShortcut: 'Ctrl+P',
+      isVisible: (ctx) => ctx.activeTabId !== null,
+      run: (ctx) => {
+        if (ctx.windowId === null) return;
+        printPage(ipc.tabManager.getActiveTabWebContents(ctx.windowId));
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'page.save',
+      title: 'Guardar página como…',
+      category: 'navigation',
+      defaultShortcut: 'Ctrl+S',
+      isVisible: (ctx) => ctx.activeTabId !== null,
+      run: async (ctx) => {
+        if (ctx.windowId === null) return;
+        await savePageAs(
+          ipc.tabManager.getActiveTabWebContents(ctx.windowId),
+          BrowserWindow.fromId(ctx.windowId),
+          ipc.events,
+        );
       },
     }),
   );
@@ -575,6 +633,49 @@ export function registerCoreCommands(
       defaultShortcut: 'Ctrl+Shift+M',
       run: (ctx) => {
         emitRendererAction(ipc, ctx, 'toggle-device-mode');
+      },
+    }),
+  );
+
+  // Zoom de página de la pestaña activa (con split view, la del panel con el
+  // foco). Además del atajo, `buildShortcutTable` engancha Ctrl con los
+  // caracteres «+», «=», «-» y «0» sea cual sea la distribución del teclado
+  // (y el teclado numérico), porque la tabla casa por tecla física.
+  registry.register(
+    defineCommand({
+      id: 'zoom.in',
+      title: 'Acercar (zoom +)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+=',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.step(ctx.activeTabId, 'in');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'zoom.out',
+      title: 'Alejar (zoom −)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+-',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.step(ctx.activeTabId, 'out');
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'zoom.reset',
+      title: 'Restablecer zoom (100 %)',
+      category: 'view',
+      defaultShortcut: 'Ctrl+0',
+      run: (ctx) => {
+        if (!ctx.activeTabId) return;
+        ipc.zoomManager.reset(ctx.activeTabId);
       },
     }),
   );
@@ -817,6 +918,21 @@ export function registerCoreCommands(
             type: 'info',
           }
           : { message: 'El modo oscuro solo se aplica a páginas web', type: 'info' });
+      },
+    }),
+  );
+
+  // ---------- multimedia ----------
+
+  // Sin atajo por defecto: el usuario puede asignarle uno en Ajustes → Atajos.
+  registry.register(
+    defineCommand({
+      id: 'media.pictureInPicture',
+      title: 'Imagen en imagen (vídeo de la pestaña activa)',
+      category: 'tab',
+      run: async (ctx) => {
+        if (ctx.activeTabId === null) return;
+        await ipc.pipManager.toggleForTab(ctx.activeTabId);
       },
     }),
   );

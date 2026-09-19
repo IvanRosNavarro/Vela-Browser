@@ -10,6 +10,7 @@ import type { WindowLayout } from './types/layout';
 import type { MediaSource } from './types/media';
 import type { Favorite } from './types/favorite';
 import type { TabNode } from './types/treeNode';
+import type { TabZoomState } from './types/zoom';
 import type { AdBlockerCounts } from './types/adblocker';
 import type { SyncStatus } from './types/sync';
 import type { ExtendedSuggestion } from './types/suggestion';
@@ -50,6 +51,8 @@ export const IPC_CHANNELS = {
   NODE_REORDER: 'node:reorder',
   NODE_TOGGLE_COLLAPSE: 'node:toggle-collapse',
   NODE_RENAME: 'node:rename',
+  NODE_MOVE_MANY: 'node:move-many',
+  NODE_GROUP_INTO_FOLDER: 'node:group-into-folder',
 
   TAB_ACTIVATE: 'tab:activate',
   TAB_CLOSE: 'tab:close',
@@ -59,6 +62,9 @@ export const IPC_CHANNELS = {
   TAB_UNPIN: 'tab:unpin',
   TAB_RESTORE_PINNED_URL: 'tab:restore-pinned-url',
   TAB_REPLACE_PINNED_URL: 'tab:replace-pinned-url',
+  TAB_CLOSE_MANY: 'tab:close-many',
+  TAB_SET_MUTED: 'tab:set-muted',
+  TAB_GET_MUTED: 'tab:get-muted',
 
   TREE_GET_BY_WORKSPACE: 'tree:get-by-workspace',
   TREE_GET_DESCENDANTS: 'tree:get-descendants',
@@ -95,6 +101,7 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
+  SPELLCHECK_GET_INFO: 'spellcheck:get-info',
 
   UPDATE_GET_STATUS: 'update:get-status',
   UPDATE_CHECK_NOW: 'update:check-now',
@@ -228,6 +235,7 @@ export const IPC_CHANNELS = {
   MEDIA_ACTIVATE_TAB: 'media:activate-tab',
   MEDIA_GET_CURRENT_TIME: 'media:get-current-time',
   MEDIA_SEEK_BY: 'media:seek-by',
+  MEDIA_TOGGLE_PIP: 'media:toggle-pip',
   MEDIA_OPEN_POPUP: 'media:open-popup',
   MEDIA_CLOSE_POPUP: 'media:close-popup',
 
@@ -257,6 +265,7 @@ export const IPC_CHANNELS = {
   HISTORY_DELETE_DOMAIN: 'history:delete-domain',
   HISTORY_DELETE_ALL: 'history:delete-all',
   HISTORY_GET_FOR_PERIOD: 'history:get-for-period',
+  HISTORY_AUTOCOMPLETE: 'history:autocomplete',
 
   COOKIES_GET_FOR_URL: 'cookies:get-for-url',
   COOKIES_SET: 'cookies:set',
@@ -265,6 +274,12 @@ export const IPC_CHANNELS = {
   COOKIES_CLEAR_ALL: 'cookies:clear-all',
   COOKIES_OPEN_PANEL: 'cookies:open-panel',
   COOKIES_CLOSE_PANEL: 'cookies:close-panel',
+
+  ZOOM_GET: 'zoom:get',
+  ZOOM_STEP: 'zoom:step',
+  ZOOM_RESET: 'zoom:reset',
+  ZOOM_OPEN_POPUP: 'zoom:open-popup',
+  ZOOM_CLOSE_POPUP: 'zoom:close-popup',
 
   FAVORITES_LIST: 'favorites:list',
   FAVORITES_ADD: 'favorites:add',
@@ -314,6 +329,29 @@ export const IPC_CHANNELS = {
   VAULT_OPEN_AND_FILL: 'vault:open-and-fill',
   VAULT_COUNT_FOR_DOMAIN: 'vault:count-for-domain',
   VAULT_GET_PENDING: 'vault:get-pending',
+
+  // Autorrelleno de direcciones y tarjetas (guardadas en el vault).
+  AUTOFILL_LIST_ADDRESSES: 'autofill:list-addresses',
+  AUTOFILL_SAVE_ADDRESS: 'autofill:save-address',
+  AUTOFILL_DELETE_ADDRESS: 'autofill:delete-address',
+  AUTOFILL_LIST_CARDS: 'autofill:list-cards',
+  AUTOFILL_GET_CARD: 'autofill:get-card',
+  AUTOFILL_SAVE_CARD: 'autofill:save-card',
+  AUTOFILL_DELETE_CARD: 'autofill:delete-card',
+  AUTOFILL_OPEN_MANAGER: 'autofill:open-manager',
+  AUTOFILL_POPUP_GET_OPTIONS: 'autofill:popup-get-options',
+  AUTOFILL_POPUP_FILL: 'autofill:popup-fill',
+  AUTOFILL_POPUP_CLOSE: 'autofill:popup-close',
+  AUTOFILL_SAVE_OFFER_GET: 'autofill:save-offer-get',
+  AUTOFILL_SAVE_OFFER_DECIDE: 'autofill:save-offer-decide',
+  // Desde el preload de las pestañas web (ipcMain.on, remitente NO confiable).
+  AUTOFILL_FIELD_FOCUSED: 'autofill:field-focused',
+  AUTOFILL_FIELD_DISMISSED: 'autofill:field-dismissed',
+  AUTOFILL_POPUP_KEY: 'autofill:popup-key',
+  AUTOFILL_FORM_SUBMITTED: 'autofill:form-submitted',
+  // main → frame de la pestaña que pidió el relleno (WebFrameMain.send).
+  AUTOFILL_FILL_FRAME: 'autofill:fill-frame',
+  AUTOFILL_POPUP_CLOSED_FRAME: 'autofill:popup-closed',
 
   SCRIPTS_LIST: 'scripts:list',
   SCRIPTS_ADD: 'scripts:add',
@@ -484,6 +522,9 @@ export const IPC_EVENTS = {
   FULLSCREEN_CHANGED: 'state:fullscreen-changed',
   TAB_READER_STATE_CHANGED: 'state:tab-reader-state-changed',
   TAB_FEATURES_CHANGED: 'state:tab-features-changed',
+  /** Zoom de página de una pestaña (al cambiarlo, al navegar y al activarla). */
+  TAB_ZOOM_CHANGED: 'state:tab-zoom-changed',
+  TAB_MUTED_CHANGED: 'state:tab-muted-changed',
   NOTIFICATIONS_CHANGED: 'state:notifications-changed',
   NOTIFICATION_PERMISSION_PENDING: 'state:notification-permission-pending',
   NOTIFICATION_PERMISSION_CHANGED: 'state:notification-permission-changed',
@@ -504,6 +545,7 @@ export const IPC_EVENTS = {
   ADBLOCKER_COUNT_UPDATED: 'state:adblocker-count-updated',
   VAULT_CREDENTIALS_PENDING: 'state:vault-credentials-pending',
   VAULT_PENDING_CLEARED: 'state:vault-pending-cleared',
+  AUTOFILL_POPUP_KEY_PRESSED: 'state:autofill-popup-key-pressed',
   SCRIPT_ERROR: 'state:script-error',
   APAREJOS_CHANGED: 'state:aparejos-changed',
   URLBAR_CONFIG_CHANGED: 'state:urlbar-config-changed',
@@ -518,6 +560,7 @@ export const IPC_EVENTS = {
   PROFILE_MODAL_TRIGGER: 'state:profile-modal-trigger',
   BUG_SNAPSHOT_COMPLETE: 'state:bug-snapshot-complete',
   SELECTION_SAVED_TO_FILE: 'state:selection-saved-to-file',
+  PAGE_SAVED: 'state:page-saved',
   LINK_OPENED_IN_WORKSPACE: 'state:link-opened-in-workspace',
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
@@ -578,6 +621,9 @@ export interface MainEventPayloads {
     windowId: number;
     features: Array<'rss' | 'form' | 'media'>;
   };
+  [IPC_EVENTS.TAB_ZOOM_CHANGED]: TabZoomState;
+  /** Lista completa de pestañas silenciadas (no se persiste entre reinicios). */
+  [IPC_EVENTS.TAB_MUTED_CHANGED]: { mutedTabIds: string[] };
   [IPC_EVENTS.NOTIFICATIONS_CHANGED]: { profileId: string; unreadCount: number };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_PENDING]: { origin: string; windowId: number; hasPushRequest: boolean };
   [IPC_EVENTS.NOTIFICATION_PERMISSION_CHANGED]: {
@@ -608,6 +654,7 @@ export interface MainEventPayloads {
     existingId: string | null;
   };
   [IPC_EVENTS.VAULT_PENDING_CLEARED]: { windowId: number };
+  [IPC_EVENTS.AUTOFILL_POPUP_KEY_PRESSED]: { key: 'ArrowDown' | 'ArrowUp' | 'Enter' };
   [IPC_EVENTS.SCRIPT_ERROR]: ScriptError;
   [IPC_EVENTS.APAREJOS_CHANGED]: { aparejos: AparejoStatus[] };
   [IPC_EVENTS.URLBAR_CONFIG_CHANGED]: { config: UrlBarIconConfig[] };
@@ -622,6 +669,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.PROFILE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'unlock'; profileId?: string };
   [IPC_EVENTS.BUG_SNAPSHOT_COMPLETE]: { zipPath: string };
   [IPC_EVENTS.SELECTION_SAVED_TO_FILE]: { filePath: string };
+  [IPC_EVENTS.PAGE_SAVED]: { filePath: string };
   [IPC_EVENTS.LINK_OPENED_IN_WORKSPACE]: { workspaceId: string; workspaceName: string };
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };

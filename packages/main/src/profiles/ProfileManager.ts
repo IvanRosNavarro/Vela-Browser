@@ -25,6 +25,7 @@ import {
 } from '../storage/repositories';
 import { ProfileMigrationRunner } from '../storage/ProfileMigrationRunner';
 import { PasswordVault } from '../passwords/PasswordVault';
+import { AutofillVault } from '../passwords/AutofillVault';
 import type { ProfileExtensionManager } from '../extensions/ProfileExtensionManager';
 import {
   getProfileDbPath,
@@ -38,6 +39,7 @@ import {
   configureSessionDefaults,
   getSessionForProfile,
 } from './sessions';
+import { applySpellcheckSettings } from '../spellcheck';
 
 export interface ProfileRepositories {
   workspaces: WorkspaceRepository;
@@ -46,6 +48,8 @@ export interface ProfileRepositories {
   metadata: ProfileMetadataRepository;
   settings: ProfileSettingsRepository;
   passwordVault: PasswordVault;
+  /** Direcciones y tarjetas del vault (mismo cifrado que las contraseñas). */
+  autofillVault: AutofillVault;
   notifications: NotificationRepository;
   pushSubscriptions: PushSubscriptionRepository;
   history: HistoryRepository;
@@ -254,6 +258,12 @@ export class ProfileManager {
             profileId,
             logger: this.ctx.logger,
           }),
+          autofillVault: new AutofillVault({
+            db,
+            keyring: this.ctx.keyring,
+            profileId,
+            logger: this.ctx.logger,
+          }),
           notifications: new NotificationRepository(db),
           pushSubscriptions: new PushSubscriptionRepository(db),
           history: new HistoryRepository(db),
@@ -269,6 +279,7 @@ export class ProfileManager {
 
         const ses = getSessionForProfile(profile.partitionId);
         await configureSessionDefaults(ses, profileId, this.ctx.notificationManager, this.ctx.mediaPermissionManager);
+        applySpellcheckSettings(ses, repos.settings, profileId);
         this.sessionsByProfile.set(profileId, ses);
         this.ctx.onProfileSessionReady?.(profileId, ses);
 

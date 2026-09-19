@@ -6,6 +6,8 @@ interface DiscardManagerCtx {
   tabManager: TabManager;
   profileManager: ProfileManager;
   logger: Logger;
+  /** La tab tiene un vídeo en imagen en imagen: descartarla cerraría el PiP. */
+  isTabInPip?: (tabId: string) => boolean;
 }
 
 const TIMEOUT_MAP: Record<string, number> = {
@@ -144,6 +146,11 @@ export class DiscardManager {
 
         // Audio activo
         if (noAudio && this.ctx.tabManager.isTabCurrentlyAudible(node.id)) continue;
+
+        // Vídeo en imagen en imagen: siempre exceptuada, sin ajuste. El PiP
+        // sigue a la vista del usuario aunque la pestaña no lo esté (p. ej.
+        // un vídeo silenciado que no cuenta como audio activo).
+        if (this.ctx.isTabInPip?.(node.id)) continue;
 
         // Formulario con datos introducidos por el usuario sin enviar.
         // (No basta con que la página tenga un formulario: casi todas lo
