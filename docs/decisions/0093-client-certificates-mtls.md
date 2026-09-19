@@ -83,3 +83,28 @@ en caliente si el cambio ocurre en otra ventana del mismo perfil.
 - No cubre Linux/macOS de forma especial: Electron también puebla
   `certificateList` desde el almacén del SO en esas plataformas, pero no se
   ha probado explícitamente (el alcance pedido era Windows).
+
+## Actualización v0.2.8
+
+Dos fallos hacían que el acceso con certificado fallara sin mostrar el
+selector, y que siguiera fallando al reintentar:
+
+- **Ventanas emergentes**: las sedes electrónicas abren el acceso con
+  certificado con `window.open` (con tamaño o `disposition: 'new-window'`), y
+  `TabManager` lo deja crear como `BrowserWindow` real. El manager solo sabía
+  resolver pestañas y cancelaba la petición. Ahora `TabManager` apunta qué
+  pestaña abrió cada ventana emergente (`getOwnerTabForPopup`) y, como último
+  recurso, el perfil se resuelve por la sesión. El selector se abre sobre la
+  ventana que pidió el certificado.
+- **Peticiones simultáneas**: cada petición nueva del mismo WebContents
+  cancelaba la anterior. Ahora `ClientCertRequestQueue` agrupa las del mismo
+  origen (reciben todas el certificado elegido) y deja en cola las de otro.
+
+Regla que se deriva: **no responder sin certificado salvo decisión del
+usuario**. Chromium recuerda «sin certificado» para el host durante la
+sesión, y un intento cancelado estropea los siguientes hasta reiniciar.
+
+Límite conocido: Electron solo emite `select-client-certificate` si hay al
+menos un candidato. Sin certificados válidos en el almacén del SO (p. ej.
+instalado solo en Firefox, o DNIe sin la tarjeta), Chromium sigue sin
+certificado y Vela no se entera.

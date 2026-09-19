@@ -168,6 +168,22 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       script `lint` ni ESLint configurado, y el CI lo ejecuta con
       `continue-on-error`.
 
+### Certificados y ventanas emergentes (v0.2.8)
+
+- [ ] **Probar el acceso con certificado electrónico** en un equipo con
+      certificado (sede de la AEAT, Seguridad Social, Cl@ve) tras el arreglo de
+      ventanas emergentes y peticiones simultáneas (ADR 0093, actualización
+      v0.2.8). Si falla, el log `[client-cert]` dice en qué punto.
+- [ ] **Aviso cuando una web pide certificado y no hay ninguno**: Electron no
+      emite `select-client-certificate` sin candidatos, así que hoy la web falla
+      en silencio. Estudiar si se puede detectar (p. ej. por el error de red
+      `ERR_BAD_SSL_CLIENT_AUTH_CERT` o la respuesta del sitio).
+- [ ] **Ventanas emergentes desde pestañas fantasma usan la sesión del perfil**:
+      `setWindowOpenHandler` fija `partition: persist:profile-{id}` sin mirar si
+      la pestaña es fantasma, así que la ventana emergente escribe cookies y
+      caché en la partición persistente en lugar de en `secure-{tabId}`.
+      Problema de privacidad.
+
 ### SafeStorage en Linux
 
 - [ ] **Validar safeStorage en Linux**. En distros sin libsecret/kwallet,
