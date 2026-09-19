@@ -140,6 +140,34 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 - [ ] **Swipe en el sidebar flotante**: `pages/sidebar-floating/` no usa
       `useWorkspaceSwipe`.
 
+### v0.2.7 (ADRs 0109–0116)
+
+- [ ] **Probar en la app real las 8 funciones de v0.2.7**: se integraron con
+      typecheck, tests y build en verde, pero sin arrancar Electron. Cada ADR
+      lista lo que falta comprobar a mano.
+- [ ] **Iframes fuera del alcance del preload de las pestañas**: sin
+      `nodeIntegrationInSubFrames`, el preload solo corre en el frame principal.
+      Afecta al autorrelleno de tarjetas en pasarelas (Stripe, Adyen…), al modo
+      oscuro dentro de iframes y al aviso de cierre de un PiP abierto en un iframe.
+- [ ] **Sync del vault**: solo se sube al vincular (`pushAllLocal`) y los borrados
+      no se propagan. Afecta a contraseñas, direcciones y tarjetas. Un dispositivo
+      con versión < 0.2.7 que suba su vault borra del servidor direcciones y
+      tarjetas hasta la siguiente subida de uno nuevo.
+- [ ] **Menú de Vela en pantallas bajas**: la posición se calcula con 480 px y la
+      página crece a su contenido (zoom, imprimir y guardar añaden filas); puede
+      no caber.
+- [ ] **Icono de modo oscuro en la barra de URL** (ADR 0116): hoy solo menú
+      contextual y paleta.
+- [ ] **PiP y descarte al cambiar de workspace**: con `tabs:discard-on-workspace-switch`
+      activo, las pestañas se destruyen antes de poder entrar en PiP.
+- [ ] **Ctrl+Shift+T desde `vela://folder-view`**: reabre la pestaña eliminada en
+      la raíz del workspace, no dentro de la carpeta.
+- [ ] **Ayuda de exportación de contraseñas** en `vela://import-data` para Vivaldi
+      y Opera: escrita sin comprobar en esos navegadores.
+- [ ] **Lint inexistente**: `pnpm lint` no comprueba nada; ningún paquete tiene
+      script `lint` ni ESLint configurado, y el CI lo ejecuta con
+      `continue-on-error`.
+
 ### SafeStorage en Linux
 
 - [ ] **Validar safeStorage en Linux**. En distros sin libsecret/kwallet,
