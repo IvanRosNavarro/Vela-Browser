@@ -8,6 +8,12 @@ import {
 import type { TreeNode } from '@vela/shared';
 import { resolveQueryToUrl } from '../../../components/AddressBar/url';
 import {
+  INLINE_AUTOCOMPLETE_SETTING,
+  canInlineComplete,
+  inlineDisplayValue,
+  useInlineAutocomplete,
+} from '../../../components/AddressBar/useInlineAutocomplete';
+import {
   SearchResults,
   type AnyResult,
   type TabResult,
@@ -39,11 +45,26 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
   const [historyResults, setHistoryResults] = useState<HistoryResult[]>([]);
   const [engineResult, setEngineResult] = useState<SearchEngineResult | null>(null);
   const [navigateResult, setNavigateResult] = useState<NavigateResult | null>(null);
+  const [inlineEnabled, setInlineEnabled] = useState(true);
+  const inline = useInlineAutocomplete(inputRef, inlineEnabled);
+  const completion =
+    inline.completion && inline.completion.typed === query ? inline.completion : null;
 
   const debouncedQuery = useDebounce(query, 120);
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.api.settings
+      .get({ key: INLINE_AUTOCOMPLETE_SETTING })
+      .then((res) => {
+        if (!cancelled && res.ok) setInlineEnabled(res.data.value !== false);
+      })
+      .catch(() => { /* mantener activo */ });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -119,11 +140,20 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
     }
   }, [debouncedQuery, workspaces, nodesByWorkspace, searchSettings]);
 
+  // La compleción inline encabeza los resultados (índice 0, resaltado por
+  // defecto), igual que en la barra de direcciones.
+  const shownNavigate: NavigateResult | null = completion
+    ? { type: 'navigate', url: completion.url }
+    : navigateResult;
+  const shownHistory = completion
+    ? historyResults.filter((h) => h.url !== completion.url)
+    : historyResults;
+
   const allResults: AnyResult[] = [
-    ...(navigateResult ? [navigateResult] : []),
+    ...(shownNavigate ? [shownNavigate] : []),
     ...(engineResult ? [engineResult] : []),
     ...tabResults,
-    ...historyResults,
+    ...shownHistory,
   ];
 
   const totalResults = allResults.length;
@@ -136,7 +166,13 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // →/Fin/←/Inicio aceptan la compleción inline (sin anular la tecla).
+    const accepted = inline.acceptOnKey(e);
+    if (accepted !== null) {
+      setQuery(accepted);
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((i) => Math.min(i + 1, totalResults - 1));
@@ -145,6 +181,12 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      // Los resultados van con debounce: si la compleción aún no está en la
+      // lista, Enter debe ir igualmente a lo que muestra el input.
+      if (completion && selectedIndex === 0) {
+        window.location.href = completion.url;
+        return;
+      }
       const selected = allResults[selectedIndex];
       if (selected) {
         handleSelect(selected);
@@ -157,6 +199,9 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
         }
       }
     } else if (e.key === 'Escape') {
+      // Con texto autocompletado, el primer Escape solo lo quita.
+      if (inline.dismiss()) return;
+      inline.reset();
       setQuery('');
       setTabResults([]);
       setHistoryResults([]);
@@ -173,9 +218,14 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
       <input
         ref={inputRef}
         type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        value={inlineDisplayValue(query, completion)}
+        onChange={(e) => {
+          inline.onTyped(e.target.value, canInlineComplete(e));
+          setQuery(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
+        onCompositionStart={inline.compositionHandlers.onCompositionStart}
+        onCompositionEnd={inline.compositionHandlers.onCompositionEnd}
         placeholder="Buscar o escribir una URL..."
         className="w-full rounded-xl border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] px-5 py-3 text-lg text-[var(--vela-fg)] placeholder:text-[var(--vela-fg-muted)] shadow-sm outline-none transition-shadow focus:border-[var(--vela-accent)] focus:shadow-md focus:shadow-[var(--vela-accent)]/10"
         autoComplete="off"
@@ -186,9 +236,9 @@ export function UnifiedSearch({ workspaces, nodesByWorkspace, searchSettings }: 
       {showResults && (
         <div className="mt-2">
           <SearchResults
-            navigate={navigateResult}
+            navigate={shownNavigate}
             tabs={tabResults}
-            history={historyResults}
+            history={shownHistory}
             engine={engineResult}
             selectedIndex={selectedIndex}
             onSelect={handleSelect}

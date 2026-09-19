@@ -225,6 +225,7 @@ export const IPC_CHANNELS = {
   MEDIA_ACTIVATE_TAB: 'media:activate-tab',
   MEDIA_GET_CURRENT_TIME: 'media:get-current-time',
   MEDIA_SEEK_BY: 'media:seek-by',
+  MEDIA_TOGGLE_PIP: 'media:toggle-pip',
   MEDIA_OPEN_POPUP: 'media:open-popup',
   MEDIA_CLOSE_POPUP: 'media:close-popup',
 
@@ -254,6 +255,7 @@ export const IPC_CHANNELS = {
   HISTORY_DELETE_DOMAIN: 'history:delete-domain',
   HISTORY_DELETE_ALL: 'history:delete-all',
   HISTORY_GET_FOR_PERIOD: 'history:get-for-period',
+  HISTORY_AUTOCOMPLETE: 'history:autocomplete',
 
   COOKIES_GET_FOR_URL: 'cookies:get-for-url',
   COOKIES_SET: 'cookies:set',

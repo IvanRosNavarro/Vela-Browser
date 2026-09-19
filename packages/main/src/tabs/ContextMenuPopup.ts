@@ -290,6 +290,17 @@ function render(p) {
     add.push(sep());
   }
 
+  if (p.video) {
+    add.push(item(p.video.inPip ? 'Salir de imagen en imagen' : 'Imagen en imagen', false, {
+      type: 'video:pip',
+      frameProcessId: p.video.frameProcessId,
+      frameToken: p.video.frameToken,
+      wcvX: p.wcvX,
+      wcvY: p.wcvY,
+    }));
+    add.push(sep());
+  }
+
   if (p.selection) {
     const q = trunc(p.selection.text, 30);
     add.push(item('Buscar "' + q + '" en ' + p.selection.searchLabel, false, { type: 'selection:search', url: p.selection.searchUrl }));
@@ -643,6 +654,25 @@ export class ContextMenuPopup {
           url: `view-source:${url}`,
           activate: true,
         });
+        break;
+      }
+
+      case 'video:pip': {
+        if (!wc || wc.isDestroyed()) break;
+        const { frameProcessId, frameToken, wcvX, wcvY } = action;
+        if (
+          typeof frameProcessId !== 'number' ||
+          typeof frameToken !== 'string' ||
+          typeof wcvX !== 'number' ||
+          typeof wcvY !== 'number'
+        ) break;
+        const tabId = this.ctx.tabManager.getTabIdForWebContents(wc.id);
+        await this.ctx.pipManager.toggleInFrame(
+          tabId,
+          wc,
+          { processId: frameProcessId, frameToken },
+          { x: wcvX, y: wcvY },
+        );
         break;
       }
 

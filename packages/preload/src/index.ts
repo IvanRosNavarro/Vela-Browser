@@ -309,6 +309,7 @@ const api: PreloadApi = {
     activateTab: (input) => call(IPC_CHANNELS.MEDIA_ACTIVATE_TAB, input),
     getCurrentTime: (input) => call(IPC_CHANNELS.MEDIA_GET_CURRENT_TIME, input),
     seekBy: (input) => call(IPC_CHANNELS.MEDIA_SEEK_BY, input),
+    togglePictureInPicture: (input) => call(IPC_CHANNELS.MEDIA_TOGGLE_PIP, input),
     openPopup: (input) => call(IPC_CHANNELS.MEDIA_OPEN_POPUP, input),
     closePopup: () => call(IPC_CHANNELS.MEDIA_CLOSE_POPUP),
   },
@@ -326,6 +327,7 @@ const api: PreloadApi = {
     deleteDomain: (input) => call(IPC_CHANNELS.HISTORY_DELETE_DOMAIN, input),
     deleteAll: (input) => call(IPC_CHANNELS.HISTORY_DELETE_ALL, input),
     getForPeriod: (input) => call(IPC_CHANNELS.HISTORY_GET_FOR_PERIOD, input),
+    autocomplete: (input) => call(IPC_CHANNELS.HISTORY_AUTOCOMPLETE, input),
   },
   cookies: {
     getForUrl: (url) => call(IPC_CHANNELS.COOKIES_GET_FOR_URL, { url }),

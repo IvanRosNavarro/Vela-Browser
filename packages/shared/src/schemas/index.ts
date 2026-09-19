@@ -5,6 +5,7 @@ export * from './settings';
 export * from './menu';
 export * from './autoGroupRule';
 export * from './suggest';
+export * from './history';
 export * from './theme';
 export * from './shortcuts';
 export * from './devtools';

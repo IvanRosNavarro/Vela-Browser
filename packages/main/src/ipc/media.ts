@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { IPC_CHANNELS, z, type IpcResponse } from '@vela/shared';
+import { IPC_CHANNELS, z, type IpcResponse, type PipToggleResult } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { guardTrustedFrame } from './validate';
@@ -124,6 +124,23 @@ export function registerMediaHandlers(ctx: IpcContext): void {
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.MEDIA_SEEK_BY);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEDIA_TOGGLE_PIP,
+    async (event, payload): Promise<IpcResponse<PipToggleResult>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.MEDIA_TOGGLE_PIP);
+      const parsed = tabIdSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        const data = await ctx.pipManager.toggleForTab(parsed.data.tabId);
+        return { ok: true, data };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.MEDIA_TOGGLE_PIP);
       }
     },
   );
