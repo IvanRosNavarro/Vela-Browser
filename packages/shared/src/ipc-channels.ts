@@ -100,6 +100,7 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
+  SPELLCHECK_GET_INFO: 'spellcheck:get-info',
 
   UPDATE_GET_STATUS: 'update:get-status',
   UPDATE_CHECK_NOW: 'update:check-now',
@@ -518,6 +519,7 @@ export const IPC_EVENTS = {
   PROFILE_MODAL_TRIGGER: 'state:profile-modal-trigger',
   BUG_SNAPSHOT_COMPLETE: 'state:bug-snapshot-complete',
   SELECTION_SAVED_TO_FILE: 'state:selection-saved-to-file',
+  PAGE_SAVED: 'state:page-saved',
   LINK_OPENED_IN_WORKSPACE: 'state:link-opened-in-workspace',
   ADD_NODE_MENU_ACTION: 'state:add-node-menu-action',
   DOWNLOADS_CHANGED: 'state:downloads-changed',
@@ -624,6 +626,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.PROFILE_MODAL_TRIGGER]: { mode: 'create' | 'manage' | 'unlock'; profileId?: string };
   [IPC_EVENTS.BUG_SNAPSHOT_COMPLETE]: { zipPath: string };
   [IPC_EVENTS.SELECTION_SAVED_TO_FILE]: { filePath: string };
+  [IPC_EVENTS.PAGE_SAVED]: { filePath: string };
   [IPC_EVENTS.LINK_OPENED_IN_WORKSPACE]: { workspaceId: string; workspaceName: string };
   [IPC_EVENTS.ADD_NODE_MENU_ACTION]: { action: 'new-tab' | 'new-folder' | 'new-secure-tab' | 'new-blinded-window'; workspaceId: string; parentId: string | null };
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };

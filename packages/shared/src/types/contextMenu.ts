@@ -25,6 +25,17 @@ export interface ContextMenuSelectionData {
   searchUrl: string;
 }
 
+/**
+ * Palabra mal escrita bajo el cursor. Solo llega cuando el corrector del
+ * perfil está activo y el clic cae sobre una palabra subrayada de un campo
+ * editable.
+ */
+export interface ContextMenuSpellingData {
+  misspelledWord: string;
+  /** Sugerencias del diccionario; puede venir vacío. */
+  suggestions: string[];
+}
+
 export interface ContextMenuEditFlags {
   canCut: boolean;
   canCopy: boolean;
@@ -47,6 +58,7 @@ export interface ContextMenuShowPayload {
   image: ContextMenuImageData | null;
   video: ContextMenuVideoData | null;
   selection: ContextMenuSelectionData | null;
+  spelling: ContextMenuSpellingData | null;
   isEditable: boolean;
   editFlags: ContextMenuEditFlags;
   currentUrl: string | null;

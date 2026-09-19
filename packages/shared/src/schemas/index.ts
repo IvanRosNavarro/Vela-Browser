@@ -2,6 +2,7 @@ export * from './workspace';
 export * from './profile';
 export * from './treeNode';
 export * from './settings';
+export * from './spellcheck';
 export * from './menu';
 export * from './autoGroupRule';
 export * from './suggest';

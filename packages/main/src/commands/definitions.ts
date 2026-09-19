@@ -13,6 +13,7 @@ import { CommandRegistry, defineCommand } from './registry';
 import { reposForCommand } from './context';
 import { BugSnapshotService, initConsoleBuffers } from '../devtools/BugSnapshotService';
 import { translateAndShow } from '../ipc/translation';
+import { printPage, savePageAs } from '../tabs/pageActions';
 
 const ACTIVE_WORKSPACE_KEY = 'active-workspace';
 const MRU_SCOPE_KEY = 'mru:scope';
@@ -522,6 +523,43 @@ export function registerCoreCommands(
           }
         }
         emitRendererAction(ipc, ctx, 'focus-address-bar');
+      },
+    }),
+  );
+
+  // ---------- página ----------
+  // Actúan sobre la pestaña activa. El despacho de atajos no los intercepta
+  // mientras un overlay oculta el WCV (ver PAGE_SCOPED_COMMANDS en
+  // shortcuts/index.ts): así Ctrl+S sigue llegando al editor de capturas.
+
+  registry.register(
+    defineCommand({
+      id: 'page.print',
+      title: 'Imprimir…',
+      category: 'navigation',
+      defaultShortcut: 'Ctrl+P',
+      isVisible: (ctx) => ctx.activeTabId !== null,
+      run: (ctx) => {
+        if (ctx.windowId === null) return;
+        printPage(ipc.tabManager.getActiveTabWebContents(ctx.windowId));
+      },
+    }),
+  );
+
+  registry.register(
+    defineCommand({
+      id: 'page.save',
+      title: 'Guardar página como…',
+      category: 'navigation',
+      defaultShortcut: 'Ctrl+S',
+      isVisible: (ctx) => ctx.activeTabId !== null,
+      run: async (ctx) => {
+        if (ctx.windowId === null) return;
+        await savePageAs(
+          ipc.tabManager.getActiveTabWebContents(ctx.windowId),
+          BrowserWindow.fromId(ctx.windowId),
+          ipc.events,
+        );
       },
     }),
   );

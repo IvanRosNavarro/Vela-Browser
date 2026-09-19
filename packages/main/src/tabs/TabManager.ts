@@ -30,6 +30,7 @@ import { applyRulesToTab } from '../groups/autoGrouping';
 import type { Logger } from '../logger';
 import type { ProfileManager, ProfileRepositories } from '../profiles/ProfileManager';
 import { PreviewStore } from '../previews/PreviewStore';
+import { applySpellcheckSettings } from '../spellcheck';
 import { PreviewCapturer, type CaptureSettings } from '../previews/PreviewCapturer';
 
 export const SIDEBAR_WIDTH_DEFAULT = 240;
@@ -1647,6 +1648,11 @@ export class TabManager {
     }
   }
 
+  /** true mientras un modal de la shell mantiene oculto el WCV (overlay). */
+  isOverlayActive(windowId: number): boolean {
+    return this.windows.get(windowId)?.overlayActive === true;
+  }
+
   setNotificationPanelWidth(windowId: number, width: number): void {
     const state = this.windows.get(windowId);
     if (!state) return;
@@ -2275,6 +2281,15 @@ export class TabManager {
 
     ensureVelaProtocolOnSession(view.webContents.session);
     ensurePreviewProtocolOnSession(view.webContents.session);
+
+    // La sesión en memoria de la pestaña fantasma nace con el corrector por
+    // defecto de Electron; se le aplican los ajustes del perfil para que
+    // desactivarlo (o cambiar idiomas) valga también aquí.
+    try {
+      applySpellcheckSettings(secureSession, this.reposFor(state).settings, `secure-${tab.id}`);
+    } catch (err) {
+      this.ctx.logger.warn(`[tabs] no se pudo aplicar el corrector a la pestaña fantasma ${tab.id}`, err);
+    }
 
     state.window.contentView.addChildView(view);
     view.setBounds({ ...HIDDEN_BOUNDS });

@@ -334,6 +334,15 @@ export function setAddressBarEditing(windowId: number, editing: boolean): void {
 
 const findBarActiveByWindow = new Map<number, boolean>();
 
+/**
+ * Comandos que actúan sobre la página de la pestaña activa. Mientras un
+ * overlay de la shell oculta el WCV (editor de capturas, paleta, etc.) la
+ * página no está a la vista, así que sus atajos no se interceptan: la tecla
+ * llega al renderer y el modal decide. Es lo que permite que Ctrl+S guarde
+ * la captura en el editor en vez de abrir «Guardar página como…».
+ */
+export const PAGE_SCOPED_COMMANDS: ReadonlySet<string> = new Set(['page.print', 'page.save']);
+
 export function setFindBarActive(windowId: number, active: boolean): void {
   if (active) {
     findBarActiveByWindow.set(windowId, true);
@@ -383,6 +392,9 @@ export function attachShortcuts(
       (addressBarEditingByWindow.get(windowId) === true ||
         findBarActiveByWindow.get(windowId) === true)
     ) {
+      return;
+    }
+    if (PAGE_SCOPED_COMMANDS.has(binding.source) && ipc.tabManager.isOverlayActive(windowId)) {
       return;
     }
     event.preventDefault();
