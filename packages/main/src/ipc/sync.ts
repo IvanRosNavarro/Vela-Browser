@@ -162,7 +162,8 @@ export function registerSyncHandlers(ctx: IpcContext): void {
         const res = await fetch(`${SERVER_URL}/auth/magic-link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
+          // poll: true — este cliente recoge la sesión por sondeo (servidor ≥ migración 005).
+          body: JSON.stringify({ email, poll: true }),
         });
 
         if (!res.ok) {
