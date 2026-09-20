@@ -558,11 +558,14 @@ export function registerVaultHandlers(ctx: IpcContext): void {
   // ── vault:export ───────────────────────────────────────────────────────────
   ipcMain.handle(
     IPC_CHANNELS.VAULT_EXPORT,
-    async (event, payload): Promise<IpcResponse<void>> => {
+    async (event, payload): Promise<IpcResponse<{ saved: boolean; filePath?: string }>> => {
       try {
         guardTrustedFrame(event, IPC_CHANNELS.VAULT_EXPORT);
         const { repos } = getFrameContext(event, ctx);
         const { protectionPassword } = payload as { protectionPassword: string };
+        if (typeof protectionPassword !== 'string' || protectionPassword.length === 0) {
+          return { ok: false, error: 'INVALID_INPUT' };
+        }
 
         const parentWindowId = resolveWindowId(event);
         const parentWin = parentWindowId !== null ? BrowserWindow.fromId(parentWindowId) : null;
@@ -573,7 +576,7 @@ export function registerVaultHandlers(ctx: IpcContext): void {
           filters: [{ name: 'JSON cifrado', extensions: ['json'] }],
         });
 
-        if (!filePath) return { ok: true, data: undefined };
+        if (!filePath) return { ok: true, data: { saved: false } };
 
         const entries = repos.passwordVault.exportAll();
         const plaintext = JSON.stringify(entries, null, 2);
@@ -598,7 +601,7 @@ export function registerVaultHandlers(ctx: IpcContext): void {
         };
 
         fs.writeFileSync(filePath, JSON.stringify(exportData, null, 2), 'utf-8');
-        return { ok: true, data: undefined };
+        return { ok: true, data: { saved: true, filePath } };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.VAULT_EXPORT);
       }

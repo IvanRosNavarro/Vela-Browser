@@ -8,6 +8,7 @@ import { SecurityAudit } from './components/SecurityAudit';
 import { FolderSidebar, type VaultView } from './components/FolderSidebar';
 import { AddressesView } from './components/AddressesView';
 import { CardsView } from './components/CardsView';
+import { ExportDialog } from './components/ExportDialog';
 
 type Tab = VaultView;
 
@@ -28,6 +29,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>(initialView);
   const [showGenerator, setShowGenerator] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadEntries = useCallback(async () => {
     const res = search
@@ -88,11 +91,22 @@ export function App() {
     }
   }, [loadEntries]);
 
-  const handleExport = useCallback(async () => {
-    const pwd = prompt('Introduce una contraseña de protección para el archivo exportado (obligatorio):');
-    if (!pwd) return;
-    await window.api.vault.exportVault({ protectionPassword: pwd });
+  const handleExport = useCallback(async (protectionPassword: string) => {
+    const res = await window.api.vault.exportVault({ protectionPassword });
+    setShowExport(false);
+    if (!res.ok) {
+      setNotice('No se ha podido exportar el fichero.');
+      return;
+    }
+    if (res.data.saved) setNotice(`Contraseñas exportadas a ${res.data.filePath ?? 'el fichero elegido'}.`);
   }, []);
+
+  // El aviso de la barra se retira solo; no hay toaster en esta página.
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), 6000);
+    return () => window.clearTimeout(id);
+  }, [notice]);
 
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--vela-bg)' }}>
@@ -152,10 +166,22 @@ export function App() {
               <button type="button" onClick={() => void handleImport()} style={toolbarBtnStyle}>
                 ⬆ Importar
               </button>
-              <button type="button" onClick={() => void handleExport()} style={toolbarBtnStyle}>
+              <button type="button" onClick={() => setShowExport(true)} style={toolbarBtnStyle}>
                 ⬇ Exportar
               </button>
             </div>
+
+            {notice && (
+              <div style={{
+                padding: '6px 16px',
+                fontSize: 11,
+                color: 'var(--vela-fg-muted)',
+                borderBottom: '1px solid var(--vela-border)',
+                background: 'var(--vela-bg-surface)',
+              }}>
+                {notice}
+              </div>
+            )}
 
             <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
               {/* List */}
@@ -208,6 +234,13 @@ export function App() {
           <SecurityAudit entries={entries} />
         )}
       </div>
+
+      {showExport && (
+        <ExportDialog
+          onCancel={() => setShowExport(false)}
+          onConfirm={handleExport}
+        />
+      )}
     </div>
   );
 }
