@@ -13,6 +13,8 @@ export const profileSchema = z.object({
   updatedAt: z.number().int().nonnegative(),
   archived: z.boolean(),
   lastUsedAt: z.number().int().nonnegative().nullable(),
+  remoteProfileId: z.string().nullable(),
+  syncPaused: z.boolean(),
 });
 
 export const createProfileInputSchema = z.object({

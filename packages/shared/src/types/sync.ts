@@ -31,6 +31,27 @@ export interface RemoteSyncProfile {
 }
 
 /**
+ * Un perfil de la cuenta visto desde este equipo: si ya tiene un perfil local
+ * emparejado, cuál, y si su sincronización está en pausa. Es lo que pinta la
+ * sección "Perfiles de la cuenta" de Ajustes › Sincronización.
+ */
+export interface AccountProfile {
+  /** Id en el servidor. */
+  remoteId: string;
+  /** Nombre descifrado, o null si esta contraseña no lo abre. */
+  name: string | null;
+  host: string | null;
+  updatedAt: number;
+  /** Perfil de este equipo emparejado con él, si lo hay. */
+  localProfileId: string | null;
+  localName: string | null;
+  /** Vinculado pero sin sincronizar hasta que se reanude. */
+  paused: boolean;
+  /** Es el perfil de esta ventana: no se puede pausar desde aquí. */
+  isCurrent: boolean;
+}
+
+/**
  * Categorías que el usuario puede activar o desactivar en
  * `vela://settings#sync`. Agrupan los `entity_type` internos en unidades que
  * significan algo para quien las lee: "Workspaces y pestañas" cubre los

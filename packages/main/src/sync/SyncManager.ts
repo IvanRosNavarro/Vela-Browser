@@ -106,8 +106,14 @@ export async function listRemoteProfiles(
   syncPassword: string,
 ): Promise<RemoteProfileInfo[]> {
   const salt = await fetchCanonicalSalt(sessionToken);
-  const key = deriveKey(syncPassword, salt);
+  return listProfilesWithKey(sessionToken, deriveKey(syncPassword, salt));
+}
 
+/** Igual, con la clave de sync ya derivada (sesión en curso). */
+export async function listProfilesWithKey(
+  sessionToken: string,
+  key: Buffer,
+): Promise<RemoteProfileInfo[]> {
   const res = await fetch(`${SERVER_URL}/sync/profiles`, {
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
@@ -182,6 +188,25 @@ export class SyncManager {
     const salt = await fetchCanonicalSalt(sessionToken);
     repos.settings.set('sync:key-salt', salt.toString('hex'));
 
+    await this.configureWithKey(sessionToken, deriveKey(syncPassword, salt), remoteProfileId);
+  }
+
+  /**
+   * Como `configure`, pero con la clave ya derivada. Lo usa la adopción de un
+   * perfil de la cuenta: el dispositivo ya está autenticado y tiene la clave en
+   * memoria, así que no hay que volver a pedir el enlace ni la contraseña.
+   *
+   * @param pushLocal sube primero lo que ya hay en este perfil. Se desactiva al
+   *   adoptar un perfil remoto: el perfil local nace vacío y lo único que puede
+   *   aportar es ruido.
+   */
+  async configureWithKey(
+    sessionToken: string,
+    syncKey: Buffer,
+    remoteProfileId: string | null = null,
+    { pushLocal = true }: { pushLocal?: boolean } = {},
+  ): Promise<void> {
+    const repos = this.getRepos();
     const targetProfileId = remoteProfileId ?? this.profileId;
     const previousProfileId = repos.settings.get('sync:remote-profile-id');
     // Cambiar de perfil remoto invalida la secuencia: hay que releerlo entero.
@@ -190,7 +215,7 @@ export class SyncManager {
 
     this.config = {
       sessionToken,
-      syncKey: deriveKey(syncPassword, salt),
+      syncKey,
       remoteProfileId: targetProfileId,
       lastSeq: lastSeqRaw ? parseInt(lastSeqRaw, 10) : 0,
     };
@@ -219,7 +244,7 @@ export class SyncManager {
     // luego bajamos lo remoto. Sin el push inicial, un dispositivo con datos
     // no aportaba nada al servidor hasta que el usuario tocaba algo, y uno
     // recién vinculado no encontraba nada que bajar.
-    await this.pushAllLocal();
+    if (pushLocal) await this.pushAllLocal();
     await this.syncAll();
   }
 
@@ -288,6 +313,38 @@ export class SyncManager {
 
   getSessionToken(): string | null {
     return this.config?.sessionToken ?? null;
+  }
+
+  /**
+   * Sesión y clave de sync de este perfil, para vincular OTRO perfil local a la
+   * misma cuenta sin volver a pedir el enlace ni la contraseña. No sale del
+   * proceso principal: la clave nunca cruza al renderer ni a disco sin cifrar.
+   */
+  getCredentialsForLinking(): { sessionToken: string; syncKey: Buffer } | null {
+    if (!this.config) return null;
+    return { sessionToken: this.config.sessionToken, syncKey: this.config.syncKey };
+  }
+
+  /**
+   * Perfiles de la cuenta con el nombre descifrado, usando la clave que ya está
+   * en memoria. Sirve para la lista de "Perfiles de la cuenta" de Ajustes, que
+   * no puede pedir la contraseña cada vez que se abre.
+   */
+  async listAccountProfiles(): Promise<RemoteProfileInfo[]> {
+    if (!this.config) return [];
+    return listProfilesWithKey(this.config.sessionToken, this.config.syncKey);
+  }
+
+  /**
+   * Pausa la sincronización sin desvincular: se corta el WebSocket y se deja de
+   * escuchar cambios locales, pero las credenciales siguen guardadas. Reanudar
+   * es volver a llamar a `restoreFromStorage()`.
+   */
+  pause(): void {
+    syncEvents.off('entity:changed', this.onEntityChanged);
+    this.disconnect();
+    this.config = null;
+    this.emitStatus();
   }
 
   getRemoteProfileId(): string | null {

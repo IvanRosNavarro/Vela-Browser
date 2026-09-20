@@ -459,6 +459,11 @@ const api: PreloadApi = {
       call(IPC_CHANNELS.SYNC_SETUP, input),
     listRemoteProfiles: (input: { token: string; syncPassword: string }) =>
       call(IPC_CHANNELS.SYNC_LIST_REMOTE_PROFILES, input),
+    listAccountProfiles: () => call(IPC_CHANNELS.SYNC_LIST_ACCOUNT_PROFILES),
+    adoptRemoteProfile: (input: { remoteProfileId: string; name: string }) =>
+      call(IPC_CHANNELS.SYNC_ADOPT_REMOTE_PROFILE, input),
+    setProfilePaused: (input: { localProfileId: string; paused: boolean }) =>
+      call(IPC_CHANNELS.SYNC_SET_PROFILE_PAUSED, input),
     getStatus: () => call(IPC_CHANNELS.SYNC_GET_STATUS),
     syncNow: () => call(IPC_CHANNELS.SYNC_NOW),
     getDevices: () => call(IPC_CHANNELS.SYNC_GET_DEVICES),

@@ -71,6 +71,12 @@ export interface CreateProfileInput {
    */
   masterPassword?: string;
   passwordHint?: string | null;
+  /**
+   * Perfil que nace para recibir un perfil de la cuenta de sync: sin workspace
+   * "Default". Ese workspace vacío se subiría al servidor y aparecería en el
+   * resto de dispositivos; los workspaces los trae la sincronización.
+   */
+  skipDefaultWorkspace?: boolean;
 }
 
 export interface ProfileManagerCtx {
@@ -163,8 +169,10 @@ export class ProfileManager {
       // sigue creándose con todas las tablas. runMigrations es idempotente.
       await new ProfileMigrationRunner(dbPath).runMigrations();
       db = openProfileDb(dbPath);
-      const workspaces = new WorkspaceRepository(db);
-      workspaces.create({ id: 'default', name: 'Default' });
+      if (!input.skipDefaultWorkspace) {
+        const workspaces = new WorkspaceRepository(db);
+        workspaces.create({ id: 'default', name: 'Default' });
+      }
 
       // Inicializa el keyring del perfil. La clave queda en memoria — el
       // perfil se queda "desbloqueado" implícitamente tras crearse. El
