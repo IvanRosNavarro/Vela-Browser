@@ -62,6 +62,20 @@ syncRouter.post('/key-salt', (req, res) => {
   res.json({ salt: row?.salt ?? salt.toLowerCase() });
 });
 
+// ── Cuenta ───────────────────────────────────────────────────────────────────
+
+// GET /sync/account → { email }
+//
+// Para que cada dispositivo pueda enseñar a qué cuenta está vinculado, también los que se
+// vincularon antes de guardar el email en local.
+syncRouter.get('/account', (req, res) => {
+  const row = getDb()
+    .prepare('SELECT email FROM users WHERE id = ?')
+    .get(req.userId) as { email: string } | undefined;
+  if (!row) return res.status(404).json({ error: 'Cuenta no encontrada' });
+  res.json({ email: row.email });
+});
+
 // ── Perfiles ─────────────────────────────────────────────────────────────────
 
 // POST /sync/profiles

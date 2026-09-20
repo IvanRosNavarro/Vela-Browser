@@ -566,6 +566,11 @@ function SyncActiveView({ settings }: SyncActiveProps) {
         <span className="text-2xl text-[var(--vela-accent)]">☁</span>
         <div>
           <h2 className="text-base font-semibold text-[var(--vela-fg)]">Sincronización activa</h2>
+          {status.accountEmail && (
+            <p className="truncate text-xs text-[var(--vela-fg-muted)]">
+              Cuenta: <span className="text-[var(--vela-fg)]">{status.accountEmail}</span>
+            </p>
+          )}
           <span className="flex items-center gap-1.5 text-xs">
             <span
               className={`h-2 w-2 rounded-full ${status.connected ? 'bg-green-500' : 'bg-gray-400'}`}

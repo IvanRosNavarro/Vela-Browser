@@ -38,6 +38,8 @@ export interface SyncStatus {
   connected: boolean;
   lastSyncAt: number | null;
   syncInProgress: boolean;
+  /** Cuenta vinculada, para que el usuario vea con cuál sincroniza. */
+  accountEmail: string | null;
 }
 
 /** Un perfil ya existente en el servidor, ofrecido al vincular un dispositivo. */
@@ -209,6 +211,7 @@ export class SyncManager {
 
     syncEvents.on('entity:changed', this.onEntityChanged);
 
+    await this.refreshAccountEmail();
     await this.registerProfile();
     this.connect();
 
@@ -259,6 +262,7 @@ export class SyncManager {
 
       syncEvents.on('entity:changed', this.onEntityChanged);
       this.connect();
+      void this.refreshAccountEmail();
       await this.syncAll();
       return true;
     } catch (err) {
@@ -278,6 +282,7 @@ export class SyncManager {
     repos.settings.delete('sync:session-token-enc');
     repos.settings.delete('sync:key-encrypted');
     repos.settings.delete('sync:remote-profile-id');
+    repos.settings.delete('sync:account-email');
     this.emitStatus();
   }
 
@@ -1097,7 +1102,27 @@ export class SyncManager {
       connected: this.isConnected(),
       lastSyncAt: this.lastSyncAt,
       syncInProgress: this.syncInProgress,
+      accountEmail: this.getRepos().settings.get('sync:account-email') ?? null,
     };
+  }
+
+  /**
+   * Cuenta de la sesión, cacheada en `sync:account-email` (prefijo `sync:` = no se sincroniza).
+   * Se refresca en cada vinculación y al restaurar, así que los perfiles vinculados antes de
+   * guardarla la obtienen en el siguiente arranque.
+   */
+  private async refreshAccountEmail(): Promise<void> {
+    if (!this.config) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/sync/account`, {
+        headers: { Authorization: `Bearer ${this.config.sessionToken}` },
+      });
+      if (!res.ok) return;
+      const { email } = (await res.json()) as { email?: string };
+      if (email) this.getRepos().settings.set('sync:account-email', email);
+    } catch {
+      // Sin red: se mantiene el valor cacheado.
+    }
   }
 
   private emitStatus(): void {

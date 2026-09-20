@@ -5,6 +5,8 @@ export interface SyncStatus {
   syncInProgress: boolean;
   /** Token del magic link recibido vía vela://sync-callback, pendiente de confirmar con contraseña. */
   pendingCallbackToken?: string | null;
+  /** Cuenta a la que está vinculado este perfil. null si aún no se conoce. */
+  accountEmail?: string | null;
 }
 
 export interface DeviceInfo {

@@ -40,6 +40,7 @@ const defaultStatus: SyncStatus = {
   connected: false,
   lastSyncAt: null,
   syncInProgress: false,
+  accountEmail: null,
 };
 
 export const useSyncStore = create<SyncState>((set, get) => ({
