@@ -5,6 +5,7 @@ import { useSettings } from '../lib/useSettings';
 import type { AccountProfile, DeviceInfo, RemoteSyncProfile, SyncCategory } from '@vela/shared';
 import { SYNC_CATEGORIES } from '@vela/shared';
 import { writeToClipboard } from '../../../lib/clipboard';
+import { call } from '../../../lib/ipc';
 
 export function Sync() {
   const { uiStep, hydrate } = useSyncStore();
@@ -695,21 +696,19 @@ function AccountProfilesSection() {
 
   useEffect(() => {
     let cancelled = false;
-    void window.vela.sync.listAccountProfiles().then((res) => {
-      if (cancelled) return;
-      if (res.ok) setProfiles(res.data);
-      else setProfiles([]);
-    });
+    void call(() => window.api.sync.listAccountProfiles())
+      .then((list) => { if (!cancelled) setProfiles(list); })
+      .catch(() => { if (!cancelled) setProfiles([]); });
     return () => { cancelled = true; };
   }, []);
 
-  async function run(key: string, action: () => Promise<{ ok: true; data: AccountProfile[] } | { ok: false; error: string; details?: string }>) {
+  async function run(key: string, action: () => Promise<AccountProfile[]>) {
     setBusy(key);
     setError(null);
     try {
-      const res = await action();
-      if (res.ok) setProfiles(res.data);
-      else setError(res.details ?? 'No se pudo completar la operación');
+      setProfiles(await action());
+    } catch {
+      setError('No se pudo completar la operación');
     } finally {
       setBusy(null);
     }
@@ -767,10 +766,10 @@ function AccountProfilesSection() {
                 type="button"
                 disabled={busy !== null}
                 onClick={() => void run(profile.remoteId, () =>
-                  window.vela.sync.adoptRemoteProfile({
+                  call(() => window.api.sync.adoptRemoteProfile({
                     remoteProfileId: profile.remoteId,
                     name: profile.name ?? 'Perfil',
-                  }),
+                  })),
                 )}
                 className="shrink-0 rounded-md border border-[var(--vela-border)] px-3 py-1 text-xs text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)] disabled:opacity-50"
               >
@@ -788,7 +787,10 @@ function AccountProfilesSection() {
                     const localProfileId = profile.localProfileId;
                     if (!localProfileId) return;
                     void run(profile.remoteId, () =>
-                      window.vela.sync.setProfilePaused({ localProfileId, paused: !e.target.checked }),
+                      call(() => window.api.sync.setProfilePaused({
+                        localProfileId,
+                        paused: !e.target.checked,
+                      })),
                     );
                   }}
                   className="h-4 w-4 accent-[var(--vela-accent)] disabled:opacity-50"
