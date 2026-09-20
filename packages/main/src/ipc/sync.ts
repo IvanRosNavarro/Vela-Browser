@@ -236,6 +236,7 @@ export function registerSyncHandlers(ctx: IpcContext): void {
           connected: false,
           lastSyncAt: null,
           syncInProgress: false,
+          accountEmail: null,
         };
         if (pendingCallbackToken) {
           status.pendingCallbackToken = pendingCallbackToken;
