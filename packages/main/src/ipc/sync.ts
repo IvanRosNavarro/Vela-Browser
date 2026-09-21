@@ -2,7 +2,7 @@ import { ipcMain, app, shell, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { IPC_CHANNELS, IPC_EVENTS, z, type IpcResponse } from '@vela/shared';
-import type { SyncStatus, DeviceInfo, RemoteSyncProfile } from '@vela/shared';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getFrameContext } from './helpers';
@@ -77,6 +77,14 @@ const listRemoteProfilesSchema = z.object({
   syncPassword: z.string().min(1),
 });
 const disconnectDeviceSchema = z.object({ tokenSuffix: z.string().min(1) });
+const adoptRemoteProfileSchema = z.object({
+  remoteProfileId: z.string().min(1),
+  name: z.string().min(1).max(120),
+});
+const setProfilePausedSchema = z.object({
+  localProfileId: z.string().min(1),
+  paused: z.boolean(),
+});
 
 function getOrCreateSyncManager(profileId: string, ctx: IpcContext): SyncManager {
   if (!ctx.syncManagers.has(profileId)) {
@@ -146,10 +154,19 @@ export function registerSyncHandlers(ctx: IpcContext): void {
   // del SO (token + clave cifrada con safeStorage). Si no hay credenciales
   // guardadas el manager queda en estado unconfigured y sigue el flujo normal.
   ctx.events.on(IPC_EVENTS.PROFILE_UNLOCKED, ({ profileId }) => {
+    // Un perfil en pausa se abre sin sincronizar: conserva sus credenciales y
+    // espera a que el usuario lo reanude desde Ajustes › Sincronización.
+    if (ctx.repositories.profiles.getById(profileId)?.syncPaused) {
+      ctx.logger.info(`[sync] perfil ${profileId} en pausa — no se restaura la sesión`);
+      return;
+    }
     const manager = getOrCreateSyncManager(profileId, ctx);
     if (manager.isConfigured()) return;
     void manager.restoreFromStorage().then((restored) => {
-      if (restored) ctx.logger.info(`[sync] sesión restaurada para perfil ${profileId}`);
+      if (restored) {
+        ctx.repositories.profiles.setSyncLink(profileId, manager.getRemoteProfileId());
+        ctx.logger.info(`[sync] sesión restaurada para perfil ${profileId}`);
+      }
     });
   });
 
@@ -199,6 +216,8 @@ export function registerSyncHandlers(ctx: IpcContext): void {
 
         const manager = getOrCreateSyncManager(profileId, ctx);
         await manager.configure(token, syncPassword, remoteProfileId ?? null);
+        ctx.repositories.profiles.setSyncLink(profileId, manager.getRemoteProfileId());
+        ctx.repositories.profiles.setSyncPaused(profileId, false);
         pendingCallbackToken = null;
 
         return { ok: true, data: manager.getStatus() };
@@ -221,6 +240,110 @@ export function registerSyncHandlers(ctx: IpcContext): void {
         return { ok: true, data: profiles };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SYNC_LIST_REMOTE_PROFILES);
+      }
+    },
+  );
+
+  // ── Perfiles de la cuenta ──────────────────────────────────────────────────
+  //
+  // Una cuenta de Vela tiene varios perfiles y el servidor particiona todo por
+  // perfil (ADR 0101). Aquí se ve la cuenta entera desde este equipo: cuáles ya
+  // están, cuáles faltan y cuáles están en pausa.
+
+  function accountProfiles(currentProfileId: string): Promise<AccountProfile[]> {
+    const manager = ctx.syncManagers.get(currentProfileId);
+    if (!manager?.isConfigured()) return Promise.resolve([]);
+    return manager.listAccountProfiles().then((remotes) => {
+      const locals = ctx.repositories.profiles.listAll();
+      return remotes.map((remote) => {
+        const local = locals.find((p) => p.remoteProfileId === remote.id) ?? null;
+        return {
+          remoteId: remote.id,
+          name: remote.name,
+          host: remote.host,
+          updatedAt: remote.updatedAt,
+          localProfileId: local?.id ?? null,
+          localName: local?.name ?? null,
+          paused: local?.syncPaused ?? false,
+          isCurrent: local?.id === currentProfileId,
+        };
+      });
+    });
+  }
+
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_LIST_ACCOUNT_PROFILES,
+    async (event): Promise<IpcResponse<AccountProfile[]>> => {
+      try {
+        const { profileId } = getFrameContext(event, ctx);
+        return { ok: true, data: await accountProfiles(profileId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_LIST_ACCOUNT_PROFILES);
+      }
+    },
+  );
+
+  // Trae a este equipo un perfil de la cuenta que aún no está: crea su perfil
+  // local (sin workspace por defecto, los trae la sincronización) y lo vincula
+  // con la sesión y la clave que ya tiene el perfil actual — sin enlace mágico
+  // ni contraseña de por medio.
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_ADOPT_REMOTE_PROFILE,
+    async (event, payload): Promise<IpcResponse<AccountProfile[]>> => {
+      try {
+        const { remoteProfileId, name } = adoptRemoteProfileSchema.parse(payload);
+        const { profileId } = getFrameContext(event, ctx);
+
+        const source = ctx.syncManagers.get(profileId);
+        const credentials = source?.getCredentialsForLinking();
+        if (!credentials) {
+          return { ok: false, error: 'INVALID_INPUT', details: 'La sincronización no está activa en este perfil' };
+        }
+        if (ctx.repositories.profiles.listAll().some((p) => p.remoteProfileId === remoteProfileId)) {
+          return { ok: true, data: await accountProfiles(profileId) };
+        }
+
+        const created = await ctx.profileManager.createProfile({ name, skipDefaultWorkspace: true });
+        await ctx.profileManager.openProfile(created.id);
+
+        const manager = getOrCreateSyncManager(created.id, ctx);
+        await manager.configureWithKey(
+          credentials.sessionToken,
+          credentials.syncKey,
+          remoteProfileId,
+          { pushLocal: false },
+        );
+        ctx.repositories.profiles.setSyncLink(created.id, remoteProfileId);
+        ctx.logger.info(`[sync] perfil ${remoteProfileId} de la cuenta traído a este equipo como ${created.id}`);
+
+        return { ok: true, data: await accountProfiles(profileId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_ADOPT_REMOTE_PROFILE);
+      }
+    },
+  );
+
+  // Pausar no desvincula: las credenciales y el cursor se quedan donde están,
+  // así que reanudar solo tiene que releer lo que haya pasado mientras tanto.
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_SET_PROFILE_PAUSED,
+    async (event, payload): Promise<IpcResponse<AccountProfile[]>> => {
+      try {
+        const { localProfileId, paused } = setProfilePausedSchema.parse(payload);
+        const { profileId } = getFrameContext(event, ctx);
+
+        ctx.repositories.profiles.setSyncPaused(localProfileId, paused);
+        const manager = ctx.syncManagers.get(localProfileId);
+        if (paused) {
+          manager?.pause();
+        } else if (ctx.profileManager.isOpen(localProfileId)) {
+          const target = getOrCreateSyncManager(localProfileId, ctx);
+          if (!target.isConfigured()) await target.restoreFromStorage();
+        }
+
+        return { ok: true, data: await accountProfiles(profileId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_SET_PROFILE_PAUSED);
       }
     },
   );
@@ -306,6 +429,8 @@ export function registerSyncHandlers(ctx: IpcContext): void {
           manager.destroy();
           ctx.syncManagers.delete(profileId);
         }
+        ctx.repositories.profiles.setSyncLink(profileId, null);
+        ctx.repositories.profiles.setSyncPaused(profileId, false);
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SYNC_DEACTIVATE);

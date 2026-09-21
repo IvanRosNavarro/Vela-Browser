@@ -16,6 +16,8 @@ interface ProfileRow {
   last_used_at: number | null;
   created_at: number;
   updated_at: number;
+  remote_profile_id: string | null;
+  sync_paused: number;
 }
 
 function rowToProfile(row: ProfileRow): Profile {
@@ -32,6 +34,8 @@ function rowToProfile(row: ProfileRow): Profile {
     lastUsedAt: row.last_used_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    remoteProfileId: row.remote_profile_id ?? null,
+    syncPaused: row.sync_paused !== 0,
   };
 }
 
@@ -247,6 +251,26 @@ export class ProfileRepository {
     if (result.changes === 0) {
       throw new ProfileNotFoundError(id);
     }
+  }
+
+  /**
+   * Copia en vela.db a qué perfil de la cuenta sincroniza este perfil local.
+   * `null` cuando se desvincula. Solo sirve para la interfaz: la sincronización
+   * sigue leyendo su propio `sync:remote-profile-id`.
+   */
+  setSyncLink(id: string, remoteProfileId: string | null): void {
+    const result = this.db
+      .prepare('UPDATE profiles SET remote_profile_id = ? WHERE id = ?')
+      .run(remoteProfileId, id);
+    if (result.changes === 0) throw new ProfileNotFoundError(id);
+  }
+
+  /** Pausa o reanuda la sincronización de un perfil sin perder el vínculo. */
+  setSyncPaused(id: string, paused: boolean): void {
+    const result = this.db
+      .prepare('UPDATE profiles SET sync_paused = ? WHERE id = ?')
+      .run(paused ? 1 : 0, id);
+    if (result.changes === 0) throw new ProfileNotFoundError(id);
   }
 
   setMasterPasswordEnabled(

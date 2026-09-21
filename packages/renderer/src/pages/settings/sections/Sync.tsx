@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useSyncStore } from '../../../stores/syncStore';
 import { useSettings } from '../lib/useSettings';
-import type { DeviceInfo, RemoteSyncProfile, SyncCategory } from '@vela/shared';
+import type { AccountProfile, DeviceInfo, RemoteSyncProfile, SyncCategory } from '@vela/shared';
 import { SYNC_CATEGORIES } from '@vela/shared';
 import { writeToClipboard } from '../../../lib/clipboard';
+import { call } from '../../../lib/ipc';
 
 export function Sync() {
   const { uiStep, hydrate } = useSyncStore();
@@ -586,6 +587,8 @@ function SyncActiveView({ settings }: SyncActiveProps) {
         Última sync: <span className="text-[var(--vela-fg)]">{lastSyncLabel}</span>
       </div>
 
+      <AccountProfilesSection />
+
       <SyncCategoriesSection settings={settings} />
 
       <section>
@@ -675,6 +678,143 @@ function SyncActiveView({ settings }: SyncActiveProps) {
         )}
       </section>
     </div>
+  );
+}
+
+// ── Perfiles de la cuenta ──────────────────────────────────────────────────
+
+/**
+ * La cuenta vista desde este equipo. El servidor particiona todo por perfil
+ * (ADR 0101), así que una cuenta con dos perfiles son dos conjuntos de
+ * workspaces distintos: aquí se decide cuáles están en este equipo y cuáles
+ * sincronizan ahora mismo.
+ */
+function AccountProfilesSection() {
+  const [profiles, setProfiles] = useState<AccountProfile[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void call(() => window.api.sync.listAccountProfiles())
+      .then((list) => { if (!cancelled) setProfiles(list); })
+      .catch(() => { if (!cancelled) setProfiles([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function run(key: string, action: () => Promise<AccountProfile[]>) {
+    setBusy(key);
+    setError(null);
+    try {
+      setProfiles(await action());
+    } catch {
+      setError('No se pudo completar la operación');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Un perfil ilegible está cifrado con otra contraseña: no se puede traer.
+  const readable = (profiles ?? []).filter((p) => p.name !== null);
+  const unreadable = (profiles ?? []).length - readable.length;
+
+  if (profiles === null) {
+    return (
+      <section>
+        <h3 className="mb-1 text-sm font-semibold text-[var(--vela-fg)]">Perfiles de la cuenta</h3>
+        <p className="text-xs text-[var(--vela-fg-muted)]">Cargando perfiles…</p>
+      </section>
+    );
+  }
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-semibold text-[var(--vela-fg)]">Perfiles de la cuenta</h3>
+      <p className="mb-3 text-xs text-[var(--vela-fg-muted)]">
+        Cada perfil de tu cuenta tiene sus propios workspaces. Trae a este equipo
+        los que quieras y pausa los que no necesites ahora: pausar no desvincula
+        ni borra nada.
+      </p>
+
+      {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+
+      <div className="divide-y divide-[var(--vela-border)] rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)]">
+        {readable.map((profile) => (
+          <div key={profile.remoteId} className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm text-[var(--vela-fg)]">
+                {profile.name}
+                {profile.isCurrent && (
+                  <span className="ml-2 rounded bg-[var(--vela-accent)]/15 px-1.5 py-0.5 text-xs text-[var(--vela-accent)]">
+                    Este perfil
+                  </span>
+                )}
+              </p>
+              <p className="truncate text-xs text-[var(--vela-fg-muted)]">
+                {profile.localProfileId
+                  ? profile.paused
+                    ? `En pausa · perfil "${profile.localName}"`
+                    : `En este equipo como "${profile.localName}"`
+                  : profile.host
+                    ? `Creado en ${profile.host}`
+                    : 'Todavía no está en este equipo'}
+              </p>
+            </div>
+
+            {profile.localProfileId === null ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void run(profile.remoteId, () =>
+                  call(() => window.api.sync.adoptRemoteProfile({
+                    remoteProfileId: profile.remoteId,
+                    name: profile.name ?? 'Perfil',
+                  })),
+                )}
+                className="shrink-0 rounded-md border border-[var(--vela-border)] px-3 py-1 text-xs text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)] disabled:opacity-50"
+              >
+                {busy === profile.remoteId ? 'Trayendo…' : 'Traer a este equipo'}
+              </button>
+            ) : (
+              <label className="flex shrink-0 items-center gap-2 text-xs text-[var(--vela-fg-muted)]">
+                <span>{profile.paused ? 'En pausa' : 'Sincronizando'}</span>
+                <input
+                  type="checkbox"
+                  checked={!profile.paused}
+                  disabled={busy !== null || profile.isCurrent}
+                  title={profile.isCurrent ? 'Para este perfil, usa "Desactivar sincronización"' : undefined}
+                  onChange={(e) => {
+                    const localProfileId = profile.localProfileId;
+                    if (!localProfileId) return;
+                    void run(profile.remoteId, () =>
+                      call(() => window.api.sync.setProfilePaused({
+                        localProfileId,
+                        paused: !e.target.checked,
+                      })),
+                    );
+                  }}
+                  className="h-4 w-4 accent-[var(--vela-accent)] disabled:opacity-50"
+                />
+              </label>
+            )}
+          </div>
+        ))}
+
+        {readable.length === 0 && (
+          <p className="px-4 py-3 text-xs text-[var(--vela-fg-muted)]">
+            Esta cuenta solo tiene el perfil de este equipo.
+          </p>
+        )}
+      </div>
+
+      {unreadable > 0 && (
+        <p className="mt-2 text-xs text-[var(--vela-fg-muted)]">
+          {unreadable === 1
+            ? 'Hay 1 perfil que esta contraseña de sync no abre.'
+            : `Hay ${unreadable} perfiles que esta contraseña de sync no abre.`}
+        </p>
+      )}
+    </section>
   );
 }
 

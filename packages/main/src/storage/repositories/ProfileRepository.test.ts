@@ -20,6 +20,38 @@ describe('ProfileRepository', () => {
     expect(repo.listAll()).toEqual([]);
   });
 
+  // El vínculo con el perfil de la cuenta se copia aquí para poder pintar la
+  // cuenta completa sin abrir (ni desbloquear) cada perfil.
+  it('un perfil nace sin vínculo de sync y sin pausa', () => {
+    const profile = repo.create({ name: 'Personal' });
+    expect(profile.remoteProfileId).toBeNull();
+    expect(profile.syncPaused).toBe(false);
+  });
+
+  it('setSyncLink guarda y limpia el perfil remoto emparejado', () => {
+    const profile = repo.create({ name: 'Personal' });
+    repo.setSyncLink(profile.id, 'remoto-1');
+    expect(repo.getById(profile.id)?.remoteProfileId).toBe('remoto-1');
+    repo.setSyncLink(profile.id, null);
+    expect(repo.getById(profile.id)?.remoteProfileId).toBeNull();
+  });
+
+  it('setSyncPaused pausa sin tocar el vínculo', () => {
+    const profile = repo.create({ name: 'Personal' });
+    repo.setSyncLink(profile.id, 'remoto-1');
+    repo.setSyncPaused(profile.id, true);
+    const paused = repo.getById(profile.id);
+    expect(paused?.syncPaused).toBe(true);
+    expect(paused?.remoteProfileId).toBe('remoto-1');
+    repo.setSyncPaused(profile.id, false);
+    expect(repo.getById(profile.id)?.syncPaused).toBe(false);
+  });
+
+  it('setSyncLink y setSyncPaused fallan con un perfil inexistente', () => {
+    expect(() => repo.setSyncLink('no-existe', 'remoto-1')).toThrow(ProfileNotFoundError);
+    expect(() => repo.setSyncPaused('no-existe', true)).toThrow(ProfileNotFoundError);
+  });
+
   it('create produce un partition_id único derivado del id', () => {
     const a = repo.create({ name: 'Personal' });
     const b = repo.create({ name: 'Work' });

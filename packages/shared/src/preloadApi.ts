@@ -60,7 +60,7 @@ import type {
 } from './schemas';
 import type { MainEventPayloads } from './ipc-channels';
 import type { IpcResponse } from './types/ipcResponse';
-import type { SyncStatus, DeviceInfo, RemoteSyncProfile } from './types/sync';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile } from './types/sync';
 import type { SettingsKey } from './schemas/settings';
 import type { FolderNode, TabNode, TreeNode } from './types/treeNode';
 import type { Workspace } from './types/workspace';
@@ -914,6 +914,18 @@ export interface SyncApi {
     token: string;
     syncPassword: string;
   }): Promise<IpcResponse<RemoteSyncProfile[]>>;
+  /** Perfiles de la cuenta cruzados con los perfiles de este equipo. */
+  listAccountProfiles(): Promise<IpcResponse<AccountProfile[]>>;
+  /** Trae un perfil de la cuenta a este equipo creando su perfil local. */
+  adoptRemoteProfile(input: {
+    remoteProfileId: string;
+    name: string;
+  }): Promise<IpcResponse<AccountProfile[]>>;
+  /** Pausa o reanuda la sincronización de un perfil de este equipo. */
+  setProfilePaused(input: {
+    localProfileId: string;
+    paused: boolean;
+  }): Promise<IpcResponse<AccountProfile[]>>;
   getStatus(): Promise<IpcResponse<SyncStatus>>;
   syncNow(): Promise<IpcResponse<void>>;
   getDevices(): Promise<IpcResponse<DeviceInfo[]>>;
