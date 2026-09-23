@@ -15,6 +15,8 @@ import { call } from '../../lib/ipc';
 import { showContextMenu } from '../../lib/contextMenu';
 import { useSidebarStore } from '../../stores/sidebarStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
+import { useWorkspacesStore } from '../../stores/workspacesStore';
+import { toast } from '../../stores/toastStore';
 import type { ActiveDrop } from './types';
 import type { DropZone } from './dropValidation';
 
@@ -42,6 +44,17 @@ const PALETTE: Array<{ id: string; label: string; color: string | null }> = [
 ];
 
 const ICONS = ['📁', '📚', '🛠', '🎨', '🧪', '📊', '🌐', '⭐'];
+
+/** Última posición de la raíz del workspace, para encolar ahí lo que llega. */
+function lastRootPosition(workspaceId: string): string | null {
+  const nodes = useTreeStore.getState().nodesByWorkspace[workspaceId] ?? [];
+  const roots = nodes.filter((n) => n.parentId === null);
+  if (roots.length === 0) return null;
+  return roots.reduce(
+    (max, n) => (n.position > max ? n.position : max),
+    roots[0]!.position,
+  );
+}
 
 export function FolderRow({
   node,
@@ -181,9 +194,30 @@ export function FolderRow({
       { type: 'normal' as const, id: 'icon:clear', label: '(limpiar)' },
     ];
 
+    const otherWorkspaces = useWorkspacesStore
+      .getState()
+      .workspaces.filter((w) => w.id !== node.workspaceId);
+
+    const moveSubmenu: MenuItemSpec[] =
+      otherWorkspaces.length === 0
+        ? [
+            {
+              type: 'normal',
+              id: 'noop:no-other-workspaces',
+              label: '(solo hay un workspace)',
+              enabled: false,
+            },
+          ]
+        : otherWorkspaces.map((w) => ({
+            type: 'normal' as const,
+            id: `move-to-workspace:${w.id}`,
+            label: w.name,
+          }));
+
     const items: MenuItemSpec[] = [
       { type: 'normal', id: 'rename', label: 'Renombrar' },
       { type: 'normal', id: 'add-to-folder', label: 'Añadir a carpeta' },
+      { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
       { type: 'submenu', label: 'Color', submenu: colorSubmenu },
       { type: 'submenu', label: 'Icono', submenu: iconSubmenu },
       { type: 'separator' },
@@ -221,6 +255,25 @@ export function FolderRow({
       },
     ];
 
+    // La carpeta entera —con sus pestañas y subcarpetas— pasa al workspace
+    // destino, encolada al final de su raíz. El toast lleva allí de un clic.
+    const moveActions: Record<string, () => void> = {};
+    for (const w of otherWorkspaces) {
+      moveActions[`move-to-workspace:${w.id}`] = () => {
+        void (async () => {
+          await moveNode({
+            id: node.id,
+            newParentId: null,
+            newPosition: generateKeyBetween(lastRootPosition(w.id), null),
+            newWorkspaceId: w.id,
+          });
+          toast(`«${name}» movida a «${w.name}»`, 'success', () => {
+            void useWorkspacesStore.getState().setActive(w.id);
+          });
+        })();
+      };
+    }
+
     const colorActions: Record<string, () => void> = {};
     for (const p of PALETTE) {
       colorActions[`color:${p.id}`] = () =>
@@ -238,6 +291,7 @@ export function FolderRow({
     void showContextMenu(items, {
       rename: () => setRenaming(true),
       'add-to-folder': () => void addToNewFolder(),
+      ...moveActions,
       ...colorActions,
       ...iconActions,
       'new-folder': () =>

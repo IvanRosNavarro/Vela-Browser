@@ -518,6 +518,69 @@ export class TabManager {
   }
 
   /**
+   * Retira de sus ventanas los WCV de pestañas que acaban de cambiar de
+   * workspace (mover una carpeta o una pestaña a otro workspace). La pestaña
+   * sigue existiendo en el árbol: solo deja de tener vista viva aquí, y se
+   * volverá a crear al entrar en el workspace destino.
+   *
+   * Sin esto la web seguía visible en la ventana después de que su fila
+   * desapareciera de la sidebar, y si era la activa se quedaba encima del
+   * workspace de origen. Las Anclas se saltan: su WCV vive en la ventana
+   * independientemente del workspace (ver ADR 0100).
+   */
+  async releaseTabsMovedToOtherWorkspace(tabIds: readonly string[]): Promise<void> {
+    const byWindow = new Map<number, string[]>();
+    for (const tabId of new Set(tabIds)) {
+      const windowId = this.tabToWindow.get(tabId);
+      if (windowId === undefined) continue;
+      const list = byWindow.get(windowId) ?? [];
+      list.push(tabId);
+      byWindow.set(windowId, list);
+    }
+
+    for (const [windowId, ids] of byWindow) {
+      const state = this.windows.get(windowId);
+      if (!state) continue;
+      const repos = this.reposFor(state);
+      let activeReleased = false;
+
+      for (const tabId of ids) {
+        const node = repos.treeNodes.getById(tabId);
+        if (!node || node.workspaceId === state.workspaceId) continue;
+        if (node.kind === 'tab' && node.anchored) continue;
+        const view = state.tabs.get(tabId);
+        if (!view) continue;
+
+        this.destroyView(state, view);
+        state.tabs.delete(tabId);
+        this.tabToWindow.delete(tabId);
+        state.mru.remove(tabId);
+        this.removeFromGlobal(state.profileId, tabId);
+        for (const [panelId, panelTabId] of state.panelTabIds) {
+          if (panelTabId === tabId) state.panelTabIds.delete(panelId);
+        }
+        if (state.activeTabId === tabId) activeReleased = true;
+      }
+
+      if (!activeReleased) continue;
+
+      const released = state.activeTabId!;
+      state.activeTabId = null;
+      const next = this.pickNextTab(state, released);
+      if (next) {
+        await this.activateTab(windowId, next);
+      } else {
+        this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
+          windowId,
+          tabId: null,
+        });
+        repos.metadata.delete(lastActiveTabKey(state.workspaceId));
+        this.reportVisibleTabs(windowId, null);
+      }
+    }
+  }
+
+  /**
    * Limpia todos los WCV del workspace dado en cualquier window. Se llama
    * antes de borrar el workspace en DB para evitar que el TabManager
    * quede con referencias a tabs que dejarán de existir por CASCADE.

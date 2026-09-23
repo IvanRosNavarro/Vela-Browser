@@ -129,6 +129,35 @@ describe('TreeNodeRepository', () => {
     expect(() => repo.move(f1.id, f1.id, 'm')).toThrow(/cycle/i);
   });
 
+  it('move de una carpeta a otro workspace arrastra todo su subárbol', () => {
+    const wsRepo = new WorkspaceRepository(db);
+    const other = wsRepo.create({ name: 'Otro' });
+    const folder = repo.createFolder({ workspaceId: WS, parentId: null, name: 'F' });
+    const sub = repo.createFolder({ workspaceId: WS, parentId: folder.id, name: 'Sub' });
+    const nieta = repo.createTab({
+      workspaceId: WS,
+      parentId: sub.id,
+      url: 'https://nieta.example.com',
+      originalTitle: 'nieta',
+    });
+    const quedaDetras = repo.createTab({
+      workspaceId: WS,
+      parentId: null,
+      url: 'https://suelta.example.com',
+      originalTitle: 'suelta',
+    });
+
+    const result = repo.move(folder.id, null, 'm', other.id);
+
+    expect(result.node.workspaceId).toBe(other.id);
+    expect(result.node.parentId).toBeNull();
+    expect(repo.getById(sub.id)?.workspaceId).toBe(other.id);
+    expect(repo.getById(nieta.id)?.workspaceId).toBe(other.id);
+    expect(repo.getById(nieta.id)?.parentId).toBe(sub.id);
+    expect(repo.getById(quedaDetras.id)?.workspaceId).toBe(WS);
+    expect(repo.getByWorkspace(WS).map((n) => n.id)).toEqual([quedaDetras.id]);
+  });
+
   it('delete subtree cascades through FK', () => {
     const f1 = repo.createFolder({ workspaceId: WS, parentId: null, name: 'F1' });
     const f2 = repo.createFolder({ workspaceId: WS, parentId: f1.id, name: 'F2' });
