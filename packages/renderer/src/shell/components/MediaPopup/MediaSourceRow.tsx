@@ -59,17 +59,28 @@ function CtrlBtn({ onClick, disabled, title, children, large }: CtrlBtnProps) {
 interface MediaSourceRowProps {
   source: MediaSource;
   onActivate: () => void;
+  onTogglePlay: () => void;
+  onSkipNext: () => void;
+  onSkipPrev: () => void;
+  /** Salto a un punto concreto, en segundos. */
+  onSeekTo: (time: number) => void;
   /** Alterna la imagen en imagen del vídeo de la pestaña. Sin él no se muestra el botón. */
   onTogglePip?: () => void;
 }
 
-export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceRowProps) {
-  // Controls navigate to the source tab until remote media control is reliable.
-  // See docs/pending.md — "Control remoto de audio sin activar la tab".
-
+export function MediaSourceRow({
+  source,
+  onActivate,
+  onTogglePlay,
+  onSkipNext,
+  onSkipPrev,
+  onSeekTo,
+  onTogglePip,
+}: MediaSourceRowProps) {
   const [currentTime, setCurrentTime] = useState(source.currentTime ?? 0);
   const [duration, setDuration] = useState(source.duration);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!source.isPlaying) return;
@@ -89,6 +100,17 @@ export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceR
   const hasDuration = duration !== null && duration > 0;
   const progress = hasDuration ? (currentTime / duration) * 100 : 0;
   const domain = artworkDomain(source);
+  const canSeek = source.canSeek && hasDuration;
+
+  function handleSeekClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!canSeek || duration === null) return;
+    const rect = barRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    const time = ratio * duration;
+    setCurrentTime(time);
+    onSeekTo(time);
+  }
 
   return (
     <div style={{ padding: '10px 12px' }}>
@@ -146,13 +168,19 @@ export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceR
       {/* Progress bar */}
       {hasDuration && (
         <div style={{ marginBottom: 8 }}>
-          <div style={{
-            height: 3,
-            background: 'var(--vela-border)',
-            borderRadius: 2,
-            overflow: 'hidden',
-            marginBottom: 4,
-          }}>
+          <div
+            ref={barRef}
+            onClick={handleSeekClick}
+            title={canSeek ? 'Ir a este punto' : undefined}
+            style={{
+              height: 3,
+              background: 'var(--vela-border)',
+              borderRadius: 2,
+              overflow: 'hidden',
+              marginBottom: 4,
+              cursor: canSeek ? 'pointer' : 'default',
+            } as CSSProperties}
+          >
             <div style={{
               height: '100%',
               width: `${Math.min(progress, 100)}%`,
@@ -173,7 +201,8 @@ export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceR
         </div>
       )}
 
-      {/* Controls */}
+      {/* Controles. Los saltos de pista solo se ofrecen si la página registró su
+          handler: sin él no hay forma de cambiar de canción y el botón engañaría. */}
       <div style={{
         display: 'flex',
         justifyContent: 'center',
@@ -181,11 +210,27 @@ export function MediaSourceRow({ source, onActivate, onTogglePip }: MediaSourceR
         gap: 2,
         marginBottom: 8,
       }}>
-        <CtrlBtn onClick={onActivate} title="Ir a la pestaña">⏮</CtrlBtn>
-        <CtrlBtn large onClick={onActivate} title="Ir a la pestaña">
+        <CtrlBtn
+          onClick={onSkipPrev}
+          disabled={!source.canSkipPrev}
+          title={source.canSkipPrev ? 'Anterior' : 'Esta página no permite cambiar de pista'}
+        >
+          ⏮
+        </CtrlBtn>
+        <CtrlBtn
+          large
+          onClick={onTogglePlay}
+          title={source.isPlaying ? 'Pausar' : 'Reproducir'}
+        >
           {source.isPlaying ? '⏸' : '▶'}
         </CtrlBtn>
-        <CtrlBtn onClick={onActivate} title="Ir a la pestaña">⏭</CtrlBtn>
+        <CtrlBtn
+          onClick={onSkipNext}
+          disabled={!source.canSkipNext}
+          title={source.canSkipNext ? 'Siguiente' : 'Esta página no permite cambiar de pista'}
+        >
+          ⏭
+        </CtrlBtn>
         {onTogglePip && (
           <CtrlBtn onClick={onTogglePip} title="Imagen en imagen">⧉</CtrlBtn>
         )}

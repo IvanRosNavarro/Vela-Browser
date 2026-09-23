@@ -235,9 +235,11 @@ export const IPC_CHANNELS = {
   MEDIA_ACTIVATE_TAB: 'media:activate-tab',
   MEDIA_GET_CURRENT_TIME: 'media:get-current-time',
   MEDIA_SEEK_BY: 'media:seek-by',
+  MEDIA_SEEK_TO: 'media:seek-to',
   MEDIA_TOGGLE_PIP: 'media:toggle-pip',
   MEDIA_OPEN_POPUP: 'media:open-popup',
   MEDIA_CLOSE_POPUP: 'media:close-popup',
+  MEDIA_RESIZE_POPUP: 'media:resize-popup',
 
   TAB_REOPEN_CLOSED: 'tab:reopen-closed',
   TABS_GET_RECENTLY_CLOSED: 'tabs:recently-closed',

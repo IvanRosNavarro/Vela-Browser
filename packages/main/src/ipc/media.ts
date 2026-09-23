@@ -6,12 +6,19 @@ import { guardTrustedFrame } from './validate';
 import { MEDIA_POPUP_WIDTH } from '../media/MediaPopupWindow';
 
 const tabIdSchema = z.object({ tabId: z.string() });
-const openPopupSchema = z.object({ x: z.number(), y: z.number() });
+const openPopupSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  itemCount: z.number().int().min(0).max(50),
+  profileId: z.string(),
+});
+const resizePopupSchema = z.object({ height: z.number().min(0).max(2000) });
 const activateTabSchema = z.object({
   tabId: z.string(),
   windowId: z.number().int(),
 });
 const seekBySchema = z.object({ tabId: z.string(), delta: z.number() });
+const seekToSchema = z.object({ tabId: z.string(), time: z.number().min(0) });
 
 export function registerMediaHandlers(ctx: IpcContext): void {
   ipcMain.handle(
@@ -159,7 +166,12 @@ export function registerMediaHandlers(ctx: IpcContext): void {
         const bounds = senderWin.getBounds();
         const screenX = bounds.x + parsed.data.x - MEDIA_POPUP_WIDTH;
         const screenY = bounds.y + parsed.data.y;
-        ctx.mediaPopupWindow.toggle(screenX, screenY);
+        ctx.mediaPopupWindow.toggle(
+          screenX,
+          screenY,
+          parsed.data.itemCount,
+          parsed.data.profileId,
+        );
         return { ok: true, data: null };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.MEDIA_OPEN_POPUP);
@@ -173,6 +185,36 @@ export function registerMediaHandlers(ctx: IpcContext): void {
       guardTrustedFrame(event, IPC_CHANNELS.MEDIA_CLOSE_POPUP);
       ctx.mediaPopupWindow.hide();
       return { ok: true, data: null };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEDIA_RESIZE_POPUP,
+    (event, payload): IpcResponse<null> => {
+      guardTrustedFrame(event, IPC_CHANNELS.MEDIA_RESIZE_POPUP);
+      const parsed = resizePopupSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      ctx.mediaPopupWindow.resize(parsed.data.height);
+      return { ok: true, data: null };
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.MEDIA_SEEK_TO,
+    async (event, payload): Promise<IpcResponse<void>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.MEDIA_SEEK_TO);
+      const parsed = seekToSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        await ctx.mediaManager.seekTo(parsed.data.tabId, parsed.data.time);
+        return { ok: true, data: undefined };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.MEDIA_SEEK_TO);
+      }
     },
   );
 

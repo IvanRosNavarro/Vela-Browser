@@ -94,12 +94,27 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ### Multimedia
 
-- [ ] **Control multimedia en iframes cross-origin**: sitios como Spotify Web o reproductores
-      embebidos en SPAs montan el audio en iframes cross-origin no accesibles desde el preload
-      del frame principal. Enfoques pendientes de investigar:
-      - `webContents.sendInputEvent` con `mediaPlay` / `mediaPause` (simula teclas multimedia).
-      - CDP `Page.addScriptToEvaluateOnNewDocument` combinado con el preload bridge.
-      Ver ADR 0033.
+- [x] **Control multimedia en iframes cross-origin**: resuelto recorriendo
+      `framesInSubtree`, como ya hacía el PiP. ADR 0118. La vía de
+      `webContents.sendInputEvent` con teclas multimedia queda descartada: esa
+      ruta vive en el browser process de Chromium y la tecla inyectada llega al
+      renderer como un `keydown` cualquiera, sin llegar nunca a la sesión.
+- [ ] **Controles del sistema operativo**: Vela no aparece en el panel de medios de
+      Windows (SMTC) ni responde a las teclas multimedia del teclado. Chromium lo
+      tiene tras `HardwareMediaKeyHandling` y `MediaSessionService`, activos por
+      defecto en Chrome y no en Electron. Primer paso: probar
+      `app.commandLine.appendSwitch('enable-features', …)` con esos dos. Si no
+      prenden, la alternativa es un módulo nativo. Ver ADR 0118.
+- [ ] **Probar en la app real el reproductor (ADR 0118)**: integrado con typecheck,
+      tests y build en verde, pero sin arrancar Electron. Comprobar play/pausa y
+      salto en YouTube, Spotify Web (iframe), YouTube Music y un embed de terceros;
+      que los botones de pista salgan apagados donde no hay handler; que el icono ♩
+      desaparece al navegar; y que un banner mudo no crea fuente.
+- [ ] **Sitios que registran sus handlers una sola vez, antes de sonar**: el puente
+      se instala al arrancar la reproducción, así que no los ve y el salto de pista
+      queda apagado. Si aparece algún caso real que moleste, la salida es el CDP
+      `Page.addScriptToEvaluateOnNewDocument`, hoy descartado por la huella que deja
+      tener el debugger adjunto. Ver ADR 0118.
 
 ### Notificaciones web — push
 
