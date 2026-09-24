@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { ExternalDropZone } from './shell/components/ExternalDropZone';
 import { WorkspaceModal } from './components/WorkspaceSwitcher';
 import { ProfileModal } from './components/ProfileModal';
 import { UnlockModal } from './components/UnlockModal';
@@ -85,6 +86,20 @@ export function App() {
   useEffect(() => {
     themeManager.initialize();
     return () => themeManager.destroy();
+  }, []);
+
+  // Sin esto, soltar un fichero en cualquier punto de la ventana hace que
+  // Chromium navegue la shell a `file://…` y se lleve por delante la interfaz
+  // entera. Las zonas que sí aceptan drops paran el evento antes (ver
+  // `ExternalDropZone`); esto es la red debajo, para todo lo demás.
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', swallow);
+    window.addEventListener('drop', swallow);
+    return () => {
+      window.removeEventListener('dragover', swallow);
+      window.removeEventListener('drop', swallow);
+    };
   }, []);
 
   useEffect(() => {
@@ -393,10 +408,14 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden">
-      <TitleBar />
+      <ExternalDropZone>
+        <TitleBar />
+      </ExternalDropZone>
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <ExternalDropZone>
+          <Sidebar />
+        </ExternalDropZone>
         <div className="flex flex-col flex-1 overflow-hidden" style={{ minWidth: 0 }}>
           <DeviceToolbar />
           <WebContentArea />

@@ -16,3 +16,4 @@ export * from './cookies';
 export * from './favorites';
 export * from './zoom';
 export * from './trackpad';
+export * from './dnd';

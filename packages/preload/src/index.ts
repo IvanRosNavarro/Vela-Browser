@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -126,6 +126,19 @@ const api: PreloadApi = {
     close: (input) => call(IPC_CHANNELS.NAV_HISTORY_POPUP_CLOSE, input),
     get: (input) => call(IPC_CHANNELS.NAV_HISTORY_GET, input),
     go: (input) => call(IPC_CHANNELS.NAV_HISTORY_GO, input),
+  },
+  dnd: {
+    openDropped: (input) => call(IPC_CHANNELS.DND_OPEN_DROPPED, input),
+    // Desde Electron 32 `File.path` ya no existe: la ruta de un fichero
+    // soltado solo se obtiene aquí, y solo para ficheros que el usuario ha
+    // arrastrado de verdad.
+    pathForFile: (file: File) => {
+      try {
+        return webUtils.getPathForFile(file);
+      } catch {
+        return '';
+      }
+    },
   },
   window: {
     openUrlInNewTab: (input) =>
