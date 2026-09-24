@@ -16,6 +16,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Varios tests derivan claves de verdad (Argon2id MODERATE en
+    // ProfileKeyring, scrypt en el crypto de sync): son cientos de ms por
+    // derivación y en una máquina cargada se pasaban del límite de 5 s por
+    // defecto, con lo que la suite fallaba sin que nada estuviera roto.
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {

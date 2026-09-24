@@ -14,11 +14,21 @@ import {
 
 const PROFILE = 'perfil-remoto-1';
 
-// Argon2id MODERATE tarda cientos de ms por derivación; los tests reutilizan
-// una sola clave y solo derivan de nuevo cuando lo que se prueba es la
-// derivación misma.
+// Argon2id con los parámetros de producción (MODERATE) tarda cientos de ms por
+// derivación, y en una máquina cargada se comió el límite de 5 s de vitest. Lo
+// que estos tests ejercitan es el formato, no el coste del KDF, así que derivan
+// con los parámetros mínimos; que producción use MODERATE lo comprueba el
+// último test.
 let kdf: VaultSyncKdf;
 let key: Uint8Array;
+
+function cheapKdf(): VaultSyncKdf {
+  return {
+    ...newVaultSyncKdf(),
+    ops: sodium.crypto_pwhash_OPSLIMIT_MIN,
+    mem: sodium.crypto_pwhash_MEMLIMIT_MIN,
+  };
+}
 
 const password = (id: string, domain: string): VaultSnapshotItem =>
   ({
@@ -36,7 +46,7 @@ const password = (id: string, domain: string): VaultSnapshotItem =>
 
 beforeAll(async () => {
   await sodium.ready;
-  kdf = newVaultSyncKdf();
+  kdf = cheapKdf();
   key = deriveVaultSyncKey('contraseña del vault', kdf);
 });
 
@@ -118,9 +128,16 @@ describe('vaultSyncCrypto', () => {
   });
 
   it('la misma passphrase con otro salt da otra clave', () => {
-    const otroKdf = newVaultSyncKdf();
+    const otroKdf = cheapKdf();
     const otraKey = deriveVaultSyncKey('contraseña del vault', otroKdf);
     expect(Buffer.from(otraKey)).not.toEqual(Buffer.from(key));
+  });
+
+  it('en producción se derivan las claves con Argon2id MODERATE', () => {
+    const real = newVaultSyncKdf();
+    expect(real.alg).toBe('argon2id');
+    expect(real.ops).toBe(sodium.crypto_pwhash_OPSLIMIT_MODERATE);
+    expect(real.mem).toBe(sodium.crypto_pwhash_MEMLIMIT_MODERATE);
   });
 
   it('isVaultSyncEnvelope distingue el formato anterior', () => {
