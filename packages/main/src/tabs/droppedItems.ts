@@ -65,12 +65,17 @@ export function parseDroppedUrl(raw: string): string | null {
 const corto = (v: string): string => (v.length > 60 ? `${v.slice(0, 57)}…` : v);
 
 /**
- * Nombre de un fichero para los avisos. No pasa por `new URL`: una ruta de
- * Windows como `C:\tmp\x.docx` se parsea sin error como una URL de esquema
- * `c:` y devuelve un pathname inservible.
+ * Nombre de un fichero para los avisos. Dos cosas que parecen detalles:
+ *
+ * - No pasa por `new URL`: una ruta de Windows como `C:\tmp\x.docx` se parsea
+ *   sin error como una URL de esquema `c:` y devuelve un pathname inservible.
+ * - Corta por los dos separadores en vez de usar `path.basename`, que en Linux
+ *   no reconoce `\` y devolvería la ruta entera. Importa para los tests, que
+ *   corren en las tres plataformas.
  */
 function labelForPath(filePath: string): string {
-  return corto(path.basename(filePath) || filePath);
+  const base = filePath.split(/[/\\]/).filter(Boolean).pop();
+  return corto(base ?? filePath);
 }
 
 /** Nombre corto de una URL: dominio y última parte, sin el esquema ni la query. */
