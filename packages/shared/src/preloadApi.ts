@@ -722,7 +722,7 @@ export interface VaultApi {
   closeAutofillModal(input: { windowId: number }): Promise<IpcResponse<void>>;
   isUnlocked(): Promise<IpcResponse<{ unlocked: boolean }>>;
   listFolders(): Promise<IpcResponse<string[]>>;
-  exportVault(input: { protectionPassword: string }): Promise<IpcResponse<void>>;
+  exportVault(input: { protectionPassword: string }): Promise<IpcResponse<{ saved: boolean; filePath?: string }>>;
   importCsv(): Promise<IpcResponse<{ imported: number; skipped: number }>>;
   openPendingSaveModal(input: { windowId: number }): Promise<IpcResponse<void>>;
   openManager(input: { windowId: number }): Promise<IpcResponse<void>>;
