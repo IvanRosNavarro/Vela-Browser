@@ -1,4 +1,4 @@
-# ADR 0118 — Control multimedia por frames y puente de Media Session
+# ADR 0120 — Control multimedia por frames y puente de Media Session
 
 - Estado: aceptado (sustituye la parte de control del ADR 0033)
 - Fecha: 2026-09-23

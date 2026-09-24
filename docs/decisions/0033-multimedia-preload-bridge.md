@@ -2,7 +2,7 @@
 
 ## Estado
 Aceptado — Sub-fase 4D, Prompt 4D.3 revisado (2026-05-14).
-**Superado en su parte de control por el ADR 0118** (2026-09-23): los comandos
+**Superado en su parte de control por el ADR 0120** (2026-09-23): los comandos
 ya no viajan por el preload sino al frame que tiene el elemento, y el cambio de
 pista usa los handlers reales de la página. Sigue vigente lo de aquí sobre la
 detección de estado y la metadata del frame principal.
