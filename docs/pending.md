@@ -404,3 +404,13 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 - [ ] Multi-ventana: un Ancla viva en la ventana A se materializa como WCV
       aparte al pulsarla en la ventana B (`tabToWindow` es una pestaña, una
       ventana). Preexistente, fuera del alcance de ADR 0100.
+- [ ] Vault y sync: probar a mano el ciclo completo con dos equipos reales
+      (establecer la contraseña del vault en A, desbloquear en B, guardar una
+      credencial en A y verla en B, borrarla en B y ver que no resucita). ADR
+      0119; verificado solo con tests.
+- [ ] El vault viaja entero en cada subida. El formato v2 cifra por entrada, así
+      que subir solo lo tocado es posible sin cambiar el sobre; hacerlo si algún
+      vault se acerca al tope de ~1,1 MB del servidor.
+- [ ] `lastUsedAt` de una credencial no dispara subida (evita subir el vault en
+      cada autorrelleno), así que queda desfasado entre equipos hasta el
+      siguiente cambio real.

@@ -12,7 +12,7 @@ import type { Favorite } from './types/favorite';
 import type { TabNode } from './types/treeNode';
 import type { TabZoomState } from './types/zoom';
 import type { AdBlockerCounts } from './types/adblocker';
-import type { SyncStatus } from './types/sync';
+import type { SyncStatus, VaultSyncState } from './types/sync';
 import type { ExtendedSuggestion } from './types/suggestion';
 import type { WindowInfo } from './types/window';
 import type { UpdateStatus } from './types/update';
@@ -397,6 +397,10 @@ export const IPC_CHANNELS = {
   SYNC_DISCONNECT_DEVICE: 'sync:disconnect-device',
   SYNC_DEACTIVATE: 'sync:deactivate',
   SYNC_UPDATE_DEVICE_NAME: 'sync:update-device-name',
+  SYNC_VAULT_GET_STATE: 'sync:vault-get-state',
+  SYNC_VAULT_SET_PASSPHRASE: 'sync:vault-set-passphrase',
+  SYNC_VAULT_UNLOCK: 'sync:vault-unlock',
+  SYNC_VAULT_LOCK: 'sync:vault-lock',
   RECOVERY_CARD_DOWNLOAD_PDF: 'recovery-card:download-pdf',
 
   SECURITY_OPEN_POPUP: 'security:open-popup',
@@ -555,6 +559,7 @@ export const IPC_EVENTS = {
   URLBAR_CONFIG_CHANGED: 'state:urlbar-config-changed',
   TITLEBAR_CONFIG_CHANGED: 'state:titlebar-config-changed',
   SYNC_STATUS_CHANGED: 'state:sync-status-changed',
+  VAULT_SYNC_CHANGED: 'state:vault-sync-changed',
   SYNC_SESSION_EXPIRED: 'sync:session-expired',
   SYNC_CALLBACK_RECEIVED: 'sync:callback-received',
   SUGGESTIONS_POPUP_SELECTED: 'state:suggestions-popup-selected',
@@ -664,6 +669,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.URLBAR_CONFIG_CHANGED]: { config: UrlBarIconConfig[] };
   [IPC_EVENTS.TITLEBAR_CONFIG_CHANGED]: { config: TitleBarIconConfig[] };
   [IPC_EVENTS.SYNC_STATUS_CHANGED]: { profileId: string; status: SyncStatus };
+  [IPC_EVENTS.VAULT_SYNC_CHANGED]: { profileId: string; state: VaultSyncState };
   [IPC_EVENTS.SYNC_SESSION_EXPIRED]: { profileId: string };
   [IPC_EVENTS.SYNC_CALLBACK_RECEIVED]: { token: string };
   [IPC_EVENTS.SUGGESTIONS_POPUP_SELECTED]: { suggestion: ExtendedSuggestion; newTab: boolean; windowId: number };

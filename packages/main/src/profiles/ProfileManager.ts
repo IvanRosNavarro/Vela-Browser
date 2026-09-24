@@ -26,6 +26,7 @@ import {
 import { ProfileMigrationRunner } from '../storage/ProfileMigrationRunner';
 import { PasswordVault } from '../passwords/PasswordVault';
 import { AutofillVault } from '../passwords/AutofillVault';
+import { VaultTombstoneRepository } from '../passwords/vaultTombstones';
 import type { ProfileExtensionManager } from '../extensions/ProfileExtensionManager';
 import {
   getProfileDbPath,
@@ -50,6 +51,8 @@ export interface ProfileRepositories {
   passwordVault: PasswordVault;
   /** Direcciones y tarjetas del vault (mismo cifrado que las contraseñas). */
   autofillVault: AutofillVault;
+  /** Qué entradas del vault se han borrado, para que el borrado se sincronice. */
+  vaultTombstones: VaultTombstoneRepository;
   notifications: NotificationRepository;
   pushSubscriptions: PushSubscriptionRepository;
   history: HistoryRepository;
@@ -272,6 +275,7 @@ export class ProfileManager {
             profileId,
             logger: this.ctx.logger,
           }),
+          vaultTombstones: new VaultTombstoneRepository(db),
           notifications: new NotificationRepository(db),
           pushSubscriptions: new PushSubscriptionRepository(db),
           history: new HistoryRepository(db),

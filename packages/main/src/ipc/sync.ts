@@ -2,10 +2,11 @@ import { ipcMain, app, shell, BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { IPC_CHANNELS, IPC_EVENTS, z, type IpcResponse } from '@vela/shared';
-import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile } from '@vela/shared';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile, VaultSyncState } from '@vela/shared';
 import type { IpcContext } from './context';
 import { mapError } from './errors';
 import { getFrameContext } from './helpers';
+import { guardTrustedFrame } from './validate';
 import { SyncManager, listRemoteProfiles } from '../sync/SyncManager';
 import { syncEvents } from '../sync/syncEvents';
 
@@ -458,6 +459,89 @@ export function registerSyncHandlers(ctx: IpcContext): void {
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.SYNC_UPDATE_DEVICE_NAME);
+      }
+    },
+  );
+
+  // ── Vault: contraseña propia para las credenciales ─────────────────────────
+  //
+  // Estos cuatro canales manejan la passphrase del vault en claro, así que
+  // llevan `guardTrustedFrame`: solo la shell y las páginas vela://, nunca el
+  // WebContentsView de una pestaña web.
+
+  const vaultPassphraseSchema = z.object({ passphrase: z.string().min(8).max(1024) });
+
+  const vaultState = (profileId: string): VaultSyncState => {
+    const manager = ctx.syncManagers.get(profileId);
+    return manager?.getVaultSyncState() ?? { mode: 'unset' };
+  };
+
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_VAULT_GET_STATE,
+    async (event): Promise<IpcResponse<VaultSyncState>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.SYNC_VAULT_GET_STATE);
+        const { profileId } = getFrameContext(event, ctx);
+        return { ok: true, data: vaultState(profileId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_VAULT_GET_STATE);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_VAULT_SET_PASSPHRASE,
+    async (event, payload): Promise<IpcResponse<VaultSyncState>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.SYNC_VAULT_SET_PASSPHRASE);
+        const parsed = vaultPassphraseSchema.safeParse(payload);
+        if (!parsed.success) return { ok: false, error: 'INVALID_INPUT' };
+        const { profileId } = getFrameContext(event, ctx);
+        const manager = ctx.syncManagers.get(profileId);
+        if (!manager?.isConfigured()) {
+          return { ok: false, error: 'INVARIANT', details: 'SYNC_NOT_CONFIGURED' };
+        }
+        await manager.setVaultSyncPassphrase(parsed.data.passphrase);
+        return { ok: true, data: manager.getVaultSyncState() };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_VAULT_SET_PASSPHRASE);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_VAULT_UNLOCK,
+    async (event, payload): Promise<IpcResponse<VaultSyncState>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.SYNC_VAULT_UNLOCK);
+        const parsed = vaultPassphraseSchema.safeParse(payload);
+        if (!parsed.success) return { ok: false, error: 'INVALID_INPUT' };
+        const { profileId } = getFrameContext(event, ctx);
+        const manager = ctx.syncManagers.get(profileId);
+        if (!manager?.isConfigured()) {
+          return { ok: false, error: 'INVARIANT', details: 'SYNC_NOT_CONFIGURED' };
+        }
+        const opened = await manager.unlockVaultSync(parsed.data.passphrase);
+        if (!opened) {
+          return { ok: false, error: 'INVARIANT', details: 'WRONG_PASSPHRASE' };
+        }
+        return { ok: true, data: manager.getVaultSyncState() };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_VAULT_UNLOCK);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SYNC_VAULT_LOCK,
+    async (event): Promise<IpcResponse<VaultSyncState>> => {
+      try {
+        guardTrustedFrame(event, IPC_CHANNELS.SYNC_VAULT_LOCK);
+        const { profileId } = getFrameContext(event, ctx);
+        ctx.syncManagers.get(profileId)?.lockVaultSync();
+        return { ok: true, data: vaultState(profileId) };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.SYNC_VAULT_LOCK);
       }
     },
   );

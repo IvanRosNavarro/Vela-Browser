@@ -7,6 +7,7 @@ import { EMPTY_ADDRESS, type AddressData, type CardData } from '@vela/shared';
 import { AutofillVault } from './AutofillVault';
 import { PasswordVault } from './PasswordVault';
 import { applyVaultSnapshot, buildVaultSnapshot } from './vaultSnapshot';
+import { VaultTombstoneRepository } from './vaultTombstones';
 import {
   ProfileKeyring,
   ProfileLockedError,
@@ -54,6 +55,11 @@ async function setup() {
     folder TEXT NOT NULL DEFAULT 'General',
     login_url TEXT,
     last_used_at INTEGER
+  )`);
+  db.exec(`CREATE TABLE vault_tombstones (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    deleted_at INTEGER NOT NULL
   )`);
   db.exec(MIGRATION);
   const profileId = 'p1';
@@ -200,6 +206,52 @@ describe('snapshot del vault para sync', () => {
     expect(target.passwords.exportAll()).toHaveLength(1);
     expect(target.autofill.listAddresses()[0]).toMatchObject(HOME);
     expect(target.autofill.listCards()[0]).toMatchObject({ number: '4111111111111111', expMonth: 7, expYear: 2029 });
+  });
+
+  it('el borrado viaja: la lápida quita la entrada en el otro dispositivo', async () => {
+    const origin = await setup();
+    const id = origin.passwords.store({ domain: 'example.com', username: 'ana', password: 's3cr3t' });
+    const target = await setup();
+
+    // El otro dispositivo ya la tenía.
+    applyVaultSnapshot(
+      JSON.parse(JSON.stringify(buildVaultSnapshot(origin.passwords.exportAll(), origin.autofill.exportAll()))),
+      { passwordVault: target.passwords, autofillVault: target.autofill },
+    );
+    expect(target.passwords.exportAll()).toHaveLength(1);
+
+    origin.passwords.delete(id);
+    const originTombstones = new VaultTombstoneRepository(origin.db);
+    const items = buildVaultSnapshot(
+      origin.passwords.exportAll(),
+      origin.autofill.exportAll(),
+      originTombstones.list(),
+    );
+
+    applyVaultSnapshot(JSON.parse(JSON.stringify(items)), {
+      passwordVault: target.passwords,
+      autofillVault: target.autofill,
+      vaultTombstones: new VaultTombstoneRepository(target.db),
+    });
+    expect(target.passwords.exportAll()).toEqual([]);
+  });
+
+  it('sin repositorio de lápidas el borrado se ignora en vez de aplicarse a ciegas', async () => {
+    const origin = await setup();
+    const id = origin.passwords.store({ domain: 'example.com', username: 'ana', password: 's3cr3t' });
+    origin.passwords.delete(id);
+    const items = buildVaultSnapshot(
+      origin.passwords.exportAll(),
+      origin.autofill.exportAll(),
+      new VaultTombstoneRepository(origin.db).list(),
+    );
+
+    const target = await setup();
+    const result = applyVaultSnapshot(JSON.parse(JSON.stringify(items)), {
+      passwordVault: target.passwords,
+      autofillVault: target.autofill,
+    });
+    expect(result.rejected).toEqual([]);
   });
 
   it('acepta el formato antiguo (solo contraseñas)', async () => {

@@ -127,6 +127,24 @@ export function App() {
         });
       },
     );
+    // La clave del vault solo vive en memoria: cada arranque empieza bloqueado
+    // y hasta que el usuario la teclee sus contraseñas no suben ni bajan. Sin
+    // este aviso no habría forma de enterarse sin abrir Ajustes.
+    void Promise.all([
+      window.api.sync.getStatus(),
+      window.api.sync.vaultGetState(),
+    ]).then(([statusRes, vaultRes]) => {
+      if (!statusRes.ok || !statusRes.data.configured) return;
+      if (!vaultRes.ok || vaultRes.data.mode === 'unlocked') return;
+      const openSync = () => {
+        void window.api.window.openUrlInNewTab({ url: 'vela://settings#sync', activate: true });
+      };
+      if (vaultRes.data.mode === 'locked') {
+        toast('Escribe la contraseña del vault para sincronizar tus contraseñas', 'warning', openSync);
+      } else {
+        toast('Tus contraseñas aún no se sincronizan: ponles una contraseña de vault', 'warning', openSync);
+      }
+    });
     const offAddNodeMenu = window.api.on(IPC_EVENTS.ADD_NODE_MENU_ACTION, ({ action, workspaceId, parentId }) => {
       if (action === 'new-tab') {
         void window.api.window.openUrlInNewTab({ url: 'vela://newtab', parentId, activate: true })
