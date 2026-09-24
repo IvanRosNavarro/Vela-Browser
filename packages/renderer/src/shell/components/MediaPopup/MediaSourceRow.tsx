@@ -208,7 +208,6 @@ export function MediaSourceRow({
         justifyContent: 'center',
         alignItems: 'center',
         gap: 2,
-        marginBottom: 8,
       }}>
         <CtrlBtn
           onClick={onSkipPrev}
@@ -234,29 +233,8 @@ export function MediaSourceRow({
         {onTogglePip && (
           <CtrlBtn onClick={onTogglePip} title="Imagen en imagen">⧉</CtrlBtn>
         )}
+        <CtrlBtn onClick={onActivate} title={`Ir a la pestaña: ${source.title}`}>🔗</CtrlBtn>
       </div>
-
-      {/* Go to tab */}
-      <button
-        onClick={onActivate}
-        style={{
-          width: '100%',
-          background: 'var(--vela-bg-row-hover)',
-          border: '1px solid var(--vela-border)',
-          borderRadius: 5,
-          padding: '5px 10px',
-          fontSize: 11,
-          color: 'var(--vela-fg)',
-          cursor: 'pointer',
-          textAlign: 'left',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        } as CSSProperties}
-        title={`Ir a la pestaña: ${source.title}`}
-      >
-        🔗 Ir a la pestaña → {source.title}
-      </button>
     </div>
   );
 }

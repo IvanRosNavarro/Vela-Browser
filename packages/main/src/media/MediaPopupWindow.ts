@@ -11,14 +11,29 @@ const BLUR_DEBOUNCE_MS = 150;
 /**
  * Alto de arranque mientras la página no ha medido su contenido: cabecera más
  * una estimación por fuente. Nunca es la altura final — en cuanto el popup
- * pinta, pide el alto exacto por `media:resize-popup`.
+ * pinta, pide el alto exacto por `media:resize-popup` —, pero cuanto mejor sea
+ * menos se nota el ajuste al abrir.
+ *
+ * `ROW_ESTIMATE` es lo que mide una fuente con carátula, título, artista, barra
+ * de progreso y controles: 274 px medidos sobre el popup real. Una sin artista
+ * ni duración ocupa menos y el popup encoge en cuanto mide.
  */
 const HEADER_HEIGHT = 33;
-const ROW_ESTIMATE = 150;
+const ROW_ESTIMATE = 274;
 const MIN_HEIGHT = 80;
 
+/**
+ * Tope de alto. Con tres o más fuentes el popup se comería la pantalla; a
+ * partir de aquí la lista hace scroll dentro de la ventana, como el resto de
+ * popups de Vela.
+ */
+export const MEDIA_POPUP_MAX_HEIGHT = 520;
+
 export function estimateHeight(itemCount: number): number {
-  return Math.max(MIN_HEIGHT, HEADER_HEIGHT + Math.max(itemCount, 1) * ROW_ESTIMATE);
+  return Math.min(
+    MEDIA_POPUP_MAX_HEIGHT,
+    Math.max(MIN_HEIGHT, HEADER_HEIGHT + Math.max(itemCount, 1) * ROW_ESTIMATE),
+  );
 }
 
 export class MediaPopupWindow {
@@ -75,7 +90,10 @@ export class MediaPopupWindow {
   /** Alto exacto que pide el propio popup una vez pintado su contenido. */
   resize(height: number): void {
     if (!this.win || this.win.isDestroyed()) return;
-    const clamped = Math.max(MIN_HEIGHT, Math.round(height));
+    const clamped = Math.min(
+      MEDIA_POPUP_MAX_HEIGHT,
+      Math.max(MIN_HEIGHT, Math.round(height)),
+    );
     const bounds = this.win.getBounds();
     if (bounds.height === clamped) return;
     this.win.setBounds({ ...this.placement(clamped), width: MEDIA_POPUP_WIDTH, height: clamped });

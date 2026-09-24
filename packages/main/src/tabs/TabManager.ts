@@ -74,6 +74,13 @@ export interface TabManagerCtx {
   /** Hook llamado al terminar de cablear listeners en un WCV (media, etc.). */
   onTabViewWired?: (tabId: string, view: WebContentsView, windowId: number, profileId: string) => void;
   /**
+   * La vista de una pestaña se destruye (cierre de pestaña o de ventana).
+   * Simétrico de `onTabViewWired`: los managers por pestaña que guarden estado
+   * lo sueltan aquí. No sirve escuchar `destroyed` en el propio WebContents,
+   * porque `destroyView` hace `removeAllListeners()` antes de cerrarlo.
+   */
+  onTabViewReleased?: (tabId: string) => void;
+  /**
    * Hook llamado cuando cambia la tab activa de una ventana, para notificar al
    * sistema de extensiones (ECE `selectTab`). Sin esto, `chrome.tabs.query`
    * ({active:true}) de las extensiones (Bitwarden, etc.) devuelve siempre la
@@ -3228,6 +3235,19 @@ export class TabManager {
   }
 
   private destroyView(state: PerWindow, view: WebContentsView): void {
+    // Antes de arrancarle los listeners: es el único aviso que van a tener los
+    // managers de que esta pestaña deja de existir.
+    if (this.ctx.onTabViewReleased) {
+      for (const [tabId, candidate] of state.tabs) {
+        if (candidate !== view) continue;
+        try {
+          this.ctx.onTabViewReleased(tabId);
+        } catch (err) {
+          this.ctx.logger.warn('[tabs] onTabViewReleased lanzó', err);
+        }
+        break;
+      }
+    }
     try {
       if (!state.window.isDestroyed()) {
         state.window.contentView.removeChildView(view);

@@ -91,6 +91,11 @@ export function App() {
         boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
         overflow: 'hidden',
         fontFamily: 'system-ui, sans-serif',
+        // El alto de la ventana lo pone main (tope de 520 px): a partir de ahí
+        // el contenido no puede crecer más y la lista se desplaza dentro.
+        maxHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
       } as CSSProperties}
     >
       <style>{PULSE_KEYFRAME}</style>
@@ -114,6 +119,7 @@ export function App() {
         </span>
       </div>
 
+      <div style={{ overflowY: 'auto', flex: '1 1 auto', minHeight: 0 }}>
       {sources.map((source, idx) => (
         <div key={source.tabId}>
           {idx > 0 && (
@@ -150,6 +156,7 @@ export function App() {
           />
         </div>
       ))}
+      </div>
     </div>
   );
 }

@@ -178,6 +178,9 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
       darkMode.attach(view.webContents, profileId);
       zoomManagerRef?.attach(tabId, view.webContents, profileId);
     },
+    onTabViewReleased: (tabId) => {
+      mediaManagerRef?.releaseTab(tabId);
+    },
     onVisibleTabsChanged: (windowId, visibleTabIds) => {
       pipManagerRef?.onVisibleTabsChanged(windowId, visibleTabIds);
     },

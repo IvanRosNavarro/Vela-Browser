@@ -94,6 +94,16 @@ export class MediaSessionManager {
     });
   }
 
+  /**
+   * La pestaña se ha cerrado (o su vista se ha destruido con la ventana): su
+   * reproducción deja de existir y tiene que salir del listado. Lo llama
+   * `TabManager` vía `onTabViewReleased`; el `destroyed` del WebContents no
+   * vale, porque `destroyView` borra sus listeners antes de cerrarlo.
+   */
+  releaseTab(tabId: string): void {
+    this.forget(tabId);
+  }
+
   private forget(tabId: string): void {
     this.targets.delete(tabId);
     if (this.sources.delete(tabId)) this.emitState();
