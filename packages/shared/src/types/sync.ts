@@ -9,6 +9,21 @@ export interface SyncStatus {
   accountEmail?: string | null;
 }
 
+/**
+ * Estado del cifrado del vault en la sincronización.
+ *
+ * - `unset`: este perfil aún no tiene contraseña de vault; las contraseñas no
+ *   se sincronizan.
+ * - `locked`: la hay, pero no se ha tecleado en esta sesión. La clave vive solo
+ *   en memoria, así que cada arranque empieza aquí.
+ * - `unlocked`: la clave está en memoria y el vault sube y baja con normalidad.
+ */
+export type VaultSyncMode = 'unset' | 'locked' | 'unlocked';
+
+export interface VaultSyncState {
+  mode: VaultSyncMode;
+}
+
 export interface DeviceInfo {
   tokenSuffix: string;
   userAgent: string;

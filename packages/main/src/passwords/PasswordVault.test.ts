@@ -50,6 +50,11 @@ async function setupVault(): Promise<{
     login_url TEXT,
     last_used_at INTEGER
   )`);
+  db.exec(`CREATE TABLE vault_tombstones (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    deleted_at INTEGER NOT NULL
+  )`);
   db.exec(`CREATE INDEX idx_password_vault_domain ON password_vault(domain)`);
   const profileId = 'p1';
   const settings = new ProfileSettingsRepository(db);

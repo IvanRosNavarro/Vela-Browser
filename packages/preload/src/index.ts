@@ -470,6 +470,10 @@ const api: PreloadApi = {
     disconnectDevice: (input: { tokenSuffix: string }) => call(IPC_CHANNELS.SYNC_DISCONNECT_DEVICE, input),
     deactivate: () => call(IPC_CHANNELS.SYNC_DEACTIVATE),
     updateDeviceName: (input: { name: string }) => call(IPC_CHANNELS.SYNC_UPDATE_DEVICE_NAME, input),
+    vaultGetState: () => call(IPC_CHANNELS.SYNC_VAULT_GET_STATE),
+    vaultSetPassphrase: (input: { passphrase: string }) => call(IPC_CHANNELS.SYNC_VAULT_SET_PASSPHRASE, input),
+    vaultUnlock: (input: { passphrase: string }) => call(IPC_CHANNELS.SYNC_VAULT_UNLOCK, input),
+    vaultLock: () => call(IPC_CHANNELS.SYNC_VAULT_LOCK),
   },
   recoveryCard: {
     downloadPdf: (input: { email: string; date: string }) => call(IPC_CHANNELS.RECOVERY_CARD_DOWNLOAD_PDF, input),

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useSyncStore } from '../../../stores/syncStore';
 import { useSettings } from '../lib/useSettings';
-import type { AccountProfile, DeviceInfo, RemoteSyncProfile, SyncCategory } from '@vela/shared';
+import type { AccountProfile, DeviceInfo, RemoteSyncProfile, SyncCategory, VaultSyncState } from '@vela/shared';
+import { IPC_EVENTS } from '@vela/shared';
 import { SYNC_CATEGORIES } from '@vela/shared';
 import { writeToClipboard } from '../../../lib/clipboard';
 import { call } from '../../../lib/ipc';
@@ -589,6 +590,8 @@ function SyncActiveView({ settings }: SyncActiveProps) {
 
       <AccountProfilesSection />
 
+      <VaultPassphraseSection />
+
       <SyncCategoriesSection settings={settings} />
 
       <section>
@@ -814,6 +817,171 @@ function AccountProfilesSection() {
             : `Hay ${unreadable} perfiles que esta contraseña de sync no abre.`}
         </p>
       )}
+    </section>
+  );
+}
+
+// ── Contraseña del vault ───────────────────────────────────────────────────
+
+/**
+ * Las contraseñas guardadas viajan con una clave propia, derivada de esta
+ * contraseña con Argon2id y que **solo vive en memoria**: ni se guarda en
+ * disco ni se envuelve con el almacén del sistema, como sí hace la clave de
+ * sincronización para poder reconectar sola. El precio es que hay que
+ * teclearla en cada equipo y después de cada reinicio.
+ */
+function VaultPassphraseSection() {
+  const [state, setState] = useState<VaultSyncState>({ mode: 'unset' });
+  const [passphrase, setPassphrase] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [changing, setChanging] = useState(false);
+
+  useEffect(() => {
+    void window.api.sync.vaultGetState().then((res) => {
+      if (res.ok) setState(res.data);
+    });
+    const off = window.api.on(IPC_EVENTS.VAULT_SYNC_CHANGED, ({ state: next }) => {
+      setState(next);
+    });
+    return () => off();
+  }, []);
+
+  const settingUp = state.mode === 'unset' || changing;
+
+  function reset() {
+    setPassphrase('');
+    setConfirmation('');
+    setError(null);
+    setChanging(false);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    if (passphrase.length < 8) {
+      setError('La contraseña del vault debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (settingUp && passphrase !== confirmation) {
+      setError('Las dos contraseñas no coinciden.');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const res = settingUp
+        ? await window.api.sync.vaultSetPassphrase({ passphrase })
+        : await window.api.sync.vaultUnlock({ passphrase });
+      if (res.ok) {
+        setState(res.data);
+        reset();
+      } else {
+        setError(
+          res.details === 'WRONG_PASSPHRASE'
+            ? 'Esa contraseña no abre el vault.'
+            : 'No se ha podido aplicar la contraseña del vault.',
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLock() {
+    const res = await window.api.sync.vaultLock();
+    if (res.ok) setState(res.data);
+  }
+
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-semibold text-[var(--vela-fg)]">
+        Contraseña del vault
+      </h3>
+      <p className="mb-3 text-xs text-[var(--vela-fg-muted)]">
+        Las contraseñas, direcciones y tarjetas viajan cifradas una a una con
+        esta contraseña, aparte de la de sincronización. No se guarda en ningún
+        sitio: tendrás que escribirla en cada dispositivo y cada vez que abras
+        Vela. Si la pierdes, lo que haya en el servidor no se puede recuperar.
+      </p>
+
+      <div className="rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-4">
+        {state.mode === 'unlocked' && !changing ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-[var(--vela-fg)]">
+              <span className="text-[var(--vela-accent)]">✓</span> Vault desbloqueado:
+              las contraseñas se están sincronizando.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setChanging(true)}
+                className="rounded-md border border-[var(--vela-border)] px-3 py-1 text-xs text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)]"
+              >
+                Cambiar contraseña
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleLock()}
+                className="rounded-md border border-[var(--vela-border)] px-3 py-1 text-xs text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)]"
+              >
+                Bloquear
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
+            {state.mode === 'locked' && !changing && (
+              <p className="text-sm text-[var(--vela-fg-muted)]">
+                Este dispositivo tiene contraseña de vault, pero aún no la has
+                escrito en esta sesión. Hasta que lo hagas, las contraseñas no
+                suben ni bajan.
+              </p>
+            )}
+            <input
+              type="password"
+              value={passphrase}
+              onChange={(e) => { setPassphrase(e.target.value); setError(null); }}
+              placeholder={settingUp ? 'Contraseña del vault' : 'Contraseña del vault'}
+              className="w-full rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg)] px-3 py-2 text-sm text-[var(--vela-fg)] outline-none"
+            />
+            {settingUp && (
+              <input
+                type="password"
+                value={confirmation}
+                onChange={(e) => { setConfirmation(e.target.value); setError(null); }}
+                placeholder="Repite la contraseña"
+                className="w-full rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg)] px-3 py-2 text-sm text-[var(--vela-fg)] outline-none"
+              />
+            )}
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded-md bg-[var(--vela-accent)] px-4 py-2 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {busy
+                  ? 'Aplicando…'
+                  : settingUp
+                    ? 'Establecer contraseña'
+                    : 'Desbloquear'}
+              </button>
+              {changing && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="rounded-md border border-[var(--vela-border)] px-4 py-2 text-sm text-[var(--vela-fg)] transition-colors hover:bg-[var(--vela-hover)]"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+      </div>
     </section>
   );
 }

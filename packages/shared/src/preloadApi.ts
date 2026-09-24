@@ -60,7 +60,7 @@ import type {
 } from './schemas';
 import type { MainEventPayloads } from './ipc-channels';
 import type { IpcResponse } from './types/ipcResponse';
-import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile } from './types/sync';
+import type { SyncStatus, DeviceInfo, RemoteSyncProfile, AccountProfile, VaultSyncState } from './types/sync';
 import type { SettingsKey } from './schemas/settings';
 import type { FolderNode, TabNode, TreeNode } from './types/treeNode';
 import type { Workspace } from './types/workspace';
@@ -932,6 +932,14 @@ export interface SyncApi {
   disconnectDevice(input: { tokenSuffix: string }): Promise<IpcResponse<void>>;
   deactivate(): Promise<IpcResponse<void>>;
   updateDeviceName(input: { name: string }): Promise<IpcResponse<void>>;
+  /** Estado del cifrado extra del vault (contraseña propia, solo en memoria). */
+  vaultGetState(): Promise<IpcResponse<VaultSyncState>>;
+  /** Fija o cambia la contraseña del vault y vuelve a subirlo cifrado con ella. */
+  vaultSetPassphrase(input: { passphrase: string }): Promise<IpcResponse<VaultSyncState>>;
+  /** Desbloquea el vault de esta sesión. `ok: false` si la contraseña no abre. */
+  vaultUnlock(input: { passphrase: string }): Promise<IpcResponse<VaultSyncState>>;
+  /** Olvida la contraseña del vault en este dispositivo hasta el próximo desbloqueo. */
+  vaultLock(): Promise<IpcResponse<VaultSyncState>>;
 }
 
 export interface RecoveryCardApi {
