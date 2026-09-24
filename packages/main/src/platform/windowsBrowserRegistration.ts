@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { app } from 'electron';
 
 function regAdd(key: string, valueName: string | null, data: string): void {
   const args = ['add', key, '/f', '/t', 'REG_SZ'];
@@ -22,9 +23,16 @@ function regAdd(key: string, valueName: string | null, data: string): void {
  *
  * Se llama en cada arranque para que la ruta del ejecutable esté siempre
  * actualizada (cambia entre versiones y rutas de instalación).
+ *
+ * En desarrollo no se escribe nada: `process.execPath` es el `electron.exe`
+ * del repositorio, así que arrancar el dev dejaba las claves de navegador
+ * predeterminado del usuario apuntando ahí en vez de a su Vela instalado, y
+ * abrir un enlace desde otra aplicación lanzaba —o intentaba lanzar— el
+ * Electron de desarrollo.
  */
 export function registerWindowsCapabilities(): void {
   if (process.platform !== 'win32') return;
+  if (!app.isPackaged) return;
 
   const exePath = process.execPath;
   const commandValue = `"${exePath}" "%1"`;
