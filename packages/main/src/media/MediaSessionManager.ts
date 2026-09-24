@@ -260,9 +260,22 @@ export class MediaSessionManager {
 
     const source = this.sources.get(tabId);
     if (source) {
-      const before = JSON.stringify([source.title, source.artist, source.artworkUrl]);
+      // Las capacidades entran en la comparación: una página que registra sus
+      // handlers con la reproducción ya en marcha (Spotify y YouTube Music lo
+      // hacen en cada cambio de pista) dejaba los botones de salto apagados
+      // hasta que además cambiaba el título.
+      const snapshot = (): string =>
+        JSON.stringify([
+          source.title,
+          source.artist,
+          source.artworkUrl,
+          source.canSkipNext,
+          source.canSkipPrev,
+          source.canSeek,
+        ]);
+      const before = snapshot();
       this.applyProbe(source, probe);
-      if (JSON.stringify([source.title, source.artist, source.artworkUrl]) !== before) {
+      if (snapshot() !== before) {
         this.emitState();
       }
     }

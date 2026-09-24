@@ -105,11 +105,22 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       defecto en Chrome y no en Electron. Primer paso: probar
       `app.commandLine.appendSwitch('enable-features', …)` con esos dos. Si no
       prenden, la alternativa es un módulo nativo. Ver ADR 0120.
-- [ ] **Probar en la app real el reproductor (ADR 0120)**: integrado con typecheck,
-      tests y build en verde, pero sin arrancar Electron. Comprobar play/pausa y
-      salto en YouTube, Spotify Web (iframe), YouTube Music y un embed de terceros;
-      que los botones de pista salgan apagados donde no hay handler; que el icono ♩
-      desaparece al navegar; y que un banner mudo no crea fuente.
+- [x] **Probado en Electron contra un banco local** (dos orígenes, el `<audio>`
+      dentro de un iframe de 127.0.0.1:7002 embebido en 127.0.0.1:7001), pilotando
+      la app por CDP: se detecta la fuente del iframe con su metadata, play, pausa,
+      `seekTo` y `seekBy` llegan al frame correcto, y `skipNext` invoca el handler
+      real de la página cuando esta lo registró con la reproducción en marcha.
+- [ ] **Probar con sitios reales**, que piden sesión iniciada y una ventana en
+      primer plano: YouTube, Spotify Web, YouTube Music y un embed de terceros.
+      Comprobar además que el icono ♩ desaparece al navegar y que un banner mudo no
+      crea fuente. Nota: con la ventana en segundo plano YouTube no llega a cargar
+      el stream (`readyState 0`), así que esta prueba no se puede automatizar sin
+      control del ratón.
+- [ ] **Los comandos de medios no distinguen "hecho" de "no se pudo"**: el IPC
+      devuelve `{ ok: true }` aunque `runMediaAction` haya devuelto false (por
+      ejemplo, un salto de pista sin handler que lo atienda). Con las capacidades
+      ya al día el botón sale apagado en ese caso, así que apenas se nota, pero
+      propagar el booleano permitiría avisar al usuario en vez de callar.
 - [ ] **Sitios que registran sus handlers una sola vez, antes de sonar**: el puente
       se instala al arrancar la reproducción, así que no los ve y el salto de pista
       queda apagado. Si aparece algún caso real que moleste, la salida es el CDP
