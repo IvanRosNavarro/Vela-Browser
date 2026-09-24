@@ -94,12 +94,38 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ### Multimedia
 
-- [ ] **Control multimedia en iframes cross-origin**: sitios como Spotify Web o reproductores
-      embebidos en SPAs montan el audio en iframes cross-origin no accesibles desde el preload
-      del frame principal. Enfoques pendientes de investigar:
-      - `webContents.sendInputEvent` con `mediaPlay` / `mediaPause` (simula teclas multimedia).
-      - CDP `Page.addScriptToEvaluateOnNewDocument` combinado con el preload bridge.
-      Ver ADR 0033.
+- [x] **Control multimedia en iframes cross-origin**: resuelto recorriendo
+      `framesInSubtree`, como ya hacía el PiP. ADR 0120. La vía de
+      `webContents.sendInputEvent` con teclas multimedia queda descartada: esa
+      ruta vive en el browser process de Chromium y la tecla inyectada llega al
+      renderer como un `keydown` cualquiera, sin llegar nunca a la sesión.
+- [ ] **Controles del sistema operativo**: Vela no aparece en el panel de medios de
+      Windows (SMTC) ni responde a las teclas multimedia del teclado. Chromium lo
+      tiene tras `HardwareMediaKeyHandling` y `MediaSessionService`, activos por
+      defecto en Chrome y no en Electron. Primer paso: probar
+      `app.commandLine.appendSwitch('enable-features', …)` con esos dos. Si no
+      prenden, la alternativa es un módulo nativo. Ver ADR 0120.
+- [x] **Probado en Electron contra un banco local** (dos orígenes, el `<audio>`
+      dentro de un iframe de 127.0.0.1:7002 embebido en 127.0.0.1:7001), pilotando
+      la app por CDP: se detecta la fuente del iframe con su metadata, play, pausa,
+      `seekTo` y `seekBy` llegan al frame correcto, y `skipNext` invoca el handler
+      real de la página cuando esta lo registró con la reproducción en marcha.
+- [ ] **Probar con sitios reales**, que piden sesión iniciada y una ventana en
+      primer plano: YouTube, Spotify Web, YouTube Music y un embed de terceros.
+      Comprobar además que el icono ♩ desaparece al navegar y que un banner mudo no
+      crea fuente. Nota: con la ventana en segundo plano YouTube no llega a cargar
+      el stream (`readyState 0`), así que esta prueba no se puede automatizar sin
+      control del ratón.
+- [ ] **Los comandos de medios no distinguen "hecho" de "no se pudo"**: el IPC
+      devuelve `{ ok: true }` aunque `runMediaAction` haya devuelto false (por
+      ejemplo, un salto de pista sin handler que lo atienda). Con las capacidades
+      ya al día el botón sale apagado en ese caso, así que apenas se nota, pero
+      propagar el booleano permitiría avisar al usuario en vez de callar.
+- [ ] **Sitios que registran sus handlers una sola vez, antes de sonar**: el puente
+      se instala al arrancar la reproducción, así que no los ve y el salto de pista
+      queda apagado. Si aparece algún caso real que moleste, la salida es el CDP
+      `Page.addScriptToEvaluateOnNewDocument`, hoy descartado por la huella que deja
+      tener el debugger adjunto. Ver ADR 0120.
 
 ### Notificaciones web — push
 

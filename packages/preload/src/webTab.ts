@@ -196,11 +196,13 @@ document.addEventListener('mouseleave', () => {
 });
 
 // ─── Media Session Bridge ─────────────────────────────────────────────────────
-// Polls navigator.mediaSession every 500 ms and reports state to main.
-// Receives 'media:command' from main and executes on DOM with user-gesture context.
+// Sondea navigator.mediaSession cada 500 ms y avisa al main de los cambios de
+// metadata del frame principal. Es la vía rápida y barata; el main completa lo
+// que falta (iframes, posición, acciones disponibles) sondeando por frames.
 
 let mediaLastTitle = '';
 let mediaLastState = '';
+let mediaLastArtwork = '';
 let mediaPoller: ReturnType<typeof setInterval> | null = null;
 
 function startMediaPoller(): void {
@@ -210,9 +212,11 @@ function startMediaPoller(): void {
     const ms = navigator.mediaSession;
     const title = ms.metadata?.title ?? '';
     const state = ms.playbackState as string;
-    if (title !== mediaLastTitle || state !== mediaLastState) {
+    const artwork = ms.metadata?.artwork?.[0]?.src ?? '';
+    if (title !== mediaLastTitle || state !== mediaLastState || artwork !== mediaLastArtwork) {
       mediaLastTitle = title;
       mediaLastState = state;
+      mediaLastArtwork = artwork;
       ipcRenderer.send('media:state-update', {
         title: ms.metadata?.title || document.title || '',
         artist: ms.metadata?.artist ?? null,
@@ -231,45 +235,10 @@ window.addEventListener('beforeunload', () => {
   mediaPoller = null;
 });
 
-function findActiveMedia(): HTMLMediaElement | null {
-  const all = Array.from(document.querySelectorAll('video, audio')) as HTMLMediaElement[];
-  return all.find((el) => !el.paused && !el.ended && el.readyState > 2) ?? all[0] ?? null;
-}
-
-ipcRenderer.on('media:command', (_event, command: string) => {
-  switch (command) {
-    case 'play': {
-      const el = findActiveMedia();
-      if (el && el.paused) void el.play().catch(() => { });
-      break;
-    }
-    case 'pause': {
-      const all = Array.from(document.querySelectorAll('video,audio')) as HTMLMediaElement[];
-      all.filter((e) => !e.paused).forEach((e) => e.pause());
-      break;
-    }
-    case 'nexttrack': {
-      const el = findActiveMedia();
-      if (el && isFinite(el.duration) && el.duration > 0) el.currentTime = el.duration;
-      break;
-    }
-    case 'previoustrack': {
-      const el = findActiveMedia();
-      if (el) el.currentTime = 0;
-      break;
-    }
-    case 'seekforward': {
-      const el = findActiveMedia();
-      if (el) el.currentTime = Math.min(el.currentTime + 15, el.duration || Infinity);
-      break;
-    }
-    case 'seekbackward': {
-      const el = findActiveMedia();
-      if (el) el.currentTime = Math.max(el.currentTime - 10, 0);
-      break;
-    }
-  }
-});
+// Los comandos de transporte ya no pasan por aquí: los ejecuta el main sobre
+// el frame que de verdad tiene el elemento (`mediaFrames.ts`), que además llega
+// a los iframes de otro origen. Tener las dos vías a la vez hacía que un salto
+// de 15 s se aplicara dos veces.
 
 // ─── Imagen en imagen ─────────────────────────────────────────────────────────
 // Informa al main de si el documento tiene un vídeo en PiP, entre otras cosas

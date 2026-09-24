@@ -1,5 +1,6 @@
 import { type CSSProperties, useRef } from 'react';
 import { useMediaStore } from '../../../stores/mediaStore';
+import { useRuntimeStore } from '../../../stores/runtimeStore';
 import { useSettings } from '../../../pages/settings/lib/useSettings';
 
 const pulseStyle = `
@@ -12,6 +13,7 @@ const pulseStyle = `
 export function MediaButton() {
   const sources = useMediaStore((s) => s.sources);
   const activeCount = useMediaStore((s) => s.activeCount);
+  const profileId = useRuntimeStore((s) => s.currentProfileId);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const { get: getSetting } = useSettings();
@@ -26,7 +28,14 @@ export function MediaButton() {
   function handleClick() {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
-    void window.api.media.openPopup({ x: rect.right, y: rect.bottom + 4 });
+    // El alto lo dimensiona main con `itemCount`; el popup lo ajusta luego al
+    // contenido real, que depende de si cada fuente trae artista y duración.
+    void window.api.media.openPopup({
+      x: rect.right,
+      y: rect.bottom + 4,
+      itemCount: sources.length,
+      profileId: profileId ?? '',
+    });
   }
 
   return (

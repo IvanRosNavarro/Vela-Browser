@@ -1,39 +1,80 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import type { Logger } from '../logger';
 
 const INTERNAL_PRELOAD_PATH = path.join(__dirname, '../../preload/dist/index.js');
 
 export const MEDIA_POPUP_WIDTH = 300;
-const MEDIA_POPUP_HEIGHT = 420;
 const BLUR_DEBOUNCE_MS = 150;
+
+/**
+ * Alto de arranque mientras la página no ha medido su contenido: cabecera más
+ * una estimación por fuente. Nunca es la altura final — en cuanto el popup
+ * pinta, pide el alto exacto por `media:resize-popup` —, pero cuanto mejor sea
+ * menos se nota el ajuste al abrir.
+ *
+ * `ROW_ESTIMATE` es lo que mide una fuente con carátula, título, artista, barra
+ * de progreso y controles: 274 px medidos sobre el popup real. Una sin artista
+ * ni duración ocupa menos y el popup encoge en cuanto mide.
+ */
+const HEADER_HEIGHT = 33;
+const ROW_ESTIMATE = 274;
+const MIN_HEIGHT = 80;
+
+/**
+ * Tope de alto. Con tres o más fuentes el popup se comería la pantalla; a
+ * partir de aquí la lista hace scroll dentro de la ventana, como el resto de
+ * popups de Vela.
+ */
+export const MEDIA_POPUP_MAX_HEIGHT = 520;
+
+export function estimateHeight(itemCount: number): number {
+  return Math.min(
+    MEDIA_POPUP_MAX_HEIGHT,
+    Math.max(MIN_HEIGHT, HEADER_HEIGHT + Math.max(itemCount, 1) * ROW_ESTIMATE),
+  );
+}
 
 export class MediaPopupWindow {
   private win: BrowserWindow | null = null;
   private lastHiddenAt = 0;
+  /** Esquina superior derecha pedida, para recolocar al cambiar de alto. */
+  private anchor: { x: number; y: number } | null = null;
+  private profileId: string | null = null;
 
   constructor(private readonly logger: Logger) {}
 
-  toggle(x: number, y: number): void {
+  private popupUrl(profileId: string): string {
+    return `vela://media-popup?profileId=${encodeURIComponent(profileId)}`;
+  }
+
+  toggle(x: number, y: number, itemCount: number, profileId: string): void {
     const sinceHidden = Date.now() - this.lastHiddenAt;
     if (sinceHidden < BLUR_DEBOUNCE_MS) {
-      // Popup was just hidden by blur triggered by clicking our button — don't re-show
+      // El blur lo ha provocado el clic en nuestro propio botón: no reabrir.
       return;
     }
     if (this.win && !this.win.isDestroyed() && this.win.isVisible()) {
       this.hide();
       return;
     }
-    this.show(x, y);
+    this.show(x, y, itemCount, profileId);
   }
 
-  show(x: number, y: number): void {
+  show(x: number, y: number, itemCount: number, profileId: string): void {
+    const height = estimateHeight(itemCount);
     if (!this.win || this.win.isDestroyed()) {
-      this.createWindow();
+      this.createWindow(height, profileId);
+    } else if (profileId !== this.profileId) {
+      // La ventana se reutiliza entre aperturas; si el perfil activo ha
+      // cambiado hay que recargarla o seguiría filtrando por el anterior.
+      this.profileId = profileId;
+      void this.win.loadURL(this.popupUrl(profileId)).catch(() => {});
     }
     const win = this.win!;
-    win.setPosition(Math.round(x), Math.round(y));
+    this.anchor = { x, y };
+    win.setBounds({ ...this.placement(height), width: MEDIA_POPUP_WIDTH, height });
 
     if (win.webContents.isLoading()) {
       win.webContents.once('did-finish-load', () => {
@@ -44,6 +85,27 @@ export class MediaPopupWindow {
       win.show();
       win.focus();
     }
+  }
+
+  /** Alto exacto que pide el propio popup una vez pintado su contenido. */
+  resize(height: number): void {
+    if (!this.win || this.win.isDestroyed()) return;
+    const clamped = Math.min(
+      MEDIA_POPUP_MAX_HEIGHT,
+      Math.max(MIN_HEIGHT, Math.round(height)),
+    );
+    const bounds = this.win.getBounds();
+    if (bounds.height === clamped) return;
+    this.win.setBounds({ ...this.placement(clamped), width: MEDIA_POPUP_WIDTH, height: clamped });
+  }
+
+  /** Mantiene el popup pegado a su ancla y dentro de la pantalla. */
+  private placement(height: number): { x: number; y: number } {
+    const anchor = this.anchor ?? { x: 0, y: 0 };
+    const area = screen.getDisplayNearestPoint(anchor).workArea;
+    const x = Math.min(Math.max(anchor.x, area.x), area.x + area.width - MEDIA_POPUP_WIDTH);
+    const y = Math.min(Math.max(anchor.y, area.y), area.y + area.height - height);
+    return { x: Math.round(x), y: Math.round(y) };
   }
 
   hide(): void {
@@ -60,12 +122,12 @@ export class MediaPopupWindow {
     this.win = null;
   }
 
-  private createWindow(): void {
+  private createWindow(height: number, profileId: string): void {
     const preloadExists = fs.existsSync(INTERNAL_PRELOAD_PATH);
 
     this.win = new BrowserWindow({
       width: MEDIA_POPUP_WIDTH,
-      height: MEDIA_POPUP_HEIGHT,
+      height,
       x: 0,
       y: 0,
       frame: false,
@@ -83,7 +145,10 @@ export class MediaPopupWindow {
       },
     });
 
-    void this.win.loadURL('vela://media-popup').catch(() => {});
+    // El perfil viaja en la URL: el popup solo lista lo que suena en la ventana
+    // desde la que se abrió, no lo de los demás perfiles.
+    this.profileId = profileId;
+    void this.win.loadURL(this.popupUrl(profileId)).catch(() => {});
 
     const capturedWin = this.win;
     this.win.on('blur', () => {

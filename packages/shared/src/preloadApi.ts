@@ -518,13 +518,22 @@ export interface MediaApi {
   getSources(): Promise<IpcResponse<MediaSource[]>>;
   play(input: { tabId: string }): Promise<IpcResponse<void>>;
   pause(input: { tabId: string }): Promise<IpcResponse<void>>;
-  openPopup(input: { x: number; y: number }): Promise<IpcResponse<null>>;
+  /** `itemCount` y `profileId` los pone quien abre: el popup se dimensiona y filtra con ellos. */
+  openPopup(input: {
+    x: number;
+    y: number;
+    itemCount: number;
+    profileId: string;
+  }): Promise<IpcResponse<null>>;
   closePopup(): Promise<IpcResponse<null>>;
+  /** Ajusta el alto de la ventana al contenido real ya renderizado. */
+  resizePopup(input: { height: number }): Promise<IpcResponse<null>>;
   skipNext(input: { tabId: string }): Promise<IpcResponse<void>>;
   skipPrev(input: { tabId: string }): Promise<IpcResponse<void>>;
   activateTab(input: { tabId: string; windowId: number }): Promise<IpcResponse<void>>;
   getCurrentTime(input: { tabId: string }): Promise<IpcResponse<{ currentTime: number; duration: number | null }>>;
   seekBy(input: { tabId: string; delta: number }): Promise<IpcResponse<void>>;
+  seekTo(input: { tabId: string; time: number }): Promise<IpcResponse<void>>;
   /** Alterna la imagen en imagen del vídeo principal de la pestaña. */
   togglePictureInPicture(input: { tabId: string }): Promise<IpcResponse<PipToggleResult>>;
 }
