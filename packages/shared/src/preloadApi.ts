@@ -230,6 +230,15 @@ export interface NodeApi {
 
 export interface TabApi {
   activate(input: TabActivateInput): Promise<IpcResponse<{ id: string }>>;
+  /**
+   * Lleva la pestaña a otra ventana abierta. `windowId` es el id estable de la
+   * ventana destino. Devuelve `moved` si viajó la vista viva —misma sesión, sin
+   * recargar— o `reopened` si la ventana destino es de otro perfil y solo se
+   * pudo abrir la URL allí.
+   */
+  moveToWindow(input: { tabId: string; windowId: string }): Promise<
+    IpcResponse<{ result: 'moved' | 'reopened' | 'noop' }>
+  >;
   close(input: TabSimpleInput): Promise<IpcResponse<{ id: string }>>;
   discard(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;
   restore(input: TabSimpleInput): Promise<IpcResponse<TabNode>>;

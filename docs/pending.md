@@ -445,3 +445,9 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       un `.docx` (debe abrirlo el sistema) y texto seleccionado de otra
       aplicación. La clasificación tiene tests; el gesto no se puede automatizar
       sin control del ratón.
+- [ ] Mover pestañas entre ventanas (ADR 0122): probar a mano el caso de
+      **perfiles distintos** — menú contextual de la pestaña → «Mover a
+      ventana» → una ventana de otro perfil. Debe abrir la dirección allí,
+      cerrar la de origen y avisar de que la sesión no viaja. El caso del mismo
+      perfil sí está comprobado en Electron (la vista viva cambia de ventana y
+      el audio no se corta).

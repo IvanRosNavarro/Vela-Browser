@@ -81,6 +81,7 @@ export const IPC_CHANNELS = {
 
   WINDOW_OPEN_URL_IN_NEW_TAB: 'window:open-url-in-new-tab',
   DND_OPEN_DROPPED: 'dnd:open-dropped',
+  TAB_MOVE_TO_WINDOW: 'tab:move-to-window',
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_TOGGLE_MAXIMIZE: 'window:toggle-maximize',
   WINDOW_CLOSE: 'window:close',

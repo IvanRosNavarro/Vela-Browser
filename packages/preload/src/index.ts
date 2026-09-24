@@ -89,6 +89,7 @@ const api: PreloadApi = {
   },
   tab: {
     activate: (input) => call(IPC_CHANNELS.TAB_ACTIVATE, input),
+    moveToWindow: (input) => call(IPC_CHANNELS.TAB_MOVE_TO_WINDOW, input),
     close: (input) => call(IPC_CHANNELS.TAB_CLOSE, input),
     discard: (input) => call(IPC_CHANNELS.TAB_DISCARD, input),
     restore: (input) => call(IPC_CHANNELS.TAB_RESTORE, input),
