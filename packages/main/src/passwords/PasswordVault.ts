@@ -3,6 +3,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { ProfileKeyring } from '../profiles/ProfileKeyring';
 import type { Logger } from '../logger';
 import { NotFoundError } from '../lib/errors';
+import { syncEvents } from '../sync/syncEvents';
+import { recordTombstone } from './vaultTombstones';
 
 export interface PasswordEntry {
   id: string;
@@ -86,6 +88,16 @@ export class PasswordVault {
     },
   ) {}
 
+
+  /**
+   * Avisa de que el vault ha cambiado para que `SyncManager` lo suba. No se
+   * emite desde `syncUpsert` (viene de otro dispositivo) ni desde `markUsed`
+   * (cada autorrelleno dispararía una subida del vault entero).
+   */
+  private notifyChanged(): void {
+    syncEvents.emit('vault:changed', { profileId: this.ctx.profileId });
+  }
+
   store(input: CreatePasswordEntryInput): string {
     const key = this.ctx.keyring.getKey(this.ctx.profileId);
     const id = newId();
@@ -115,6 +127,7 @@ export class PasswordVault {
         now,
       );
 
+    this.notifyChanged();
     return id;
   }
 
@@ -273,6 +286,7 @@ export class PasswordVault {
 
     const updated = this.retrieve(id);
     if (!updated) throw new NotFoundError('PasswordEntry', id);
+    this.notifyChanged();
     return updated;
   }
 
@@ -289,6 +303,10 @@ export class PasswordVault {
     if (result.changes === 0) {
       throw new NotFoundError('PasswordEntry', id);
     }
+    // La lápida es lo que hace que el borrado viaje: sin ella el otro
+    // dispositivo resucita la entrada en su siguiente subida.
+    recordTombstone(this.ctx.db, 'password', id);
+    this.notifyChanged();
   }
 
   /** Exporta todas las entradas descifradas (para exportación protegida con contraseña). */

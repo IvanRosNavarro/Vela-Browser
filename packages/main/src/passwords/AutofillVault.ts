@@ -15,6 +15,8 @@ import type { ProfileKeyring } from '../profiles/ProfileKeyring';
 import type { Logger } from '../logger';
 import { NotFoundError } from '../lib/errors';
 import { decryptVaultString, encryptVaultString } from './vaultCrypto';
+import { syncEvents } from '../sync/syncEvents';
+import { recordTombstone, type VaultTombstoneKind } from './vaultTombstones';
 
 interface EntryRow {
   id: string;
@@ -37,6 +39,11 @@ type Table = 'vault_addresses' | 'vault_cards';
 function newId(): string {
   return globalThis.crypto.randomUUID();
 }
+
+const TOMBSTONE_KIND: Record<Table, VaultTombstoneKind> = {
+  vault_addresses: 'address',
+  vault_cards: 'card',
+};
 
 function normKey(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -240,18 +247,32 @@ export class AutofillVault {
         .prepare(`UPDATE ${table} SET data_encrypted = ?, updated_at = ? WHERE id = ?`)
         .run(blob, now, id);
       if (result.changes === 0) throw new NotFoundError(table, id);
+      this.notifyChanged();
       return id;
     }
     const newEntryId = newId();
     this.ctx.db
       .prepare(`INSERT INTO ${table} (id, data_encrypted, created_at, updated_at) VALUES (?, ?, ?, ?)`)
       .run(newEntryId, blob, now, now);
+    this.notifyChanged();
     return newEntryId;
   }
 
   private remove(table: Table, id: string, entity: string): void {
     const result = this.ctx.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     if (result.changes === 0) throw new NotFoundError(entity, id);
+    // La lápida es lo que hace que el borrado viaje (ver vaultTombstones.ts).
+    recordTombstone(this.ctx.db, TOMBSTONE_KIND[table], id);
+    this.notifyChanged();
+  }
+
+  /**
+   * Avisa a `SyncManager` de que el vault ha cambiado. No se emite desde
+   * `syncUpsert` (viene de otro dispositivo) ni desde `touch` (marcar como
+   * usada en cada autorrelleno subiría el vault entero una y otra vez).
+   */
+  private notifyChanged(): void {
+    syncEvents.emit('vault:changed', { profileId: this.ctx.profileId });
   }
 
   private touch(table: Table, id: string): void {

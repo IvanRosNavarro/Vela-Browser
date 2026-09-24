@@ -23,6 +23,18 @@ import { mapError } from './errors';
 import { getReposForFrame, getFrameContext } from './helpers';
 import { guardTrustedFrame } from './validate';
 
+/**
+ * Ids del nodo y de todo su subárbol. Al mover una carpeta de workspace
+ * viajan también sus descendientes, y sus pestañas abiertas tienen que
+ * soltar el WCV que tenían en la ventana de origen.
+ */
+function subtreeIds(
+  repos: { treeNodes: { getDescendants(id: string): { id: string }[] } },
+  id: string,
+): string[] {
+  return [id, ...repos.treeNodes.getDescendants(id).map((n) => n.id)];
+}
+
 export function registerNodeHandlers(ctx: IpcContext): void {
   ipcMain.handle(
     IPC_CHANNELS.NODE_CREATE_FOLDER,
@@ -185,6 +197,9 @@ export function registerNodeHandlers(ctx: IpcContext): void {
           ctx.events.emit(IPC_EVENTS.TREE_CHANGED, {
             workspaceId: before.workspaceId,
           });
+          await ctx.tabManager.releaseTabsMovedToOtherWorkspace(
+            subtreeIds(repos, result.node.id),
+          );
         }
         return { ok: true, data: result.node };
       } catch (err) {
@@ -217,6 +232,11 @@ export function registerNodeHandlers(ctx: IpcContext): void {
         );
         for (const workspaceId of result.affectedWorkspaceIds) {
           ctx.events.emit(IPC_EVENTS.TREE_CHANGED, { workspaceId });
+        }
+        if (result.affectedWorkspaceIds.length > 1) {
+          await ctx.tabManager.releaseTabsMovedToOtherWorkspace(
+            result.nodes.flatMap((n) => subtreeIds(repos, n.id)),
+          );
         }
         return { ok: true, data: result.nodes };
       } catch (err) {

@@ -799,8 +799,15 @@ export function App() {
         { type: 'normal' as const, id: 'icon:clear', label: '(limpiar)' },
       ];
 
+      const otherWorkspaces = workspaces.filter((w) => w.id !== node.workspaceId);
+      const moveSubmenu: MenuItemSpec[] =
+        otherWorkspaces.length === 0
+          ? [{ type: 'normal', id: 'noop:no-ws', label: '(solo hay un workspace)', enabled: false }]
+          : otherWorkspaces.map((w) => ({ type: 'normal' as const, id: `move-to-workspace:${w.id}`, label: w.name }));
+
       const items: MenuItemSpec[] = [
         { type: 'normal', id: 'add-to-folder', label: 'Añadir a carpeta' },
+        { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
         { type: 'submenu', label: 'Color', submenu: colorSubmenu },
         { type: 'submenu', label: 'Icono', submenu: iconSubmenu },
         { type: 'separator' },
@@ -828,6 +835,20 @@ export function App() {
         },
       ];
 
+      // La carpeta viaja con sus descendientes; se encola al final de la raíz
+      // del workspace destino, igual que en la sidebar de la shell.
+      const moveHandlers: Record<string, () => void> = {};
+      for (const w of otherWorkspaces) {
+        moveHandlers[`move-to-workspace:${w.id}`] = async () => {
+          const res = await window.api.tree.getByWorkspace({ workspaceId: w.id });
+          const targetRoots = res.ok ? res.data.filter((n) => n.parentId === null) : [];
+          const lastPos = targetRoots.length > 0
+            ? targetRoots.reduce((max, n) => (n.position > max ? n.position : max), targetRoots[0]!.position)
+            : null;
+          void window.api.node.move({ id: node.id, newParentId: null, newPosition: generateKeyBetween(lastPos, null), newWorkspaceId: w.id });
+        };
+      }
+
       const colorActions: Record<string, () => void> = {};
       for (const p of PALETTE) {
         colorActions[`color:${p.id}`] = () => void window.api.node.update({ id: node.id, color: p.color });
@@ -840,6 +861,7 @@ export function App() {
 
       void showContextMenu(items, {
         'add-to-folder': () => void addTabToNewFolder(node),
+        ...moveHandlers,
         ...colorActions,
         ...iconActions,
         'new-folder': async () => {

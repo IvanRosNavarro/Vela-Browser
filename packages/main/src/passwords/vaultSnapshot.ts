@@ -1,6 +1,7 @@
 import type { VaultAddress, VaultCard } from '@vela/shared';
 import type { PasswordEntry, PasswordVault } from './PasswordVault';
 import type { AutofillVault } from './AutofillVault';
+import type { VaultTombstone, VaultTombstoneRepository } from './vaultTombstones';
 
 /**
  * Formato del blob del vault que viaja por sync (cifrado con la clave de sync).
@@ -33,7 +34,23 @@ export interface CardSnapshotItem {
   data: Omit<VaultCard, 'id' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>;
 }
 
-export type VaultSnapshotItem = PasswordEntry | AddressSnapshotItem | CardSnapshotItem;
+/**
+ * Borrado propagado. Viaja con el mismo `updatedAt` que el resto para que el
+ * LWW decida: una entrada reescrita después del borrado gana a su lápida.
+ */
+export interface TombstoneSnapshotItem {
+  kind: 'tombstone';
+  id: string;
+  /** A qué tabla del vault pertenecía. */
+  of: VaultTombstone['kind'];
+  updatedAt: number;
+}
+
+export type VaultSnapshotItem =
+  | PasswordEntry
+  | AddressSnapshotItem
+  | CardSnapshotItem
+  | TombstoneSnapshotItem;
 
 function split<T extends { id: string; createdAt: number; updatedAt: number; lastUsedAt: number | null }>(
   entry: T,
@@ -42,10 +59,14 @@ function split<T extends { id: string; createdAt: number; updatedAt: number; las
   return { meta: { id, createdAt, updatedAt, lastUsedAt } as Pick<T, 'id' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>, data };
 }
 
-/** Construye el array del blob: contraseñas primero, luego direcciones y tarjetas. */
+/**
+ * Construye el array del blob: contraseñas primero, luego direcciones,
+ * tarjetas y las lápidas de lo borrado.
+ */
 export function buildVaultSnapshot(
   passwords: readonly PasswordEntry[],
   autofill: { addresses: readonly VaultAddress[]; cards: readonly VaultCard[] },
+  tombstones: readonly VaultTombstone[] = [],
 ): VaultSnapshotItem[] {
   const items: VaultSnapshotItem[] = [...passwords];
   for (const address of autofill.addresses) {
@@ -55,6 +76,14 @@ export function buildVaultSnapshot(
   for (const card of autofill.cards) {
     const { meta, data } = split(card);
     items.push({ kind: 'card', ...meta, data });
+  }
+  for (const tombstone of tombstones) {
+    items.push({
+      kind: 'tombstone',
+      id: tombstone.id,
+      of: tombstone.kind,
+      updatedAt: tombstone.deletedAt,
+    });
   }
   return items;
 }
@@ -72,7 +101,11 @@ export interface ApplySnapshotResult {
  */
 export function applyVaultSnapshot(
   items: unknown,
-  vaults: { passwordVault: Pick<PasswordVault, 'syncUpsert'>; autofillVault: Pick<AutofillVault, 'syncUpsertAddress' | 'syncUpsertCard'> },
+  vaults: {
+    passwordVault: Pick<PasswordVault, 'syncUpsert'>;
+    autofillVault: Pick<AutofillVault, 'syncUpsertAddress' | 'syncUpsertCard'>;
+    vaultTombstones?: Pick<VaultTombstoneRepository, 'apply'>;
+  },
 ): ApplySnapshotResult {
   const result: ApplySnapshotResult = { applied: 0, rejected: [] };
   if (!Array.isArray(items)) return result;
@@ -86,6 +119,11 @@ export function applyVaultSnapshot(
       } else if (item.kind === 'address') {
         const it = raw as AddressSnapshotItem;
         vaults.autofillVault.syncUpsertAddress({ ...(it.data ?? {}), id: it.id, createdAt: it.createdAt, updatedAt: it.updatedAt, lastUsedAt: it.lastUsedAt ?? null } as VaultAddress);
+      } else if (item.kind === 'tombstone') {
+        // Sin repositorio de lápidas (llamadas antiguas) se ignora: perder un
+        // borrado es preferible a borrar algo que no toca.
+        const it = raw as TombstoneSnapshotItem;
+        vaults.vaultTombstones?.apply({ id: it.id, kind: it.of, deletedAt: it.updatedAt });
       } else if (item.kind === 'card') {
         const it = raw as CardSnapshotItem;
         vaults.autofillVault.syncUpsertCard({ ...(it.data ?? {}), id: it.id, createdAt: it.createdAt, updatedAt: it.updatedAt, lastUsedAt: it.lastUsedAt ?? null } as VaultCard);

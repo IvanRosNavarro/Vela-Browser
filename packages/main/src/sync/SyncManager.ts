@@ -6,6 +6,19 @@ import { serializers } from './serializers';
 import { syncEvents, type SyncEntityAppliedEvent, type SyncEntityEvent } from './syncEvents';
 import type { ProfileRepositories } from '../profiles/ProfileManager';
 import { applyVaultSnapshot, buildVaultSnapshot } from '../passwords/vaultSnapshot';
+import {
+  deriveVaultSyncKey,
+  ensureSodium,
+  isVaultSyncEnvelope,
+  isVaultSyncKdf,
+  makeCheck,
+  newVaultSyncKdf,
+  openVaultEnvelope,
+  sealVaultSnapshot,
+  verifyCheck,
+  zeroKey,
+  type VaultSyncKdf,
+} from './vaultSyncCrypto';
 import type { Logger } from '../logger';
 import type { MainEventBus } from '../ipc/events';
 
@@ -25,6 +38,30 @@ const MAX_PULL_ROUNDS = 50;
 const PULL_DEBOUNCE_MS = 250;
 
 const PUSH_BATCH_SIZE = 200;
+
+/**
+ * Espera antes de subir el vault tras una mutación. Guardar una contraseña
+ * suele venir acompañado de más escrituras (marcar usada, tocar la dirección),
+ * y el vault viaja entero en cada subida.
+ */
+const VAULT_PUSH_DEBOUNCE_MS = 2_000;
+
+/** Claves de `settings_profile` del vault de sync (prefijo no sincronizable). */
+const VAULT_KDF_KEY = 'vault:sync-kdf';
+const VAULT_CHECK_KEY = 'vault:sync-check';
+
+/**
+ * - `unset`: este perfil aún no tiene passphrase de vault; las contraseñas no
+ *   se sincronizan.
+ * - `locked`: la hay, pero no se ha tecleado en esta sesión. La clave solo vive
+ *   en memoria, así que cada arranque empieza aquí.
+ * - `unlocked`: la clave está en memoria y el vault sincroniza.
+ */
+export type VaultSyncMode = 'unset' | 'locked' | 'unlocked';
+
+export interface VaultSyncState {
+  mode: VaultSyncMode;
+}
 
 /**
  * Tope de payload por petición. El servidor monta `express.json({ limit:
@@ -153,6 +190,10 @@ export class SyncManager {
   private reconnectDelay = 1_000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSyncAt: number | null = null;
+  /** Clave del vault. Solo en memoria: nunca se escribe en disco. */
+  private vaultKey: Uint8Array | null = null;
+  private vaultPushTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly onVaultChanged = (): void => this.scheduleVaultPush();
 
   constructor(
     private readonly profileId: string,
@@ -235,6 +276,7 @@ export class SyncManager {
     } catch { /* non-fatal — sync still works for this session */ }
 
     syncEvents.on('entity:changed', this.onEntityChanged);
+    syncEvents.on('vault:changed', this.onVaultChanged);
 
     await this.refreshAccountEmail();
     await this.registerProfile();
@@ -286,6 +328,7 @@ export class SyncManager {
       this.config = { sessionToken, syncKey, remoteProfileId, lastSeq };
 
       syncEvents.on('entity:changed', this.onEntityChanged);
+      syncEvents.on('vault:changed', this.onVaultChanged);
       this.connect();
       void this.refreshAccountEmail();
       await this.syncAll();
@@ -299,6 +342,8 @@ export class SyncManager {
 
   async deactivate(): Promise<void> {
     syncEvents.off('entity:changed', this.onEntityChanged);
+    syncEvents.off('vault:changed', this.onVaultChanged);
+    this.lockVaultSync();
     this.disconnect();
     this.config = null;
     const repos = this.getRepos();
@@ -342,6 +387,8 @@ export class SyncManager {
    */
   pause(): void {
     syncEvents.off('entity:changed', this.onEntityChanged);
+    syncEvents.off('vault:changed', this.onVaultChanged);
+    this.lockVaultSync();
     this.disconnect();
     this.config = null;
     this.emitStatus();
@@ -767,7 +814,9 @@ export class SyncManager {
     if (this.pullDebounce !== null) return;
     this.pullDebounce = setTimeout(() => {
       this.pullDebounce = null;
-      void this.pullChanges();
+      // El vault viaja por su propia ruta, así que un aviso de cambios tiene
+      // que bajarlo también: antes solo se leía al arrancar el perfil.
+      void this.pullChanges().then(() => this.pullVaultSnapshot());
     }, PULL_DEBOUNCE_MS);
     if (typeof this.pullDebounce.unref === 'function') this.pullDebounce.unref();
   }
@@ -1011,28 +1060,138 @@ export class SyncManager {
     }
   }
 
+  // ── Vault: passphrase propia ───────────────────────────────────────────────
+
+  getVaultSyncState(): VaultSyncState {
+    if (this.vaultKey) return { mode: 'unlocked' };
+    return { mode: this.readVaultKdf() ? 'locked' : 'unset' };
+  }
+
+  private readVaultKdf(): VaultSyncKdf | null {
+    try {
+      const raw = this.getRepos().settings.get(VAULT_KDF_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      return isVaultSyncKdf(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
-   * Sube el vault entero como un único blob cifrado con la clave de sync.
-   * Las entradas viajan descifradas DENTRO del blob porque en cada dispositivo
-   * están cifradas con la clave de su propio perfil, que nunca sale de ahí.
+   * Fija (o cambia) la passphrase del vault y vuelve a subir el vault entero
+   * con ella. Si en el servidor quedaba un blob del formato anterior se
+   * fusiona antes con el local, para no perder lo que solo estuviera allí.
+   */
+  async setVaultSyncPassphrase(passphrase: string): Promise<void> {
+    if (!this.config) throw new Error('[sync] no configurado');
+    await ensureSodium();
+
+    // Lo que haya en el servidor con el formato viejo se rescata ahora: a
+    // partir de esta subida deja de ser legible sin la passphrase.
+    await this.importLegacyVaultBlob();
+
+    const kdf = newVaultSyncKdf();
+    const key = deriveVaultSyncKey(passphrase, kdf);
+    const repos = this.getRepos();
+    repos.settings.set(VAULT_KDF_KEY, JSON.stringify(kdf));
+    repos.settings.set(VAULT_CHECK_KEY, makeCheck(key, this.config.remoteProfileId));
+
+    zeroKey(this.vaultKey);
+    this.vaultKey = key;
+    this.emitVaultState();
+    await this.pushVaultSnapshot();
+  }
+
+  /** Deriva la clave y comprueba el verificador. No toca la red. */
+  async unlockVaultSync(passphrase: string): Promise<boolean> {
+    if (!this.config) return false;
+    const kdf = this.readVaultKdf();
+    const check = this.getRepos().settings.get(VAULT_CHECK_KEY);
+    if (!kdf || !check) return false;
+
+    await ensureSodium();
+    const key = deriveVaultSyncKey(passphrase, kdf);
+    if (!verifyCheck(check, key, this.config.remoteProfileId)) {
+      zeroKey(key);
+      return false;
+    }
+    zeroKey(this.vaultKey);
+    this.vaultKey = key;
+    this.emitVaultState();
+    void this.pullVaultSnapshot().then(() => this.pushVaultSnapshot());
+    return true;
+  }
+
+  /** Olvida la clave del vault de esta sesión (cierre, pausa, bloqueo manual). */
+  lockVaultSync(): void {
+    if (this.vaultPushTimer) {
+      clearTimeout(this.vaultPushTimer);
+      this.vaultPushTimer = null;
+    }
+    if (!this.vaultKey) return;
+    zeroKey(this.vaultKey);
+    this.vaultKey = null;
+    this.emitVaultState();
+  }
+
+  private emitVaultState(): void {
+    this.events.emit(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      'state:vault-sync-changed' as any,
+      { profileId: this.profileId, state: this.getVaultSyncState() },
+    );
+  }
+
+  /**
+   * Sube el vault tras una mutación local, agrupando las ráfagas. Sin esto las
+   * contraseñas solo viajaban al vincular el dispositivo: no había ningún punto
+   * que subiera el vault cuando el usuario guardaba una credencial nueva.
+   */
+  private scheduleVaultPush(): void {
+    if (!this.config || !this.vaultKey) return;
+    if (this.vaultPushTimer) return;
+    this.vaultPushTimer = setTimeout(() => {
+      this.vaultPushTimer = null;
+      void this.pushVaultSnapshot();
+    }, VAULT_PUSH_DEBOUNCE_MS);
+    if (typeof this.vaultPushTimer.unref === 'function') this.vaultPushTimer.unref();
+  }
+
+  /**
+   * Sube el vault entero como un único blob: por fuera cifrado con la clave de
+   * sync, y dentro cada entrada cifrada con la clave del vault (ver
+   * `vaultSyncCrypto.ts`). Sin passphrase en memoria no se sube nada.
    */
   async pushVaultSnapshot(): Promise<void> {
     if (!this.config) return;
     if (this.disabledCategories().has('passwords')) return;
+    if (!this.vaultKey) return;
     try {
+      await ensureSodium();
       const repos = this.getRepos();
+      const kdf = this.readVaultKdf();
+      if (!kdf) return;
       // Direcciones y tarjetas viajan en el mismo blob (ver vaultSnapshot.ts).
+      repos.vaultTombstones.prune();
       const items = buildVaultSnapshot(
         repos.passwordVault.exportAll(),
         repos.autofillVault.exportAll(),
+        repos.vaultTombstones.list(),
       );
       if (items.length === 0) return;
+      const envelope = sealVaultSnapshot(
+        items,
+        this.vaultKey,
+        kdf,
+        this.config.remoteProfileId,
+      );
       await this.pushVault(
-        Buffer.from(JSON.stringify(items), 'utf-8'),
+        Buffer.from(JSON.stringify(envelope), 'utf-8'),
         Math.max(repos.passwordVault.latestUpdatedAt(), repos.autofillVault.latestUpdatedAt()) || Date.now(),
       );
     } catch (err) {
-      // Perfil bloqueado (sin clave en memoria) o red caída: no es fatal.
+      // Perfil bloqueado (sin clave del perfil) o red caída: no es fatal.
       this.logger.warn('[sync] push del vault falló:', err);
     }
   }
@@ -1044,14 +1203,74 @@ export class SyncManager {
     try {
       const blob = await this.pullVault();
       if (!blob) return;
-      const items = JSON.parse(blob.toString('utf-8')) as unknown;
-      const repos = this.getRepos();
-      const { rejected } = applyVaultSnapshot(items, repos);
+      const parsed = JSON.parse(blob.toString('utf-8')) as unknown;
+
+      if (!isVaultSyncEnvelope(parsed)) {
+        // Blob del formato anterior: solo se acepta mientras este dispositivo
+        // no tenga passphrase, y se convierte a v2 al establecerla.
+        if (!this.vaultKey) {
+          this.logger.info(
+            '[sync] el vault remoto usa el formato anterior; establece la contraseña del vault para migrarlo',
+          );
+        }
+        return;
+      }
+
+      // El sobre trae los parámetros con los que se cifró: si otro dispositivo
+      // cambió la contraseña del vault, se adoptan aquí para poder pedir la
+      // nueva. Sin esto el desbloqueo local seguiría validando contra el
+      // verificador viejo y todas las entradas llegarían ilegibles.
+      await ensureSodium();
+      const localKdfRaw = this.getRepos().settings.get(VAULT_KDF_KEY);
+      if (localKdfRaw !== JSON.stringify(parsed.kdf)) {
+        this.getRepos().settings.set(VAULT_KDF_KEY, JSON.stringify(parsed.kdf));
+        this.getRepos().settings.set(VAULT_CHECK_KEY, parsed.check);
+        if (this.vaultKey && !verifyCheck(parsed.check, this.vaultKey, this.config.remoteProfileId)) {
+          this.logger.info('[sync] la contraseña del vault ha cambiado en otro dispositivo');
+          this.lockVaultSync();
+        }
+      }
+
+      if (!this.vaultKey) {
+        this.logger.info('[sync] vault remoto cifrado: falta la contraseña del vault');
+        this.emitVaultState();
+        return;
+      }
+
+      const { items, failed } = openVaultEnvelope(
+        parsed,
+        this.vaultKey,
+        this.config.remoteProfileId,
+      );
+      for (const id of failed) {
+        this.logger.warn(`[sync] entrada de vault ilegible ${id}`);
+      }
+      const { rejected } = applyVaultSnapshot(items, this.getRepos());
       for (const id of rejected) {
         this.logger.warn(`[sync] entrada de vault descartada ${id}`);
       }
     } catch (err) {
       this.logger.warn('[sync] pull del vault falló:', err);
+    }
+  }
+
+  /**
+   * Trae al local un blob remoto del formato anterior (entradas en claro dentro
+   * del sobre de sync). Solo corre al establecer la passphrase: es el único
+   * momento en que ese blob sigue siendo legible y va a dejar de estarlo.
+   */
+  private async importLegacyVaultBlob(): Promise<void> {
+    try {
+      const blob = await this.pullVault();
+      if (!blob) return;
+      const parsed = JSON.parse(blob.toString('utf-8')) as unknown;
+      if (isVaultSyncEnvelope(parsed)) return;
+      const { applied } = applyVaultSnapshot(parsed, this.getRepos());
+      if (applied > 0) {
+        this.logger.info(`[sync] ${applied} entradas del vault migradas al formato cifrado`);
+      }
+    } catch (err) {
+      this.logger.warn('[sync] migración del vault anterior falló:', err);
     }
   }
 
@@ -1191,6 +1410,8 @@ export class SyncManager {
 
   destroy(): void {
     syncEvents.off('entity:changed', this.onEntityChanged);
+    syncEvents.off('vault:changed', this.onVaultChanged);
+    this.lockVaultSync();
     this.disconnect();
     this.config = null;
   }
