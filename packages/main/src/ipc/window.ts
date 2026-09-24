@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import {
   IPC_CHANNELS,
   z,
@@ -7,9 +7,19 @@ import {
   type TabNode,
 } from '@vela/shared';
 import type { IpcContext } from './context';
+import { getFrameContext } from './helpers';
 import { mapError } from './errors';
 import { InvariantViolationError } from '../lib/errors';
 import { guardTrustedFrame } from './validate';
+import {
+  buildSearchUrl,
+  dndOpenDroppedInputSchema,
+  SEARCH_ENGINE_DEFAULT,
+  SEARCH_ENGINE_IDS,
+  type SearchEngineId,
+  type SearchSettings,
+} from '@vela/shared';
+import { planDrop } from '../tabs/droppedItems';
 import { setAddressBarEditing } from '../shortcuts';
 
 const titlebarOverlaySchema = z.object({
@@ -64,6 +74,74 @@ export function registerWindowHandlers(ctx: IpcContext): void {
         return { ok: true, data: tab };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.WINDOW_OPEN_URL_IN_NEW_TAB);
+      }
+    },
+  );
+
+  /**
+   * Arrastrar y soltar desde fuera: enlaces, ficheros o texto sueltos sobre la
+   * chrome de Vela (sidebar y barra de título). El área de contenido no pasa
+   * por aquí: ahí manda la página, como en cualquier navegador, para no
+   * quitarle a las webs su propio arrastrar y soltar.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.DND_OPEN_DROPPED,
+    async (event, payload): Promise<IpcResponse<{ opened: number; system: number }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.DND_OPEN_DROPPED);
+      const parsed = dndOpenDroppedInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        const windowId = resolveWindowId(event);
+        if (windowId === null) {
+          throw new InvariantViolationError('dnd:open-dropped: webContents sin BrowserWindow');
+        }
+        const workspaceId = ctx.tabManager.getWorkspaceForWindow(windowId);
+        if (!workspaceId) {
+          throw new InvariantViolationError(`dnd:open-dropped: window ${windowId} sin workspace`);
+        }
+
+        const { repos } = getFrameContext(event, ctx);
+        const engineRaw = repos.settings.get('search:engine');
+        const search: SearchSettings = {
+          engine: SEARCH_ENGINE_IDS.includes(engineRaw as SearchEngineId)
+            ? (engineRaw as SearchSettings['engine'])
+            : SEARCH_ENGINE_DEFAULT,
+          customUrl: repos.settings.get('search:custom-url') ?? null,
+        };
+
+        const actions = planDrop(parsed.data.items, search);
+        let opened = 0;
+        let system = 0;
+
+        for (const action of actions) {
+          if (action.kind === 'system') {
+            // Lo que Vela no sabe pintar lo abre el sistema, como hace
+            // cualquier navegador con un .docx o un .zip.
+            const error = await shell.openPath(action.filePath);
+            if (error) {
+              ctx.logger.warn(`[dnd] openPath falló (${action.label}): ${error}`);
+            } else {
+              system++;
+            }
+            continue;
+          }
+          await ctx.tabManager.createTab(windowId, {
+            workspaceId,
+            parentId: parsed.data.parentId ?? null,
+            url: action.url,
+            // Solo la primera se lleva el foco: soltar diez enlaces no debe
+            // dejarte en el último.
+            activate: opened === 0,
+          });
+          opened++;
+        }
+
+        ctx.logger.info(`[dnd] ${opened} pestañas abiertas, ${system} al sistema`);
+        return { ok: true, data: { opened, system } };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.DND_OPEN_DROPPED);
       }
     },
   );

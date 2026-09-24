@@ -840,6 +840,7 @@ export interface PreloadApi {
   urlBarConfig: UrlBarConfigApi;
   titleBarConfig: TitleBarConfigApi;
   sync: SyncApi;
+  dnd: DndApi;
   recoveryCard: RecoveryCardApi;
   workspaceDrop: WorkspaceDropApi;
   profileDrop: ProfileDropApi;
@@ -940,6 +941,16 @@ export interface SyncApi {
   vaultUnlock(input: { passphrase: string }): Promise<IpcResponse<VaultSyncState>>;
   /** Olvida la contraseña del vault en este dispositivo hasta el próximo desbloqueo. */
   vaultLock(): Promise<IpcResponse<VaultSyncState>>;
+}
+
+/** Arrastrar y soltar desde fuera de Vela sobre la sidebar o la barra de título. */
+export interface DndApi {
+  openDropped(input: {
+    items: Array<{ kind: 'url' | 'file' | 'text'; value: string }>;
+    parentId?: string | null;
+  }): Promise<IpcResponse<{ opened: number; system: number }>>;
+  /** Ruta real de un fichero soltado (`webUtils.getPathForFile`). '' si no se puede. */
+  pathForFile(file: File): string;
 }
 
 export interface RecoveryCardApi {

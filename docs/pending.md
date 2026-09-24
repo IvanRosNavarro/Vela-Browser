@@ -414,3 +414,8 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 - [ ] `lastUsedAt` de una credencial no dispara subida (evita subir el vault en
       cada autorrelleno), así que queda desfasado entre equipos hasta el
       siguiente cambio real.
+- [ ] Arrastrar y soltar (ADR 0121): probar el gesto de verdad con un ratón —
+      un enlace desde otro navegador, varios ficheros del explorador a la vez,
+      un `.docx` (debe abrirlo el sistema) y texto seleccionado de otra
+      aplicación. La clasificación tiene tests; el gesto no se puede automatizar
+      sin control del ratón.
