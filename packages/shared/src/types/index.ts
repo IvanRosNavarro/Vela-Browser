@@ -34,3 +34,4 @@ export * from './sync';
 export * from './download';
 export * from './analyticsDebugger';
 export * from './update';
+export * from './integrations';

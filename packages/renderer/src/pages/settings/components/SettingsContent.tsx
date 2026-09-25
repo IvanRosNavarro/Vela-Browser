@@ -13,6 +13,7 @@ import { AdBlocker } from '../sections/AdBlocker';
 import { Aparejos } from '../sections/Aparejos';
 import { Security } from '../sections/Security';
 import { Sync } from '../sections/Sync';
+import { Integrations } from '../sections/Integrations';
 import { About } from '../sections/About';
 
 type SettingsHook = ReturnType<typeof useSettings>;
@@ -36,6 +37,7 @@ const TITLES: Record<Section, string> = {
   adblocker:  'Bloqueador de anuncios',
   security:   'Seguridad',
   sync:       'Sincronización',
+  integrations: 'Integraciones',
   about:      'Acerca de Vela',
 };
 
@@ -67,6 +69,7 @@ export function SettingsContent({ section, settings }: Props) {
         {section === 'adblocker'  && <AdBlocker settings={settings} />}
         {section === 'security'   && <Security  settings={settings} />}
         {section === 'sync'       && <Sync />}
+        {section === 'integrations' && <Integrations />}
         {section === 'about'      && <About />}
       </div>
     </main>

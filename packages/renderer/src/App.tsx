@@ -23,6 +23,7 @@ import { useMouseGestures, type GestureTrailHandle } from './shell/hooks/useMous
 import { WorkspaceSelector } from './components/WorkspaceSelector/WorkspaceSelector';
 import { UpdateModal } from './components/UpdateModal/UpdateModal';
 import { useUpdateStore } from './stores/updateStore';
+import { useIntegrationsStore } from './stores/integrationsStore';
 import { useBootstrap, useProfilesStore, useUiStore, useUrlBarStore } from './stores';
 import type { UrlBarIconId } from '@vela/shared';
 import { useScreenshotStore } from './stores/screenshotStore';
@@ -200,6 +201,10 @@ export function App() {
       useMediaPermissionStore.getState().removePendingOrigin(origin);
     });
     void useMediaPermissionStore.getState().hydrate();
+
+    // El estado real llega por `state:integrations-status-changed`; esto solo
+    // pone al día a una ventana que abre con el sondeo ya en marcha.
+    void useIntegrationsStore.getState().hydrate();
 
     const offClientCertChanged = window.api.on(IPC_EVENTS.CLIENT_CERT_CHANGED, () => {
       void useClientCertStore.getState().hydrate();

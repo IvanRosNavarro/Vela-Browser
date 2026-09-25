@@ -28,6 +28,7 @@ import { useAparejosStore } from './aparejosStore';
 import { useUrlBarStore } from './urlBarStore';
 import { useTitleBarIconStore } from './titleBarIconStore';
 import { useSyncStore } from './syncStore';
+import { useIntegrationsStore } from './integrationsStore';
 import { useMultiWindowStore } from './multiWindowStore';
 import { useFindStore } from './findStore';
 import { useDevToolsStore, type ConverterTab } from './devtoolsStore';
@@ -294,6 +295,17 @@ export function initSubscriptions(): () => void {
     },
   );
 
+  const offIntegrations = window.api.on(
+    IPC_EVENTS.INTEGRATIONS_STATUS_CHANGED,
+    (payload) => {
+      // Cada ventana muestra lo de su perfil: dos perfiles abiertos a la vez no
+      // deben pisarse el contador de pull requests.
+      const profileId = useRuntimeStore.getState().currentProfileId;
+      if (profileId !== null && payload.profileId !== profileId) return;
+      useIntegrationsStore.getState().applyStatus(payload.status);
+    },
+  );
+
   const offMediaChanged = window.api.on(
     IPC_EVENTS.MEDIA_CHANGED,
     (payload) => {
@@ -431,6 +443,7 @@ export function initSubscriptions(): () => void {
     offContextMenuShow();
     offLayoutChanged();
     offMediaChanged();
+    offIntegrations();
     offTabMutedChanged();
     offFavoritesChanged();
     offAnchoredTabs();

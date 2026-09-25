@@ -14,11 +14,13 @@ export type Section =
   | 'adblocker'
   | 'security'
   | 'sync'
+  | 'integrations'
   | 'about';
 
 const VALID: ReadonlySet<string> = new Set<Section>([
   'general', 'appearance', 'tabs', 'search', 'profile',
-  'privacy', 'shortcuts', 'extensions', 'aparejos', 'ai', 'adblocker', 'security', 'sync', 'about',
+  'privacy', 'shortcuts', 'extensions', 'aparejos', 'ai', 'adblocker', 'security', 'sync',
+  'integrations', 'about',
 ]);
 
 function fromHash(): Section {

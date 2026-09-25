@@ -16,6 +16,7 @@ import type { SyncStatus, VaultSyncState } from './types/sync';
 import type { ExtendedSuggestion } from './types/suggestion';
 import type { WindowInfo } from './types/window';
 import type { UpdateStatus } from './types/update';
+import type { IntegrationsStatus } from './types/integrations';
 
 export const IPC_CHANNELS = {
   WORKSPACE_LIST: 'workspace:list',
@@ -104,6 +105,16 @@ export const IPC_CHANNELS = {
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
   SPELLCHECK_GET_INFO: 'spellcheck:get-info',
+
+  INTEGRATIONS_GET_STATUS: 'integrations:get-status',
+  INTEGRATIONS_START_DEVICE_FLOW: 'integrations:start-device-flow',
+  INTEGRATIONS_CANCEL_DEVICE_FLOW: 'integrations:cancel-device-flow',
+  INTEGRATIONS_CONNECT_TOKEN: 'integrations:connect-token',
+  INTEGRATIONS_DISCONNECT: 'integrations:disconnect',
+  INTEGRATIONS_CHECK_NOW: 'integrations:check-now',
+  INTEGRATIONS_SET_ENABLED: 'integrations:set-enabled',
+  INTEGRATIONS_SET_CLIENT_ID: 'integrations:set-client-id',
+  INTEGRATIONS_OPEN_PR: 'integrations:open-pr',
 
   UPDATE_GET_STATUS: 'update:get-status',
   UPDATE_CHECK_NOW: 'update:check-now',
@@ -595,6 +606,7 @@ export const IPC_EVENTS = {
   MEDIA_PERMISSION_PENDING: 'state:media-permission-pending',
   MEDIA_PERMISSION_CHANGED: 'state:media-permission-changed',
   CLIENT_CERT_CHANGED: 'state:client-cert-changed',
+  INTEGRATIONS_STATUS_CHANGED: 'state:integrations-status-changed',
 } as const;
 
 export type IpcEvent = (typeof IPC_EVENTS)[keyof typeof IPC_EVENTS];
@@ -689,6 +701,7 @@ export interface MainEventPayloads {
   [IPC_EVENTS.DOWNLOADS_CHANGED]: { items: DownloadItem[] };
   [IPC_EVENTS.UPDATE_MODAL_OPEN]: void;
   [IPC_EVENTS.UPDATE_STATUS_CHANGED]: UpdateStatus;
+  [IPC_EVENTS.INTEGRATIONS_STATUS_CHANGED]: { profileId: string; status: IntegrationsStatus };
   [IPC_EVENTS.TAB_PREVIEW_DATA]: { tabId: string; profileId: string; title: string; url: string };
   [IPC_EVENTS.WINDOW_WORKSPACE_CHANGED]: { workspaceId: string | null };
   [IPC_EVENTS.WINDOWS_CHANGED]: { windows: WindowInfo[] };

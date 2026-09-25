@@ -17,3 +17,4 @@ export * from './favorites';
 export * from './zoom';
 export * from './trackpad';
 export * from './dnd';
+export * from './integrations';

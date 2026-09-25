@@ -3,7 +3,8 @@ export type TitleBarIconId =
   | 'windows'
   | 'sync'
   | 'split-view'
-  | 'device-mode';
+  | 'device-mode'
+  | 'pull-requests';
 
 export interface TitleBarIconConfig {
   id: TitleBarIconId;
@@ -16,6 +17,7 @@ export const DEFAULT_TITLEBAR_CONFIG: TitleBarIconConfig[] = [
   { id: 'sync',        visible: false },
   { id: 'split-view',  visible: true  },
   { id: 'device-mode', visible: true  },
+  { id: 'pull-requests', visible: true  },
 ];
 
 export const TITLEBAR_ICON_LABELS: Record<TitleBarIconId, string> = {
@@ -24,4 +26,5 @@ export const TITLEBAR_ICON_LABELS: Record<TitleBarIconId, string> = {
   'sync':        'Estado de sincronización',
   'split-view':  'Vista dividida',
   'device-mode': 'Modo dispositivo',
+  'pull-requests': 'Pull requests pendientes',
 };

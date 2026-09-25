@@ -451,3 +451,17 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       cerrar la de origen y avisar de que la sesión no viaja. El caso del mismo
       perfil sí está comprobado en Electron (la vista viva cambia de ventana y
       el audio no se corta).
+- [ ] `@cliqz/adblocker-electron` registra su preload cosmético con
+      `session.setPreloads`/`getPreloads`, deprecados en Electron 42; el aviso
+      sale en cada arranque. La 1.34.0 es la última publicada y sigue igual, así
+      que cuando Electron retire la API habrá que hacer el registro nosotros
+      (`registerPreloadScript` + los cinco handlers del blocker, en vez de
+      `enableBlockingInSession`) o parchear el paquete. Se deja como está porque
+      hoy funciona y tocarlo arriesga el bloqueo cosmético a cambio de nada.
+      Comprobar en cada subida de Electron si la API ya no existe.
+- [ ] `TabManager.spawnView`: el reintento de `loadURL` tras `ERR_FAILED` lanza
+      `TypeError: Cannot read properties of undefined (reading 'isDestroyed')`
+      cuando la vista ya se destruyó entre el fallo y el reintento
+      (`view.webContents` es `undefined`). Lo recoge el manejador global de
+      promesas rechazadas, así que no rompe nada, pero ensucia el log y delata
+      que falta un guard sobre `view.webContents`.
