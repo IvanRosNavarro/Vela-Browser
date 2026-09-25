@@ -6,6 +6,7 @@ import { SplitViewButton } from './SplitViewButton';
 import { MediaButton } from './MediaButton';
 import { SyncStatusButton } from './SyncStatusButton';
 import { WindowsIndicator } from './WindowsIndicator';
+import { PullRequestsButton } from './PullRequestsButton';
 import { useTitleBarIconStore } from '../../../stores/titleBarIconStore';
 
 export function TitleBarRight() {
@@ -30,6 +31,7 @@ export function TitleBarRight() {
       {isVisible('media') && <MediaButton />}
       {isVisible('windows') && <WindowsIndicator />}
       {isVisible('sync') && <SyncStatusButton />}
+      {isVisible('pull-requests') && <PullRequestsButton />}
       {isVisible('split-view') && <SplitViewButton />}
       {isVisible('device-mode') && (
         <button

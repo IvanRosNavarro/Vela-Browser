@@ -212,11 +212,61 @@ export class NotificationManager {
     }
   }
 
+  /**
+   * Aviso generado por el propio Vela (hoy: integraciones con GitHub).
+   *
+   * No pasa por el permiso de notificaciones de un origen web —no hay página
+   * que lo pida— pero sí respeta las reglas de silencio y el modo de
+   * visualización que el usuario haya elegido. `url` se guarda como `origin`
+   * para que el panel pueda abrirla al pulsar.
+   */
+  notifyFromVela(data: {
+    title: string;
+    body?: string;
+    url: string;
+    profileId: string;
+    icon?: string;
+    onActivate?: () => void;
+  }): void {
+    if (this.isSilenced(data.profileId)) return;
+    const mode = this.getDisplayMode(data.profileId);
+
+    const notification: StoredNotification = {
+      id: crypto.randomUUID(),
+      profileId: data.profileId,
+      origin: data.url,
+      title: data.title,
+      body: data.body ?? '',
+      icon: data.icon ?? null,
+      source: 'integration',
+      read: false,
+      timestamp: Date.now(),
+      tabId: null,
+    };
+
+    if (mode !== 'os-only') {
+      try {
+        const repos = this.ctx.profileManager.getRepositories(data.profileId);
+        repos.notifications.insert(notification);
+      } catch (err) {
+        this.ctx.logger.error('[notifications] fallo guardando aviso de integración', err);
+      }
+      this.ctx.events.emit(IPC_EVENTS.NOTIFICATIONS_CHANGED, {
+        profileId: data.profileId,
+        unreadCount: this.getUnreadCount(data.profileId),
+      });
+    }
+
+    if (mode !== 'panel-only' && !this.hasAnyFocusedWindow()) {
+      this.showOsNotification(notification, data.onActivate);
+    }
+  }
+
   private hasAnyFocusedWindow(): boolean {
     return BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isFocused());
   }
 
-  private showOsNotification(notif: StoredNotification): void {
+  private showOsNotification(notif: StoredNotification, onActivate?: () => void): void {
     if (!ElectronNotification.isSupported()) return;
     const shortOrigin = (() => {
       try { return new URL(notif.origin).hostname; } catch { return notif.origin; }
@@ -230,10 +280,15 @@ export class NotificationManager {
     n.on('click', () => {
       // Traer la ventana de Vela al frente
       const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-      if (!win) return;
-      if (win.isMinimized()) win.restore();
-      win.focus();
-      // Abrir el panel de notificaciones
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+      if (onActivate) {
+        // Avisos propios de Vela (PRs): el clic lleva a la página, no al panel.
+        onActivate();
+        return;
+      }
       this.ctx.events.emit(IPC_EVENTS.NOTIFICATION_CENTER_OPEN, {});
     });
     n.on('close', () => { this.osToasts.delete(notif.id); });

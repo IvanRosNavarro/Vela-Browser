@@ -8,7 +8,8 @@ export interface StoredNotification {
   read: boolean;
   tabId: string | null;
   profileId: string;
-  source: 'web' | 'push';
+  /** `integration`: la generó Vela desde una plataforma conectada (PRs). */
+  source: 'web' | 'push' | 'integration';
 }
 
 export type NotificationPermissionState =

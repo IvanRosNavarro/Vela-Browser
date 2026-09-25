@@ -79,7 +79,10 @@ export class NotificationRepository {
       timestamp: r.timestamp,
       read: r.read === 1,
       tabId: r.tab_id,
-      source: (r.source === 'push' ? 'push' : 'web') as 'web' | 'push',
+      source:
+        r.source === 'push' || r.source === 'integration'
+          ? r.source
+          : 'web',
     };
   }
 }

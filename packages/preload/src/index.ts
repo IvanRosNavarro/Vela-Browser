@@ -208,6 +208,17 @@ const api: PreloadApi = {
     quitAndInstall: () => call(IPC_CHANNELS.UPDATE_QUIT_AND_INSTALL),
     openRelease: () => call(IPC_CHANNELS.UPDATE_OPEN_RELEASE),
   },
+  integrations: {
+    getStatus: (args) => call(IPC_CHANNELS.INTEGRATIONS_GET_STATUS, args),
+    startDeviceFlow: (args) => call(IPC_CHANNELS.INTEGRATIONS_START_DEVICE_FLOW, args),
+    cancelDeviceFlow: (args) => call(IPC_CHANNELS.INTEGRATIONS_CANCEL_DEVICE_FLOW, args),
+    connectToken: (args) => call(IPC_CHANNELS.INTEGRATIONS_CONNECT_TOKEN, args),
+    disconnect: (args) => call(IPC_CHANNELS.INTEGRATIONS_DISCONNECT, args),
+    checkNow: (args) => call(IPC_CHANNELS.INTEGRATIONS_CHECK_NOW, args),
+    setEnabled: (args) => call(IPC_CHANNELS.INTEGRATIONS_SET_ENABLED, args),
+    setClientId: (args) => call(IPC_CHANNELS.INTEGRATIONS_SET_CLIENT_ID, args),
+    openPr: (args) => call(IPC_CHANNELS.INTEGRATIONS_OPEN_PR, args),
+  },
   defaultBrowser: {
     getStatus: () => call(IPC_CHANNELS.DEFAULT_BROWSER_GET_STATUS),
     set: () => call(IPC_CHANNELS.DEFAULT_BROWSER_SET),

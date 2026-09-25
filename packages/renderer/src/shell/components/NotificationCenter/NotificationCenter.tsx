@@ -116,6 +116,7 @@ function NotificationRow({ item, onMarkRead, onDelete }: {
   onMarkRead: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const isIntegration = item.source === 'integration';
   return (
     <div
       style={{
@@ -148,15 +149,20 @@ function NotificationRow({ item, onMarkRead, onDelete }: {
         </button>
       </div>
       <div
-        role={item.read ? undefined : 'button'}
-        onClick={() => { if (!item.read) onMarkRead(item.id); }}
+        role={item.read && !isIntegration ? undefined : 'button'}
+        onClick={() => {
+          if (!item.read) onMarkRead(item.id);
+          // Los avisos de integración guardan la URL de la pull request en
+          // `origin`: pulsar el aviso lleva a ella.
+          if (isIntegration) void window.api.integrations.openPr({ url: item.origin, activate: true });
+        }}
         style={{
           fontSize: 12,
           fontWeight: item.read ? 400 : 600,
           color: 'var(--vela-fg)',
           lineHeight: 1.4,
           wordBreak: 'break-word',
-          cursor: item.read ? 'default' : 'pointer',
+          cursor: item.read && !isIntegration ? 'default' : 'pointer',
         }}
       >
         {item.title}

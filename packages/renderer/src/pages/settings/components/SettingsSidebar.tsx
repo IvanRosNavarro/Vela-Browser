@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Settings2, Palette, Layers, Search, User, Shield,
-  Keyboard, Puzzle, Sparkles, Info, ShieldOff, LockKeyhole, Anchor, Cloud,
+  Keyboard, Puzzle, Sparkles, Info, ShieldOff, LockKeyhole, Anchor, Cloud, GitPullRequest,
 } from 'lucide-react';
 import type { Section } from '../lib/router';
 
@@ -123,6 +123,15 @@ const NAV_ITEMS: NavItem[] = [
     keywords: [
       'sync', 'sincronización', 'sincronizar', 'nube', 'dispositivos', 'email',
       'contraseña sync', 'recovery', 'recuperación', 'e2ee', 'cifrado',
+    ],
+  },
+  {
+    id: 'integrations',
+    label: 'Integraciones',
+    icon: GitPullRequest,
+    keywords: [
+      'github', 'pull request', 'pr', 'revisión', 'review', 'integración',
+      'integraciones', 'avisos', 'token', 'repositorio', 'código',
     ],
   },
   {

@@ -106,6 +106,11 @@ import type { ExtendedSuggestion } from './types/suggestion';
 import type { DownloadItem } from './types/download';
 import type { WindowInfo } from './types/window';
 import type { UpdateStatus } from './types/update';
+import type {
+  DeviceFlowPrompt,
+  IntegrationProviderId,
+  IntegrationsStatus,
+} from './types/integrations';
 
 export type WorkspaceCreateInput = z.input<typeof workspaceCreateInputSchema>;
 export type WorkspaceUpdateInput = z.input<typeof workspaceUpdateInputSchema>;
@@ -360,6 +365,20 @@ export interface RuntimeApi {
   getVersions(): Promise<IpcResponse<AppVersions>>;
   getBackgroundMaterial(): Promise<IpcResponse<{ supported: boolean }>>;
   openExternal(input: { url: string }): Promise<IpcResponse<void>>;
+}
+
+export interface IntegrationsApi {
+  getStatus(input: { provider: IntegrationProviderId }): Promise<IpcResponse<IntegrationsStatus>>;
+  /** Pide el código de dispositivo. El resultado final llega por `state:integrations-status-changed`. */
+  startDeviceFlow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<DeviceFlowPrompt>>;
+  cancelDeviceFlow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<void>>;
+  connectToken(input: { provider: IntegrationProviderId; token: string }): Promise<IpcResponse<IntegrationsStatus>>;
+  disconnect(input: { provider: IntegrationProviderId }): Promise<IpcResponse<IntegrationsStatus>>;
+  checkNow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<IntegrationsStatus>>;
+  setEnabled(input: { provider: IntegrationProviderId; enabled: boolean }): Promise<IpcResponse<IntegrationsStatus>>;
+  /** Client id propio de la OAuth App; vacío restaura el que trae Vela. */
+  setClientId(input: { provider: IntegrationProviderId; clientId: string }): Promise<IpcResponse<void>>;
+  openPr(input: { url: string; activate?: boolean }): Promise<IpcResponse<void>>;
 }
 
 export interface UpdateApi {
@@ -824,6 +843,7 @@ export interface PreloadApi {
   rule: RuleApi;
   suggest: SuggestApi;
   update: UpdateApi;
+  integrations: IntegrationsApi;
   theme: ThemeApi;
   reader: ReaderApi;
   shortcuts: ShortcutsApi;
@@ -1063,7 +1083,8 @@ export interface StoredNotificationItem {
   timestamp: number;
   read: boolean;
   tabId: string | null;
-  source: 'web' | 'push';
+  /** `integration`: aviso propio de Vela; `origin` lleva la URL a abrir. */
+  source: 'web' | 'push' | 'integration';
 }
 
 export interface NotificationPermissionItem {

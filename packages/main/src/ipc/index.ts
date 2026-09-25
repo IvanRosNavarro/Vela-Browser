@@ -89,6 +89,8 @@ import { PushSubscriptionManager } from '../notifications/PushSubscriptionManage
 import { PushProxyManager } from '../notifications/PushProxyManager';
 import { MediaPermissionManager } from '../media-permissions/MediaPermissionManager';
 import { registerNotificationHandlers } from './notifications';
+import { registerIntegrationsHandlers } from './integrations';
+import { initIntegrations } from '../integrations/service';
 import { registerMediaPermissionHandlers } from './mediaPermission';
 import { restoreNotificationOverrides } from '../profiles/sessions';
 export { registerCommandsHandlers } from './commands';
@@ -307,6 +309,16 @@ export function buildIpcContext(opts: BuildIpcContextOptions): IpcContext {
     loadRenderer: opts.loadRenderer,
     ...(opts.onWindowOpened ? { onWindowOpened: opts.onWindowOpened } : {}),
   });
+  // Sondeo de pull requests. Se crea aquí porque necesita el perfil, las
+  // ventanas y las pestañas ya construidos; empieza a mirar en cuanto haya un
+  // perfil abierto con cuenta conectada.
+  initIntegrations({
+    profileManager,
+    profileWindowManager,
+    notificationManager,
+    tabManager,
+    events,
+  });
   const unlockRateLimiter = new UnlockRateLimiter();
   const certManager = new CertificateManager({
     isUserTab: (wcId) => tabManager.getTabIdForWebContents(wcId) !== null,
@@ -402,6 +414,7 @@ export function registerAllHandlers(ctx: IpcContext): void {
   registerAnalyticsDebuggerHandlers(ctx);
   registerFindHandlers(ctx);
   registerNotificationHandlers(ctx);
+  registerIntegrationsHandlers(ctx);
   registerMediaPermissionHandlers(ctx);
   registerCertHandlers(ctx);
   registerClientCertHandlers(ctx);

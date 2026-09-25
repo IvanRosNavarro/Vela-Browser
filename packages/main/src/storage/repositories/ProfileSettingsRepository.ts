@@ -21,6 +21,7 @@ const NON_SYNCABLE_PREFIXES = [
   'push:',        // suscripciones push, ligadas a este dispositivo
   'extensions:',  // qué extensiones hay instaladas aquí
   'zoom:',        // zoom por sitio: depende de la pantalla de este equipo
+  'integrations:', // credenciales de GitHub y compañía, propias de este equipo
 ];
 
 function isSyncable(key: string): boolean {
