@@ -465,3 +465,13 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       (`view.webContents` es `undefined`). Lo recoge el manejador global de
       promesas rechazadas, así que no rompe nada, pero ensucia el log y delata
       que falta un guard sobre `view.webContents`.
+- [ ] La conexión por dispositivo con GitHub necesita el `client_id` de una
+      OAuth App, que `IntegrationsService` lee de `VELA_GITHUB_CLIENT_ID` en
+      tiempo de ejecución. El workflow de release no inyecta esa variable ni el
+      bundle de main la resuelve en build (no hay `define` en
+      `packages/main/vite.config.mts`), así que en los instalables publicados
+      llega vacía y solo puede conectar quien registre su propia OAuth App e
+      indique el identificador en `vela://settings#integrations`. Decidir si se
+      registra una OAuth App de Vela y se inyecta en el build (el device flow no
+      usa client secret, así que el identificador no es un secreto) o si se
+      asume que cada usuario ponga la suya y se documenta en la propia sección.
