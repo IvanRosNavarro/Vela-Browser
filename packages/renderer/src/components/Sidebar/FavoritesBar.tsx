@@ -1,18 +1,19 @@
 // Franja de pestañas ancladas (pinned: true) en la parte superior del sidebar.
 // Reutiliza la lógica de drag-and-drop del DndContext del padre (Sidebar).
 import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core';
-import type { CSSProperties } from 'react';
-import type { MenuItemSpec, TabNode } from '@vela/shared';
+import { useState, type CSSProperties } from 'react';
+import type { TabNode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { Favicon } from './Favicon';
+import { InlineRename } from './InlineRename';
 import { selectPinnedTabs } from './flatList';
 import {
   encodeDroppableId,
   PINNED_TARGET_ID,
   type DropZone,
 } from './dropValidation';
-import { showContextMenu } from '../../lib/contextMenu';
+import { showTabContextMenu } from './tabContextMenu';
 import type { ActiveDrop } from './types';
 
 interface FavoritesBarProps {
@@ -60,6 +61,8 @@ function FavoriteItem({
 
   const activateTab = useRuntimeStore((s) => s.activateTab);
   const closeTab = useRuntimeStore((s) => s.closeTab);
+  const renameNode = useTreeStore((s) => s.renameNode);
+  const [renaming, setRenaming] = useState(false);
 
   const title = node.name || node.originalTitle || node.url;
 
@@ -78,21 +81,30 @@ function FavoriteItem({
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const items: MenuItemSpec[] = [
-      ...(node.pinnedUrl ? [
-        { type: 'normal' as const, id: 'restore-pinned', label: 'Restaurar Carga' },
-        { type: 'normal' as const, id: 'replace-pinned', label: 'Reemplazar Carga' },
-        { type: 'separator' as const },
-      ] : []),
-      { type: 'normal', id: 'unpin', label: 'Desestibar Carga' },
-      { type: 'normal', id: 'close', label: 'Cerrar' },
-    ];
-    void showContextMenu(items, {
-      'restore-pinned': () => void window.api.tab.restorePinnedUrl({ id: node.id }),
-      'replace-pinned': () => void window.api.tab.replacePinnedUrl({ id: node.id }),
-      unpin: () => void window.api.tab.unpin({ id: node.id }),
-      close: () => closeTab(node.id),
+    void showTabContextMenu({
+      node,
+      isActive,
+      onRename: () => setRenaming(true),
     });
+  }
+
+  if (renaming) {
+    return (
+      <div
+        className="flex h-8 shrink-0 items-center"
+        style={{ width: 140 }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <InlineRename
+          initial={node.name ?? node.originalTitle ?? ''}
+          onCommit={(next) => {
+            void renameNode({ id: node.id, name: next });
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -103,6 +115,7 @@ function FavoriteItem({
       onClick={() => void activateTab(node.id)}
       onAuxClick={handleAuxClick}
       onContextMenu={handleContextMenu}
+      onDoubleClick={(e) => { e.preventDefault(); setRenaming(true); }}
       title={title}
       className="relative flex shrink-0 cursor-default items-center justify-center rounded-md hover:bg-[var(--vela-bg-row-hover)]"
       style={{
