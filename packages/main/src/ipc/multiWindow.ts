@@ -7,6 +7,7 @@ import { guardTrustedFrame } from './validate';
 import { resolveWindowId } from './helpers';
 import { InvariantViolationError } from '../lib/errors';
 import { windowRegistry } from '../window/WindowRegistry';
+import type { MoveTabResult } from '../tabs/TabManager';
 
 export function registerMultiWindowHandlers(ctx: IpcContext): void {
 
@@ -128,6 +129,37 @@ export function registerMultiWindowHandlers(ctx: IpcContext): void {
         return { ok: true, data: undefined };
       } catch (err) {
         return mapError(err, IPC_CHANNELS.WINDOW_FOCUS);
+      }
+    },
+  );
+
+  /**
+   * Mueve una pestaña a otra ventana. Con el mismo perfil viaja la vista viva
+   * —la página no se recarga—; con otro perfil solo puede abrirse la URL allí,
+   * porque la sesión vive en la partición del perfil de origen.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.TAB_MOVE_TO_WINDOW,
+    async (event, payload): Promise<IpcResponse<{ result: MoveTabResult }>> => {
+      guardTrustedFrame(event, IPC_CHANNELS.TAB_MOVE_TO_WINDOW);
+      const parsed = z
+        .object({ tabId: z.string().min(1), windowId: z.string().min(1) })
+        .safeParse(payload);
+      if (!parsed.success) {
+        return { ok: false, error: 'INVALID_INPUT', details: parsed.error.flatten() };
+      }
+      try {
+        const entry = windowRegistry.get(parsed.data.windowId);
+        if (!entry || entry.browserWindow.isDestroyed()) {
+          return { ok: false, error: 'NOT_FOUND', details: 'WINDOW_GONE' };
+        }
+        const result = await ctx.tabManager.moveTabToWindow(
+          parsed.data.tabId,
+          entry.electronId,
+        );
+        return { ok: true, data: { result } };
+      } catch (err) {
+        return mapError(err, IPC_CHANNELS.TAB_MOVE_TO_WINDOW);
       }
     },
   );

@@ -107,6 +107,17 @@ export interface CreateTabInput {
   panelId?: PanelId;
 }
 
+/**
+ * Resultado de mover una pestaña a otra ventana.
+ *
+ * - `moved`: la vista viva ha cambiado de ventana; la página no se entera.
+ * - `reopened`: las ventanas son de perfiles distintos, así que la sesión no
+ *   puede viajar (cada perfil tiene su partición): se abre la URL en la ventana
+ *   destino y se cierra la de origen.
+ * - `noop`: no había nada que mover.
+ */
+export type MoveTabResult = 'moved' | 'reopened' | 'noop';
+
 interface PerWindow {
   windowId: number;
   window: BrowserWindow;
@@ -522,6 +533,116 @@ export class TabManager {
     this.ctx.logger.info(
       `[tabs] window ${windowId} cambia workspace ${previousWorkspaceId} → ${newWorkspaceId}`,
     );
+  }
+
+  /**
+   * Lleva una pestaña a otra ventana **conservando su WebContentsView**, así
+   * que la página no se recarga: el vídeo sigue sonando y el formulario a medio
+   * escribir sigue ahí. Electron permite sacar la vista de una ventana y
+   * meterla en otra; lo que hay que llevar a mano es el estado que `TabManager`
+   * mantiene en paralelo (mapa de vistas, MRU, paneles, pestaña activa).
+   *
+   * Si las ventanas son de perfiles distintos no hay nada que mover: la sesión
+   * vive en la partición del perfil de origen. En ese caso se abre la URL en la
+   * ventana destino y se cierra la de origen, que es lo más parecido a mover
+   * que se puede ofrecer sin mentir.
+   */
+  async moveTabToWindow(tabId: string, targetWindowId: number): Promise<MoveTabResult> {
+    const target = this.windows.get(targetWindowId);
+    if (!target) throw new NotFoundError('Window', String(targetWindowId));
+
+    const sourceWindowId = this.tabToWindow.get(tabId);
+    const source = sourceWindowId !== undefined ? this.windows.get(sourceWindowId) : undefined;
+    if (source && source.windowId === target.windowId) return 'noop';
+
+    // El nodo se lee con los repositorios de SU perfil, no con los del destino:
+    // con ventanas de perfiles distintos la pestaña no existe en la base de
+    // datos del destino y esto devolvería null antes de llegar a tratar ese
+    // caso, que es justo el que hay que tratar.
+    const sourceRepos = this.reposFor(source ?? target);
+    const node = sourceRepos.treeNodes.getById(tabId);
+    if (!node || node.kind !== 'tab') throw new NotFoundError('Tab', tabId);
+
+    // Perfiles distintos: la sesión no puede cruzar de partición.
+    if (source && source.profileId !== target.profileId) {
+      await this.createTab(targetWindowId, {
+        workspaceId: target.workspaceId,
+        parentId: null,
+        url: node.url,
+        activate: true,
+      });
+      await this.closeTab(source.windowId, tabId);
+      return 'reopened';
+    }
+
+    // El nodo pasa al workspace de la ventana destino si es otro. Se llama al
+    // repositorio directamente, no al handler `node:move`: ese suelta la vista
+    // de las pestañas que cambian de workspace, y aquí queremos lo contrario.
+    if (node.workspaceId !== target.workspaceId) {
+      const roots = sourceRepos.treeNodes
+        .getByWorkspace(target.workspaceId)
+        .filter((n) => n.parentId === null);
+      const last = roots.length > 0
+        ? roots.reduce((max, n) => (n.position > max ? n.position : max), roots[0]!.position)
+        : null;
+      sourceRepos.treeNodes.move(tabId, null, positionsAtEnd(last), target.workspaceId);
+    }
+
+    const view = source?.tabs.get(tabId);
+    if (!view) {
+      // Sin vista viva (suspendida o de otro workspace): basta con que el árbol
+      // apunte a la ventana destino; la vista nace allí al activarla.
+      this.emitTreeChangedFor(node.workspaceId, target.workspaceId);
+      await this.activateTab(targetWindowId, tabId);
+      return 'moved';
+    }
+
+    const src = source!;
+    const wasActive = src.activeTabId === tabId;
+
+    try {
+      if (!src.window.isDestroyed()) src.window.contentView.removeChildView(view);
+    } catch (err) {
+      this.ctx.logger.warn('[tabs] removeChildView (mover de ventana) falló', err);
+    }
+    src.tabs.delete(tabId);
+    src.mru.remove(tabId);
+    for (const [panelId, panelTabId] of src.panelTabIds) {
+      if (panelTabId === tabId) src.panelTabIds.delete(panelId);
+    }
+
+    target.window.contentView.addChildView(view);
+    target.tabs.set(tabId, view);
+    this.tabToWindow.set(tabId, target.windowId);
+
+    if (wasActive) {
+      src.activeTabId = null;
+      const next = this.pickNextTab(src, tabId);
+      if (next) {
+        await this.activateTab(src.windowId, next);
+      } else {
+        this.ctx.events.emit(IPC_EVENTS.ACTIVE_TAB_CHANGED, {
+          windowId: src.windowId,
+          tabId: null,
+        });
+        this.reportVisibleTabs(src.windowId, null);
+      }
+    } else {
+      this.recalculateBounds(src.windowId);
+    }
+
+    this.emitTreeChangedFor(node.workspaceId, target.workspaceId);
+    await this.activateTab(target.windowId, tabId);
+    this.ctx.logger.info(
+      `[tabs] tab ${tabId} movida de window ${src.windowId} a ${target.windowId}`,
+    );
+    return 'moved';
+  }
+
+  private emitTreeChangedFor(...workspaceIds: readonly string[]): void {
+    for (const workspaceId of new Set(workspaceIds)) {
+      this.ctx.events.emit(IPC_EVENTS.TREE_CHANGED, { workspaceId });
+    }
   }
 
   /**

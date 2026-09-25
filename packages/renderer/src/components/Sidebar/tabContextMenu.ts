@@ -3,6 +3,7 @@ import type { MenuItemSpec, TabNode } from '@vela/shared';
 import { useTreeStore } from '../../stores/treeStore';
 import { useRuntimeStore } from '../../stores/runtimeStore';
 import { useWorkspacesStore } from '../../stores/workspacesStore';
+import { useMultiWindowStore } from '../../stores/multiWindowStore';
 import { useSidebarStore } from '../../stores/sidebarStore';
 import { useMediaStore } from '../../stores/mediaStore';
 import {
@@ -284,6 +285,27 @@ export async function showTabContextMenu({
           enabled: true,
         }));
 
+  // Ventanas abiertas distintas de esta. Las de otro perfil se marcan: allí no
+  // puede viajar la sesión, solo la URL.
+  const multi = useMultiWindowStore.getState();
+  const otherWindows = multi.openWindows.filter((w) => w.windowId !== multi.stableWindowId);
+  const windowSubmenu: MenuItemSpec[] =
+    otherWindows.length === 0
+      ? [
+          {
+            type: 'normal',
+            id: 'noop:no-other-windows',
+            label: '(no hay otras ventanas)',
+            enabled: false,
+          },
+        ]
+      : otherWindows.map((w) => ({
+          type: 'normal' as const,
+          id: `move-to-window:${w.windowId}`,
+          label: w.workspaceName ? `Ventana · ${w.workspaceName}` : 'Ventana',
+          enabled: true,
+        }));
+
   const discardSection: MenuItemSpec[] = node.discarded
     ? [
         { type: 'separator' },
@@ -376,6 +398,7 @@ export async function showTabContextMenu({
       enabled: !node.pinned && !isAnchor,
     },
     { type: 'submenu', label: 'Mover a workspace', submenu: moveSubmenu },
+    { type: 'submenu', label: 'Mover a ventana', submenu: windowSubmenu },
     { type: 'separator' },
     { type: 'normal', id: 'copy-url', label: 'Copiar enlace', enabled: isHttp },
     {
@@ -492,6 +515,18 @@ export async function showTabContextMenu({
       );
     },
   };
+
+  for (const w of otherWindows) {
+    actions[`move-to-window:${w.windowId}`] = () => {
+      void call(() => window.api.tab.moveToWindow({ tabId: node.id, windowId: w.windowId })).then(
+        (res) => {
+          if (res.result === 'reopened') {
+            toast('Esa ventana es de otro perfil: se ha abierto la dirección, sin la sesión', 'warning');
+          }
+        },
+      );
+    };
+  }
 
   for (const w of otherWorkspaces) {
     actions[`move-to-workspace:${w.id}`] = () => {
