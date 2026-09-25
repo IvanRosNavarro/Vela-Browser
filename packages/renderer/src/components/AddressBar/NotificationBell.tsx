@@ -61,10 +61,14 @@ export function NotificationBell() {
     return 'none';
   })();
 
-  if (bellState === 'none') return null;
+  // Los avisos propios de Vela (integraciones) no nacen de una web que pida
+  // permiso, así que no hay `bellState` que los represente: sin esta salvedad
+  // el panel quedaba inalcanzable mientras la pestaña activa fuese un sitio
+  // cualquiera, por muchos avisos sin leer que hubiera.
+  if (bellState === 'none' && unreadCount === 0) return null;
 
   const colors: Record<BellState, string> = {
-    none: 'var(--vela-fg-muted)',
+    none: unreadCount > 0 ? 'var(--vela-fg)' : 'var(--vela-fg-muted)',
     pending: '#f0a500',
     granted: 'var(--vela-fg)',
     denied: 'var(--vela-fg-muted)',
@@ -72,14 +76,16 @@ export function NotificationBell() {
   };
 
   const tooltips: Record<BellState, string> = {
-    none: '',
+    none: unreadCount > 0 ? 'Avisos sin leer · Haz clic para ver el centro' : '',
     pending: 'Solicitud de notificaciones · Haz clic para decidir',
     granted: 'Notificaciones permitidas · Haz clic para ver el centro',
     denied: 'Notificaciones denegadas · Haz clic para ver el centro',
     'push-active': 'Notificaciones push activas · Haz clic para ver el centro',
   };
 
-  const showBadge = (bellState === 'granted' || bellState === 'push-active') && unreadCount > 0;
+  const showBadge =
+    (bellState === 'granted' || bellState === 'push-active' || bellState === 'none') &&
+    unreadCount > 0;
 
   function handleClick() {
     if (bellState === 'pending' && pendingInfo && currentWindowId !== null && buttonRef.current) {
