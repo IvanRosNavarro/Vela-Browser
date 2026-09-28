@@ -1,16 +1,19 @@
 import type { CSSProperties } from 'react';
 import { useIntegrationsStore } from '../../../stores/integrationsStore';
-
-const GITHUB_PULLS_URL = 'https://github.com/pulls';
+import { useNotificationsStore } from '../../../stores/notificationsStore';
 
 /**
  * Contador discreto de pull requests que te esperan. Se oculta del todo cuando
  * no hay cuenta conectada o no hay nada pendiente: no ocupa sitio para no decir
  * nada.
+ *
+ * Al pulsarlo abre el centro de notificaciones y no `github.com/pulls`: ahí
+ * está cada aviso con su motivo y un clic lleva a la pull request concreta, sin
+ * depender de que el perfil tenga sesión iniciada en GitHub.
  */
 export function PullRequestsButton() {
   const status = useIntegrationsStore((s) => s.status);
-  const openPr = useIntegrationsStore((s) => s.openPr);
+  const openPanel = useNotificationsStore((s) => s.openPanel);
 
   const count = status.pending.length;
   if (status.phase !== 'connected' || !status.enabled || count === 0) return null;
@@ -24,7 +27,7 @@ export function PullRequestsButton() {
   return (
     <button
       title={`${count} ${count === 1 ? 'pull request te espera' : 'pull requests te esperan'}\n${titles}${rest}`}
-      onClick={() => void openPr(GITHUB_PULLS_URL)}
+      onClick={() => void openPanel()}
       style={{
         display: 'flex',
         alignItems: 'center',

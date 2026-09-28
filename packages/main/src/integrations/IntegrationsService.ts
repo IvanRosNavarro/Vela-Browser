@@ -22,11 +22,16 @@ import {
 } from './types';
 
 /**
- * Client id de la OAuth App de Vela. No es un secreto (el device flow no usa
- * client secret), pero sí es propio de cada instalación de la app: quien
- * compile Vela por su cuenta registra la suya y la indica en los ajustes.
+ * Client id de la OAuth App «Vela Browser». No es un secreto —el device flow no
+ * usa client secret— y por eso viaja en el código: una variable de entorno no
+ * llega dentro del instalador, y sin identificador el botón de conectar falla
+ * para todo el que no registre su propia aplicación.
+ *
+ * `VELA_GITHUB_CLIENT_ID` sigue teniendo prioridad para quien compile Vela por
+ * su cuenta, igual que el ajuste por perfil de los ajustes avanzados.
  */
-const DEFAULT_GITHUB_CLIENT_ID = process.env.VELA_GITHUB_CLIENT_ID ?? '';
+const DEFAULT_GITHUB_CLIENT_ID =
+  process.env.VELA_GITHUB_CLIENT_ID ?? 'Ov23liqthBl4iG58nJqM';
 
 /** Cada cuánto se evalúa si toca sondear. El sondeo real va más espaciado. */
 const TICK_MS = 30_000;
