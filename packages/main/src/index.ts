@@ -112,6 +112,17 @@ app.on('second-instance', (_event, argv) => {
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
 
 const isDev = !app.isPackaged;
+
+// El AUMID identifica la app ante Windows: agrupa el icono de la barra de
+// tareas y, sobre todo, decide de qué acceso directo del menú Inicio sacan las
+// notificaciones su nombre y su icono. En desarrollo usamos uno distinto
+// porque Electron se crea su propio acceso directo ("Electron.lnk") apuntando
+// al electron.exe del repositorio; compartiendo AUMID con el Vela instalado,
+// Windows resolvía las toasts contra ese y las titulaba "Electron".
+const WINDOWS_APP_USER_MODEL_ID = app.isPackaged
+  ? 'com.vela.browser'
+  : 'com.vela.browser.dev';
+
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'] ?? 'http://localhost:5173';
 const RENDERER_INDEX = path.join(__dirname, '..', '..', 'renderer', 'dist', 'index.html');
 
@@ -611,12 +622,12 @@ app.whenReady().then(async () => {
   // En Windows, fijar el AUMID antes de mostrar ventanas garantiza que el
   // icono de la barra de tareas se agrupe bajo "Vela" y no bajo "Electron".
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.vela.browser');
+    app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
     registerWindowsCapabilities();
     // Retira las toasts que quedaron en el Centro de notificaciones de sesiones
     // anteriores: son las que hacen que Windows pinte un badge numérico sobre
     // el icono de la barra de tareas.
-    clearWindowsToastHistory('com.vela.browser');
+    clearWindowsToastHistory(WINDOWS_APP_USER_MODEL_ID);
   }
 
   // Propaga el icono a cualquier BrowserWindow futura (splash, onboarding…).
