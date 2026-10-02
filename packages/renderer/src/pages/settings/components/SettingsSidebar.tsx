@@ -130,7 +130,7 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Integraciones',
     icon: GitPullRequest,
     keywords: [
-      'github', 'pull request', 'pr', 'revisión', 'review', 'integración',
+      'github', 'bitbucket', 'jira', 'atlassian', 'issue', 'pull request', 'pr', 'revisión', 'review', 'integración',
       'integraciones', 'avisos', 'token', 'repositorio', 'código',
     ],
   },

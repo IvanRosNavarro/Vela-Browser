@@ -1,7 +1,7 @@
 import type {
   IntegrationAccount,
-  PullRequestReason,
-  PullRequestSummary,
+  IntegrationItem,
+  IntegrationReason,
 } from '@vela/shared';
 import {
   ProviderAuthError,
@@ -10,7 +10,7 @@ import {
   type PrProvider,
   type ProviderCredential,
 } from '../types';
-import { fetchJson } from './fetchJson';
+import { fetchJson } from '../fetchJson';
 
 const API = 'https://api.github.com';
 const DEVICE_CODE_URL = 'https://github.com/login/device/code';
@@ -67,7 +67,7 @@ function repoFromUrl(repositoryUrl: string): string {
   return owner && name ? `${owner}/${name}` : repositoryUrl;
 }
 
-function mapNotificationReason(reason: string): PullRequestReason {
+function mapNotificationReason(reason: string): IntegrationReason {
   switch (reason) {
     case 'review_requested': return 'review_requested';
     case 'author':           return 'author';
@@ -203,12 +203,12 @@ export class GitHubProvider implements PrProvider {
   async listRelevant(
     credential: ProviderCredential,
     account: IntegrationAccount,
-  ): Promise<PullRequestSummary[]> {
-    const byId = new Map<string, PullRequestSummary>();
+  ): Promise<IntegrationItem[]> {
+    const byId = new Map<string, IntegrationItem>();
 
     // La búsqueda es la fuente del conjunto: garantiza que solo se cuentan PRs
     // todavía abiertas, cosa que el buzón no distingue.
-    const queries: Array<{ q: string; reason: PullRequestReason }> = [
+    const queries: Array<{ q: string; reason: IntegrationReason }> = [
       { q: 'is:open is:pr review-requested:@me archived:false', reason: 'review_requested' },
       { q: 'is:open is:pr involves:@me archived:false', reason: 'involved' },
     ];
@@ -225,11 +225,13 @@ export class GitHubProvider implements PrProvider {
         const repo = repoFromUrl(item.repository_url);
         const id = `github:${repo}#${item.number}`;
         const mine = item.user?.login === account.login;
-        const summary: PullRequestSummary = {
+        const summary: IntegrationItem = {
           id,
           provider: 'github',
+          kind: 'pull-request',
           repo,
           number: item.number,
+          ref: `${repo}#${item.number}`,
           title: item.title,
           url: item.html_url,
           reason: mine ? 'author' : reason,
@@ -255,7 +257,7 @@ export class GitHubProvider implements PrProvider {
    */
   private async refineWithInbox(
     credential: ProviderCredential,
-    byId: Map<string, PullRequestSummary>,
+    byId: Map<string, IntegrationItem>,
   ): Promise<void> {
     const res = await fetchJson<GhNotification[]>(
       `${API}/notifications?all=false&per_page=50`,
@@ -274,6 +276,10 @@ export class GitHubProvider implements PrProvider {
         entry.reason = reason;
       }
     }
+  }
+
+  overviewUrl(): string {
+    return 'https://github.com/pulls';
   }
 
   private rateLimitOrAuth(headers: Headers): Error {

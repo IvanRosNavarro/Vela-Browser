@@ -101,6 +101,7 @@ export function registerIntegrationsHandlers(ctx: IpcContext): void {
           profileForEvent(ctx, event),
           parsed.data.provider,
           parsed.data.token,
+          { email: parsed.data.email, site: parsed.data.site },
         );
         return { ok: true, data: status };
       } catch (err) {

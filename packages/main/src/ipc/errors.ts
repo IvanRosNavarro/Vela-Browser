@@ -15,6 +15,7 @@ import {
 } from '../profiles/ProfileManager';
 import { CannotDeleteOpenProfileError } from '../profiles/ProfileWindowManager';
 import { UnlockRateLimitError } from '../profiles/UnlockRateLimiter';
+import { ProviderAuthError, ProviderRateLimitError } from '../integrations/types';
 import { logger } from '../logger';
 
 export function mapError(err: unknown, context: string): IpcResponse<never> {
@@ -82,6 +83,11 @@ export function mapError(err: unknown, context: string): IpcResponse<never> {
         failedAttempts: err.failedAttempts,
       },
     };
+  }
+  if (err instanceof ProviderAuthError || err instanceof ProviderRateLimitError) {
+    // El mensaje es para el usuario (token rechazado, sitio no válido, permisos
+    // que faltan) y nunca incluye la credencial.
+    return { ok: false, error: 'INTEGRATION_REJECTED', details: { message: err.message } };
   }
   logger.error(`[ipc] error inesperado en ${context}`, err);
   return { ok: false, error: 'INTERNAL' };

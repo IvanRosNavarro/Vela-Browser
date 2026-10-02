@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { IntegrationAccount, PullRequestSummary } from '@vela/shared';
+import type {
+  IntegrationAccount,
+  IntegrationItem,
+  IntegrationProviderId,
+  IntegrationReason,
+} from '@vela/shared';
 
 vi.mock('electron', () => ({ net: { fetch: vi.fn() } }));
 
@@ -28,12 +33,15 @@ const safeStorageStub = {
   decryptString: (b: Buffer) => b.toString().replace(/^enc:/, ''),
 };
 
-function pr(over: Partial<PullRequestSummary> = {}): PullRequestSummary {
+function pr(over: Partial<IntegrationItem> = {}): IntegrationItem {
+  const number = over.number ?? 7;
   return {
     id: 'github:acme/web#7',
     provider: 'github',
+    kind: 'pull-request',
     repo: 'acme/web',
-    number: 7,
+    number,
+    ref: `acme/web#${number}`,
     title: 'Arreglar el sondeo',
     url: 'https://github.com/acme/web/pull/7',
     reason: 'review_requested',
@@ -52,20 +60,26 @@ const account: IntegrationAccount = {
 };
 
 class FakeProvider implements PrProvider {
-  readonly id = 'github' as const;
   readonly supportsDeviceFlow = true;
-  pending: PullRequestSummary[] = [];
+  pending: IntegrationItem[] = [];
   nextError: Error | null = null;
   calls = 0;
+  /** Lo que devuelve `explainChange` por id; sin entrada, el método no existe. */
+  explanations: Map<string, { reason: IntegrationReason } | null> | null = null;
+  explainCalls: Array<{ id: string; isNew: boolean }> = [];
+  lastCredential: import('./types').ProviderCredential | null = null;
+
+  constructor(readonly id: IntegrationProviderId = 'github') {}
 
   startDeviceAuthorization = vi.fn();
   pollDeviceAuthorization = vi.fn();
 
-  async verify(): Promise<IntegrationAccount> {
-    return account;
+  async verify(credential: import('./types').ProviderCredential): Promise<IntegrationAccount> {
+    this.lastCredential = credential;
+    return { ...account, provider: this.id, site: credential.site };
   }
 
-  async listRelevant(): Promise<PullRequestSummary[]> {
+  async listRelevant(): Promise<IntegrationItem[]> {
     this.calls++;
     if (this.nextError) {
       const err = this.nextError;
@@ -74,11 +88,29 @@ class FakeProvider implements PrProvider {
     }
     return this.pending;
   }
+
+  overviewUrl(): string {
+    return 'https://example.test/overview';
+  }
+
+  get explainChange() {
+    const explanations = this.explanations;
+    if (!explanations) return undefined;
+    return async (
+      _credential: unknown,
+      _account: unknown,
+      item: IntegrationItem,
+      isNew: boolean,
+    ) => {
+      this.explainCalls.push({ id: item.id, isNew });
+      return explanations.has(item.id) ? explanations.get(item.id)! : { reason: item.reason };
+    };
+  }
 }
 
-function setup() {
+function setup(providerId: IntegrationProviderId = 'github') {
   const settings = fakeSettings();
-  const provider = new FakeProvider();
+  const provider = new FakeProvider(providerId);
   const notifications: Array<{ title: string; body?: string; url: string }> = [];
 
   const service = new IntegrationsService({
@@ -95,7 +127,7 @@ function setup() {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
     tokenStore: new TokenStore(safeStorageStub),
     openUrl: vi.fn(),
-    providers: new Map([['github', provider]]),
+    providers: new Map<IntegrationProviderId, PrProvider>([[providerId, provider]]),
   });
 
   return { service, provider, notifications, settings };
@@ -213,5 +245,129 @@ describe('IntegrationsService', () => {
     expect(settings.get('integrations:github:token')).toBeNull();
     expect(settings.get('integrations:github:account')).toBeNull();
     expect(service.getStatus(PROFILE, 'github').phase).toBe('disconnected');
+  });
+});
+
+describe('IntegrationsService — cambios propios', () => {
+  it('no avisa de un cambio que hizo el propio usuario', async () => {
+    const { service, provider, notifications } = setup('jira');
+    provider.pending = [pr({ provider: 'jira', updatedAt: 1_000 })];
+    await service.connectWithToken(PROFILE, 'jira', 'token-de-prueba', {
+      email: 'yo@acme.com',
+      site: 'acme',
+    });
+
+    provider.explanations = new Map([['github:acme/web#7', null]]);
+    provider.pending = [pr({ provider: 'jira', updatedAt: 2_000 })];
+    await service.checkNow(PROFILE, 'jira');
+
+    expect(notifications).toHaveLength(0);
+  });
+
+  it('avisa con el motivo que da el proveedor, no con el del listado', async () => {
+    const { service, provider, notifications } = setup('jira');
+    provider.pending = [pr({ updatedAt: 1_000, reason: 'involved' })];
+    await service.connectWithToken(PROFILE, 'jira', 'token-de-prueba', {
+      email: 'yo@acme.com',
+      site: 'acme',
+    });
+
+    provider.explanations = new Map([['github:acme/web#7', { reason: 'mention' }]]);
+    provider.pending = [pr({ updatedAt: 2_000, reason: 'involved' })];
+    await service.checkNow(PROFILE, 'jira');
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.title).toContain('Te han mencionado');
+  });
+
+  it('dice al proveedor si el elemento es nuevo o ya visto', async () => {
+    const { service, provider } = setup('bitbucket');
+    provider.pending = [pr({ updatedAt: 1_000 })];
+    await service.connectWithToken(PROFILE, 'bitbucket', 'token-de-prueba', {
+      email: 'yo@acme.com',
+    });
+
+    provider.explanations = new Map();
+    provider.pending = [
+      pr({ updatedAt: 2_000 }),
+      pr({ id: 'github:acme/web#9', number: 9, updatedAt: 2_000 }),
+    ];
+    await service.checkNow(PROFILE, 'bitbucket');
+
+    expect(provider.explainCalls).toEqual([
+      { id: 'github:acme/web#7', isNew: false },
+      { id: 'github:acme/web#9', isNew: true },
+    ]);
+  });
+
+  it('lo filtrado tampoco vuelve a salir en la ronda siguiente', async () => {
+    const { service, provider, notifications } = setup('jira');
+    provider.pending = [pr({ updatedAt: 1_000 })];
+    await service.connectWithToken(PROFILE, 'jira', 'token-de-prueba', {
+      email: 'yo@acme.com',
+      site: 'acme',
+    });
+
+    provider.explanations = new Map([['github:acme/web#7', null]]);
+    provider.pending = [pr({ updatedAt: 2_000 })];
+    await service.checkNow(PROFILE, 'jira');
+    provider.explanations = new Map();
+    await service.checkNow(PROFILE, 'jira');
+
+    expect(notifications).toHaveLength(0);
+  });
+});
+
+describe('IntegrationsService — credenciales de Atlassian', () => {
+  it('exige el email: los API tokens de Atlassian van con él', async () => {
+    const { service, settings } = setup('bitbucket');
+
+    await expect(
+      service.connectWithToken(PROFILE, 'bitbucket', 'token-de-prueba'),
+    ).rejects.toBeInstanceOf(ProviderAuthError);
+    expect(settings.get('integrations:bitbucket:token')).toBeNull();
+  });
+
+  it('rechaza un sitio de Jira que no sea de Atlassian sin llegar a pedir nada', async () => {
+    const { service, provider, settings } = setup('jira');
+
+    await expect(
+      service.connectWithToken(PROFILE, 'jira', 'token-de-prueba', {
+        email: 'yo@acme.com',
+        site: 'https://evil.example.com',
+      }),
+    ).rejects.toBeInstanceOf(ProviderAuthError);
+    expect(provider.lastCredential).toBeNull();
+    expect(settings.get('integrations:jira:token')).toBeNull();
+  });
+
+  it('guarda email, sitio y token juntos y cifrados', async () => {
+    const { service, provider, settings } = setup('jira');
+
+    await service.connectWithToken(PROFILE, 'jira', 'token-secreto', {
+      email: 'yo@acme.com',
+      site: 'https://Acme.atlassian.net/jira/your-work',
+    });
+
+    expect(provider.lastCredential?.site).toBe('acme.atlassian.net');
+    const stored = Buffer.from(settings.get('integrations:jira:token')!, 'base64').toString();
+    expect(stored.startsWith('enc:')).toBe(true);
+    expect(JSON.parse(stored.slice(4))).toEqual({
+      token: 'token-secreto',
+      email: 'yo@acme.com',
+      site: 'acme.atlassian.net',
+    });
+  });
+
+  it('una cuenta de GitHub de v0.3.0 (token sin envoltorio) sigue funcionando', async () => {
+    const { service, provider, settings } = setup('github');
+    settings.set('integrations:github:token', Buffer.from('enc:token-antiguo').toString('base64'));
+    settings.set('integrations:github:account', JSON.stringify(account));
+    provider.pending = [pr()];
+
+    await service.checkNow(PROFILE, 'github');
+
+    expect(provider.calls).toBe(1);
+    expect(service.getStatus(PROFILE, 'github').phase).toBe('connected');
   });
 });

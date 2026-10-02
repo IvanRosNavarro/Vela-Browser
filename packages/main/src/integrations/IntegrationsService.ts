@@ -2,17 +2,20 @@ import { IPC_EVENTS } from '@vela/shared';
 import type {
   DeviceFlowPrompt,
   IntegrationAccount,
+  IntegrationItem,
   IntegrationProviderId,
+  IntegrationReason,
   IntegrationsStatus,
-  PullRequestReason,
-  PullRequestSummary,
 } from '@vela/shared';
-import { PULL_REQUEST_REASON_LABELS } from '@vela/shared';
+import { INTEGRATION_REASON_LABELS } from '@vela/shared';
 import type { MainEventBus } from '../ipc/events';
 import type { Logger } from '../logger';
 import type { ProfileManager } from '../profiles/ProfileManager';
 import type { NotificationManager } from '../notifications/NotificationManager';
 import { GitHubProvider } from './github/GitHubProvider';
+import { BitbucketProvider } from './bitbucket/BitbucketProvider';
+import { JiraProvider } from './jira/JiraProvider';
+import { normalizeJiraSite } from './atlassian/common';
 import { TokenStore } from './TokenStore';
 import {
   ProviderAuthError,
@@ -38,6 +41,20 @@ const TICK_MS = 30_000;
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 /** Tope de avisos por ronda: un backlog grande no debe sepultar al usuario. */
 const MAX_NOTIFICATIONS_PER_ROUND = 5;
+/**
+ * Tope de elementos cuyo autor se averigua por ronda. Cada uno cuesta una o
+ * varias peticiones; lo que pase de aquí se avisa con el motivo del listado.
+ */
+const MAX_EXPLAINED_PER_ROUND = 10;
+
+/** Proveedores cuyas credenciales son email + API token de Atlassian. */
+const ATLASSIAN: ReadonlySet<IntegrationProviderId> = new Set(['bitbucket', 'jira']);
+
+/** Datos extra que acompañan a un token pegado. */
+export interface TokenConnectionInput {
+  email?: string;
+  site?: string;
+}
 
 interface ProfileState {
   status: IntegrationsStatus;
@@ -86,7 +103,11 @@ export class IntegrationsService {
   constructor(private readonly ctx: IntegrationsServiceCtx) {
     this.providers =
       ctx.providers ??
-      new Map<IntegrationProviderId, PrProvider>([['github', new GitHubProvider()]]);
+      new Map<IntegrationProviderId, PrProvider>([
+        ['github', new GitHubProvider()],
+        ['bitbucket', new BitbucketProvider()],
+        ['jira', new JiraProvider()],
+      ]);
   }
 
   start(): void {
@@ -177,8 +198,21 @@ export class IntegrationsService {
     profileId: string,
     provider: IntegrationProviderId,
     token: string,
+    input: TokenConnectionInput = {},
   ): Promise<IntegrationsStatus> {
-    await this.finishConnection(profileId, provider, { token, authMethod: 'token' });
+    const credential: ProviderCredential = { token, authMethod: 'token' };
+    if (ATLASSIAN.has(provider)) {
+      if (!input.email) {
+        throw new ProviderAuthError('Indica el email de tu cuenta de Atlassian.', false);
+      }
+      credential.email = input.email.trim();
+    }
+    if (provider === 'jira') {
+      // Se normaliza aquí, antes de cualquier petición: el sitio lo escribe el
+      // usuario y solo se admiten hosts de Atlassian.
+      credential.site = normalizeJiraSite(input.site ?? '');
+    }
+    await this.finishConnection(profileId, provider, credential);
     return this.getStatus(profileId, provider);
   }
 
@@ -231,7 +265,8 @@ export class IntegrationsService {
         const state = this.stateFor(profileId, provider);
         if (!state.status.enabled || state.status.checking) continue;
         if (now < state.blockedUntil) continue;
-        if (now - state.lastPollAt < POLL_INTERVAL_MS) continue;
+        const interval = this.providers.get(provider)?.pollIntervalMs ?? POLL_INTERVAL_MS;
+        if (now - state.lastPollAt < interval) continue;
         if (!this.credentialFor(profileId, provider)) continue;
         await this.poll(profileId, provider, { notify: true });
       }
@@ -253,7 +288,7 @@ export class IntegrationsService {
 
     try {
       const pending = await this.providerOrThrow(provider).listRelevant(credential, account);
-      if (opts.notify) this.notifyNew(profileId, provider, pending);
+      if (opts.notify) await this.notifyNew(profileId, provider, pending, credential, account);
       else this.rememberSeen(profileId, provider, pending);
 
       this.patch(profileId, provider, {
@@ -304,37 +339,69 @@ export class IntegrationsService {
 
   // ---------- avisos ----------
 
-  private notifyNew(
+  private async notifyNew(
     profileId: string,
     provider: IntegrationProviderId,
-    pending: PullRequestSummary[],
-  ): void {
+    pending: IntegrationItem[],
+    credential: ProviderCredential,
+    account: IntegrationAccount,
+  ): Promise<void> {
+    const impl = this.providerOrThrow(provider);
     const settings = this.settingsFor(profileId);
     const seen = this.ctx.tokenStore.readSeen(settings, provider);
 
-    const fresh = pending.filter((pr) => {
-      const last = seen[pr.id];
-      return last === undefined || pr.updatedAt > last;
+    const fresh = pending.filter((item) => {
+      const last = seen[item.id];
+      return last === undefined || item.updatedAt > last;
     });
 
-    for (const pr of fresh.slice(0, MAX_NOTIFICATIONS_PER_ROUND)) {
+    // Antes de avisar se averigua quién hizo el cambio: lo que acaba de hacer el
+    // propio usuario no es noticia para él. Si la consulta falla se avisa igual
+    // con el motivo del listado; perderse un aviso es peor que uno de más.
+    const toNotify: Array<{ item: IntegrationItem; reason: IntegrationReason }> = [];
+    for (const [index, item] of fresh.entries()) {
+      if (!impl.explainChange || index >= MAX_EXPLAINED_PER_ROUND) {
+        toNotify.push({ item, reason: item.reason });
+        continue;
+      }
+      try {
+        const change = await impl.explainChange(
+          credential,
+          account,
+          item,
+          seen[item.id] === undefined,
+        );
+        if (change) toNotify.push({ item, reason: change.reason });
+      } catch (err) {
+        if (err instanceof ProviderRateLimitError || err instanceof ProviderAuthError) throw err;
+        this.ctx.logger.warn(`[integrations] no se pudo averiguar el cambio en ${item.ref}`, err);
+        toNotify.push({ item, reason: item.reason });
+      }
+    }
+
+    for (const { item, reason } of toNotify.slice(0, MAX_NOTIFICATIONS_PER_ROUND)) {
       this.ctx.notificationManager.notifyFromVela({
         profileId,
-        title: `${reasonLabel(pr.reason)} · ${pr.repo}#${pr.number}`,
-        body: pr.title,
-        url: pr.url,
-        onActivate: () => this.ctx.openUrl(profileId, pr.url),
+        title: `${reasonLabel(reason)} · ${item.ref}`,
+        body: item.title,
+        url: item.url,
+        onActivate: () => this.ctx.openUrl(profileId, item.url),
       });
     }
 
-    if (fresh.length > MAX_NOTIFICATIONS_PER_ROUND) {
-      const rest = fresh.length - MAX_NOTIFICATIONS_PER_ROUND;
+    if (toNotify.length > MAX_NOTIFICATIONS_PER_ROUND) {
+      const rest = toNotify.length - MAX_NOTIFICATIONS_PER_ROUND;
+      const overview = impl.overviewUrl(account);
+      const noun =
+        provider === 'jira'
+          ? rest === 1 ? 'issue más' : 'issues más'
+          : rest === 1 ? 'pull request más' : 'pull requests más';
       this.ctx.notificationManager.notifyFromVela({
         profileId,
-        title: `Y ${rest} ${rest === 1 ? 'pull request más' : 'pull requests más'}`,
-        body: 'Ábrelas desde el indicador de la barra de título.',
-        url: 'https://github.com/pulls',
-        onActivate: () => this.ctx.openUrl(profileId, 'https://github.com/pulls'),
+        title: `Y ${rest} ${noun}`,
+        body: 'Pulsa para verlos todos.',
+        url: overview,
+        onActivate: () => this.ctx.openUrl(profileId, overview),
       });
     }
 
@@ -344,11 +411,11 @@ export class IntegrationsService {
   private rememberSeen(
     profileId: string,
     provider: IntegrationProviderId,
-    pending: PullRequestSummary[],
+    pending: IntegrationItem[],
   ): void {
     const settings = this.settingsFor(profileId);
     const seen = this.ctx.tokenStore.readSeen(settings, provider);
-    for (const pr of pending) seen[pr.id] = pr.updatedAt;
+    for (const item of pending) seen[item.id] = item.updatedAt;
     this.ctx.tokenStore.saveSeen(settings, provider, seen);
   }
 
@@ -363,7 +430,7 @@ export class IntegrationsService {
     const account = await impl.verify(credential);
 
     const settings = this.settingsFor(profileId);
-    this.ctx.tokenStore.saveToken(settings, provider, credential.token);
+    this.ctx.tokenStore.saveToken(settings, provider, encodeSecret(provider, credential));
     this.ctx.tokenStore.saveAccount(settings, provider, account);
 
     this.patch(profileId, provider, {
@@ -417,8 +484,8 @@ export class IntegrationsService {
     const account = this.stateFor(profileId, provider).status.account;
     if (!account) return null;
     try {
-      const token = this.ctx.tokenStore.readToken(this.settingsFor(profileId), provider);
-      return token ? { token, authMethod: account.authMethod } : null;
+      const stored = this.ctx.tokenStore.readToken(this.settingsFor(profileId), provider);
+      return stored ? decodeSecret(provider, stored, account) : null;
     } catch {
       return null;
     }
@@ -466,8 +533,38 @@ export class IntegrationsService {
   }
 }
 
-function reasonLabel(reason: PullRequestReason): string {
-  return PULL_REQUEST_REASON_LABELS[reason];
+function reasonLabel(reason: IntegrationReason): string {
+  return INTEGRATION_REASON_LABELS[reason];
+}
+
+/**
+ * Lo que se cifra en disco. GitHub guarda el token tal cual —así lo hacía v0.3.0
+ * y las cuentas ya conectadas deben seguir funcionando—; Atlassian necesita
+ * además el email y, en Jira, el sitio, y van juntos en el mismo blob cifrado.
+ */
+function encodeSecret(provider: IntegrationProviderId, credential: ProviderCredential): string {
+  if (!ATLASSIAN.has(provider)) return credential.token;
+  return JSON.stringify({ token: credential.token, email: credential.email, site: credential.site });
+}
+
+function decodeSecret(
+  provider: IntegrationProviderId,
+  stored: string,
+  account: IntegrationAccount,
+): ProviderCredential | null {
+  if (!ATLASSIAN.has(provider)) return { token: stored, authMethod: account.authMethod };
+  try {
+    const parsed = JSON.parse(stored) as { token?: unknown; email?: unknown; site?: unknown };
+    if (typeof parsed.token !== 'string' || typeof parsed.email !== 'string') return null;
+    return {
+      token: parsed.token,
+      authMethod: account.authMethod,
+      email: parsed.email,
+      ...(typeof parsed.site === 'string' ? { site: parsed.site } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type { IntegrationAccount };

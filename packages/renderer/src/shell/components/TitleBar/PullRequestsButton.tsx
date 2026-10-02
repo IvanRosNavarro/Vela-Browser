@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useIntegrationsStore } from '../../../stores/integrationsStore';
+import { pendingPullRequests, useIntegrationsStore } from '../../../stores/integrationsStore';
 import { useNotificationsStore } from '../../../stores/notificationsStore';
 
 /**
@@ -7,20 +7,24 @@ import { useNotificationsStore } from '../../../stores/notificationsStore';
  * no hay cuenta conectada o no hay nada pendiente: no ocupa sitio para no decir
  * nada.
  *
- * Al pulsarlo abre el centro de notificaciones y no `github.com/pulls`: ahí
- * está cada aviso con su motivo y un clic lleva a la pull request concreta, sin
- * depender de que el perfil tenga sesión iniciada en GitHub.
+ * Al pulsarlo abre el centro de notificaciones y no la web de la plataforma:
+ * ahí está cada aviso con su motivo y un clic lleva a la pull request concreta,
+ * sin depender de que el perfil tenga sesión iniciada.
+ *
+ * Suma las pull requests de GitHub y Bitbucket; los issues de Jira se quedan
+ * fuera a propósito (ver `pendingPullRequests`).
  */
 export function PullRequestsButton() {
-  const status = useIntegrationsStore((s) => s.status);
+  const statuses = useIntegrationsStore((s) => s.statuses);
   const openPanel = useNotificationsStore((s) => s.openPanel);
 
-  const count = status.pending.length;
-  if (status.phase !== 'connected' || !status.enabled || count === 0) return null;
+  const pending = pendingPullRequests(statuses);
+  const count = pending.length;
+  if (count === 0) return null;
 
-  const titles = status.pending
+  const titles = pending
     .slice(0, 3)
-    .map((pr) => `${pr.repo}#${pr.number} · ${pr.title}`)
+    .map((pr) => `${pr.ref} · ${pr.title}`)
     .join('\n');
   const rest = count > 3 ? `\n… y ${count - 3} más` : '';
 
