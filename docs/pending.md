@@ -422,6 +422,13 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       desactive `tabs:discard-secure`. Al reactivar una suspendida, `spawnView`
       la recrea en su sesión en memoria (antes caía en la del perfil).
 
+### Cerrados en v0.3.1
+
+- [x] La conexión por dispositivo con GitHub no funcionaba en los instalables:
+      el `client_id` se leía de `VELA_GITHUB_CLIENT_ID` y esa variable no llega
+      dentro del instalador. Ahora va en el código (es público; el device flow
+      no usa client secret). Probado de extremo a extremo con un perfil limpio.
+
 ### Abiertos
 
 - [ ] Borrar un workspace destruye los WCV de Anclas de otros workspaces que
@@ -465,13 +472,17 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       (`view.webContents` es `undefined`). Lo recoge el manejador global de
       promesas rechazadas, así que no rompe nada, pero ensucia el log y delata
       que falta un guard sobre `view.webContents`.
-- [ ] La conexión por dispositivo con GitHub necesita el `client_id` de una
-      OAuth App, que `IntegrationsService` lee de `VELA_GITHUB_CLIENT_ID` en
-      tiempo de ejecución. El workflow de release no inyecta esa variable ni el
-      bundle de main la resuelve en build (no hay `define` en
-      `packages/main/vite.config.mts`), así que en los instalables publicados
-      llega vacía y solo puede conectar quien registre su propia OAuth App e
-      indique el identificador en `vela://settings#integrations`. Decidir si se
-      registra una OAuth App de Vela y se inyecta en el build (el device flow no
-      usa client secret, así que el identificador no es un secreto) o si se
-      asume que cada usuario ponga la suya y se documenta en la propia sección.
+- [ ] Bitbucket y Jira (ADR 0124) solo se han verificado con tests que
+      simulan su API. Probar con cuentas reales: conectar Bitbucket con un API
+      token con los cuatro permisos de lectura; conectar Jira con un token
+      clásico y con otro con ámbitos (este debe pasar por la pasarela
+      `api.atlassian.com`); y comprobar que un comentario de otra persona avisa
+      y uno propio no.
+- [ ] GitHub no implementa `explainChange` (ADR 0124), así que avisa también de
+      los comentarios del propio usuario en sus PRs: la búsqueda actualiza la
+      fecha sin decir quién hizo el cambio. Implementarlo con la línea de
+      tiempo de la PR (`/issues/{n}/timeline`) o, con buzón, comprobando que
+      el hilo aparece en `/notifications`, que no incluye las acciones propias.
+- [ ] Bitbucket: una PR donde eres revisor en un repo sin actividad en los
+      últimos 30 días no aparece (ADR 0124). Si se queda corto, permitir elegir
+      a mano qué repos vigilar.

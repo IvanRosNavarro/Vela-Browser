@@ -66,3 +66,18 @@ no ocupa sitio para no decir nada.
   `vela://settings#integrations`. Anotado en `docs/pending.md`.
 - Vela nunca escribe en GitHub: los scopes que pide son de lectura
   (`notifications`, `repo`).
+
+## Actualización v0.3.1
+
+- **El `client_id` va en el código.** La consecuencia anterior —que en los
+  instalables solo podía conectar quien registrase su propia OAuth App— queda
+  resuelta: `DEFAULT_GITHUB_CLIENT_ID` es el de la OAuth App «Vela Browser».
+  No es un secreto (el device flow no usa client secret) y una variable de
+  entorno no llega dentro del instalador. `VELA_GITHUB_CLIENT_ID` y el ajuste
+  por perfil siguen teniendo prioridad.
+- **El contador abre el centro de notificaciones**, no `github.com/pulls`: allí
+  cada aviso lleva su motivo y un clic va a la PR concreta, sin depender de que
+  el perfil tenga sesión iniciada en GitHub.
+- **Bitbucket y Jira** entran como proveedores nuevos; ver ADR 0124. Con ellos
+  `PullRequestSummary` pasa a `IntegrationItem` y la interfaz gana
+  `explainChange`, que GitHub aún no implementa.
