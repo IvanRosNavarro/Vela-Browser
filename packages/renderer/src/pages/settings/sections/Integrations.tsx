@@ -1,40 +1,105 @@
-import { useEffect, useState } from 'react';
-import { PULL_REQUEST_REASON_LABELS, type PullRequestSummary } from '@vela/shared';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  INTEGRATION_PROVIDER_LABELS,
+  INTEGRATION_REASON_LABELS,
+  type IntegrationItem,
+  type IntegrationProviderId,
+  type IntegrationsStatus,
+} from '@vela/shared';
 import { useIntegrationsStore } from '../../../stores/integrationsStore';
 import { writeToClipboard } from '../../../lib/clipboard';
 
+const ATLASSIAN_TOKENS_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens';
+
+const BITBUCKET_SCOPES = [
+  'read:user:bitbucket',
+  'read:workspace:bitbucket',
+  'read:repository:bitbucket',
+  'read:pullrequest:bitbucket',
+];
+
 export function Integrations() {
-  const { status, devicePrompt, busy, hydrate } = useIntegrationsStore();
+  const hydrate = useIntegrationsStore((s) => s.hydrate);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-2">
-        <h2 className="text-base font-semibold text-[var(--vela-fg)]">GitHub</h2>
-        <p className="text-sm text-[var(--vela-fg-muted)]">
-          Vela consulta cada dos minutos las pull requests que te afectan —las tuyas, las
-          que te han pedido revisar y aquellas en las que te han mencionado o comentado— y
-          te avisa cuando hay movimiento.
-        </p>
-      </header>
+    <div className="space-y-12">
+      <p className="text-sm text-[var(--vela-fg-muted)]">
+        Vela consulta estas plataformas desde segundo plano y te avisa de lo que te afecta,
+        aunque no tengas ninguna pestaña suya abierta. Las credenciales se guardan cifradas
+        en este equipo y no viajan con la sincronización.
+      </p>
 
-      {status.phase === 'connected' && status.account ? (
-        <ConnectedView />
-      ) : devicePrompt ? (
-        <DeviceCodeView />
-      ) : (
-        <ConnectView busy={busy} error={status.error} />
-      )}
+      <ProviderBlock
+        provider="github"
+        description="Tus pull requests, las que te han pedido revisar y aquellas en las que te han mencionado o comentado."
+      >
+        <GitHubConnect />
+      </ProviderBlock>
+
+      <ProviderBlock
+        provider="bitbucket"
+        description="Tus pull requests y las que te toca revisar. Te avisa cuando otra persona comenta, revisa o actualiza, no de lo que haces tú."
+      >
+        <AtlassianConnect provider="bitbucket" />
+      </ProviderBlock>
+
+      <ProviderBlock
+        provider="jira"
+        description="Los issues asignados a ti, los que reportaste y los que vigilas. Te avisa cuando otra persona los cambia, los comenta o te asigna uno, nunca de tus propios cambios. No entran en el contador de la barra de título."
+      >
+        <AtlassianConnect provider="jira" />
+      </ProviderBlock>
     </div>
   );
 }
 
-// ── Sin conectar ───────────────────────────────────────────────────────────
+function ProviderBlock({
+  provider,
+  description,
+  children,
+}: {
+  provider: IntegrationProviderId;
+  description: string;
+  children: ReactNode;
+}) {
+  const status = useIntegrationsStore((s) => s.statuses[provider]);
+  const connected = status.phase === 'connected' && status.account !== null;
 
-function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
+  return (
+    <section className="space-y-4">
+      <header className="space-y-1">
+        <h2 className="text-base font-semibold text-[var(--vela-fg)]">
+          {INTEGRATION_PROVIDER_LABELS[provider]}
+        </h2>
+        <p className="text-sm text-[var(--vela-fg-muted)]">{description}</p>
+      </header>
+
+      {!connected && status.error && <ErrorBox message={status.error} />}
+      {connected ? <ConnectedView provider={provider} /> : children}
+    </section>
+  );
+}
+
+function ErrorBox({ message }: { message: string }) {
+  return (
+    <p className="rounded-md border border-[var(--vela-danger,#e5534b)] bg-[var(--vela-bg-surface)] px-3 py-2 text-sm text-[var(--vela-fg)]">
+      {message}
+    </p>
+  );
+}
+
+const inputClass =
+  'flex-1 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg)] px-3 py-2 text-sm text-[var(--vela-fg)]';
+
+// ── GitHub ─────────────────────────────────────────────────────────────────
+
+function GitHubConnect() {
+  const devicePrompt = useIntegrationsStore((s) => s.devicePrompt);
+  const busy = useIntegrationsStore((s) => s.busy === 'github');
   const startDeviceFlow = useIntegrationsStore((s) => s.startDeviceFlow);
   const connectToken = useIntegrationsStore((s) => s.connectToken);
   const setClientId = useIntegrationsStore((s) => s.setClientId);
@@ -42,24 +107,27 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
   const [token, setToken] = useState('');
   const [clientId, setClientIdValue] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (devicePrompt) return <DeviceCodeView />;
+
+  const handleDeviceFlow = async () => {
+    setError(null);
+    setError(await startDeviceFlow());
+  };
 
   const handleToken = async () => {
-    setTokenError(null);
-    const message = await connectToken(token.trim());
-    if (message) setTokenError(message);
+    setError(null);
+    const message = await connectToken('github', { token: token.trim() });
+    if (message) setError(message);
     else setToken('');
   };
 
   return (
     <div className="space-y-6">
-      {error && (
-        <p className="rounded-md border border-[var(--vela-danger,#e5534b)] bg-[var(--vela-bg-surface)] px-3 py-2 text-sm text-[var(--vela-fg)]">
-          {error}
-        </p>
-      )}
+      {error && <ErrorBox message={error} />}
 
-      <section className="space-y-3 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-5">
+      <div className="space-y-3 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-5">
         <h3 className="text-sm font-semibold text-[var(--vela-fg)]">
           Iniciar sesión con tu cuenta
         </h3>
@@ -69,24 +137,23 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
           pull requests privadas ni clasificar qué ha pasado en cada una.
         </p>
         <button
-          onClick={() => void startDeviceFlow()}
+          onClick={() => void handleDeviceFlow()}
           disabled={busy}
           className="rounded-md bg-[var(--vela-accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? 'Conectando…' : 'Conectar con GitHub'}
         </button>
-      </section>
+      </div>
 
-      <section className="space-y-3 rounded-lg border border-[var(--vela-border)] p-5">
+      <div className="space-y-3 rounded-lg border border-[var(--vela-border)] p-5">
         <h3 className="text-sm font-semibold text-[var(--vela-fg)]">
           O pegar un token de acceso personal
         </h3>
         <p className="text-sm text-[var(--vela-fg-muted)]">
-          Si prefieres dar el permiso mínimo, crea un token{' '}
-          <em>fine-grained</em> con <code>Pull requests: read</code> solo en los
-          repositorios que te interesen. A cambio, GitHub no permite leer el buzón de
-          avisos con esos tokens: sabrás que la pull request se ha movido, pero no siempre
-          qué ha pasado en ella.
+          Si prefieres dar el permiso mínimo, crea un token <em>fine-grained</em> con{' '}
+          <code>Pull requests: read</code> solo en los repositorios que te interesen. A
+          cambio, GitHub no permite leer el buzón de avisos con esos tokens: sabrás que la
+          pull request se ha movido, pero no siempre qué ha pasado en ella.
         </p>
         <div className="flex gap-2">
           <input
@@ -94,7 +161,7 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="github_pat_…"
-            className="flex-1 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg)] px-3 py-2 text-sm text-[var(--vela-fg)]"
+            className={inputClass}
           />
           <button
             onClick={() => void handleToken()}
@@ -104,12 +171,9 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
             Conectar
           </button>
         </div>
-        {tokenError && (
-          <p className="text-sm text-[var(--vela-danger,#e5534b)]">{tokenError}</p>
-        )}
-      </section>
+      </div>
 
-      <section>
+      <div>
         <button
           onClick={() => setShowAdvanced((v) => !v)}
           className="text-xs text-[var(--vela-fg-muted)] underline"
@@ -127,8 +191,8 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
               <input
                 value={clientId}
                 onChange={(e) => setClientIdValue(e.target.value)}
-                placeholder="Iv1.xxxxxxxxxxxxxxxx"
-                className="flex-1 rounded-md border border-[var(--vela-border)] bg-[var(--vela-bg)] px-3 py-2 text-sm text-[var(--vela-fg)]"
+                placeholder="Ov23li…"
+                className={inputClass}
               />
               <button
                 onClick={() => void setClientId(clientId.trim())}
@@ -139,12 +203,10 @@ function ConnectView({ busy, error }: { busy: boolean; error: string | null }) {
             </div>
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
-
-// ── Esperando a que el usuario autorice ────────────────────────────────────
 
 function DeviceCodeView() {
   const devicePrompt = useIntegrationsStore((s) => s.devicePrompt);
@@ -161,10 +223,8 @@ function DeviceCodeView() {
   };
 
   return (
-    <section className="space-y-4 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-6">
-      <h3 className="text-sm font-semibold text-[var(--vela-fg)]">
-        Autoriza Vela en GitHub
-      </h3>
+    <div className="space-y-4 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-6">
+      <h3 className="text-sm font-semibold text-[var(--vela-fg)]">Autoriza Vela en GitHub</h3>
       <p className="text-sm text-[var(--vela-fg-muted)]">
         Abre la página de GitHub e introduce este código. Vela se conectará sola en cuanto
         lo apruebes.
@@ -194,57 +254,191 @@ function DeviceCodeView() {
           Cancelar
         </button>
       </div>
-    </section>
+    </div>
+  );
+}
+
+// ── Bitbucket y Jira ───────────────────────────────────────────────────────
+
+/**
+ * Atlassian no ofrece a una app de escritorio de código abierto un inicio de
+ * sesión sin secreto (su OAuth exige client secret y no admite PKCE ni device
+ * flow), así que se pega un API token. La pantalla compensa diciendo
+ * exactamente cuál crear.
+ */
+function AtlassianConnect({ provider }: { provider: 'bitbucket' | 'jira' }) {
+  const busy = useIntegrationsStore((s) => s.busy === provider);
+  const connectToken = useIntegrationsStore((s) => s.connectToken);
+  const openPr = useIntegrationsStore((s) => s.openPr);
+
+  const [site, setSite] = useState('');
+  const [email, setEmail] = useState('');
+  const [token, setToken] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const isJira = provider === 'jira';
+  const ready =
+    email.includes('@') && token.trim().length >= 8 && (!isJira || site.trim().length > 0);
+
+  const handleConnect = async () => {
+    setError(null);
+    const message = await connectToken(provider, {
+      token: token.trim(),
+      email: email.trim(),
+      ...(isJira ? { site: site.trim() } : {}),
+    });
+    if (message) setError(message);
+    else setToken('');
+  };
+
+  return (
+    <div className="space-y-4 rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-5">
+      {error && <ErrorBox message={error} />}
+
+      <div className="space-y-2 text-sm text-[var(--vela-fg-muted)]">
+        {isJira ? (
+          <p>
+            Crea un API token en tu cuenta de Atlassian. Lo más sencillo es uno clásico, sin
+            ámbitos; si prefieres uno con ámbitos, elige Jira y marca{' '}
+            <code>read:jira-work</code> y <code>read:jira-user</code>. Vela funciona con los
+            dos.
+          </p>
+        ) : (
+          <>
+            <p>
+              Crea un API token <strong>con ámbitos</strong>, elige Bitbucket y marca estos
+              cuatro permisos de lectura:
+            </p>
+            <ul className="ml-4 list-disc font-mono text-xs">
+              {BITBUCKET_SCOPES.map((scope) => (
+                <li key={scope}>{scope}</li>
+              ))}
+            </ul>
+            <p>
+              Los <em>app passwords</em> ya no sirven: Atlassian los retiró en junio de 2026.
+            </p>
+          </>
+        )}
+        <button
+          onClick={() => void openPr(ATLASSIAN_TOKENS_URL)}
+          className="text-[var(--vela-accent)] underline"
+        >
+          Abrir la página de API tokens de Atlassian
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {isJira && (
+          <input
+            value={site}
+            onChange={(e) => setSite(e.target.value)}
+            placeholder="Tu sitio: acme.atlassian.net"
+            className={`${inputClass} w-full`}
+          />
+        )}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email de tu cuenta de Atlassian"
+          className={`${inputClass} w-full`}
+        />
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="API token"
+            className={inputClass}
+          />
+          <button
+            onClick={() => void handleConnect()}
+            disabled={busy || !ready}
+            className="rounded-md bg-[var(--vela-accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {busy ? 'Conectando…' : 'Conectar'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ── Conectado ──────────────────────────────────────────────────────────────
 
-function ConnectedView() {
-  const { status, busy, checkNow, disconnect, setEnabled, openPr } = useIntegrationsStore();
+function accountSummary(provider: IntegrationProviderId, status: IntegrationsStatus): string {
+  const account = status.account;
+  if (!account) return '';
+  if (provider === 'github') {
+    const how =
+      account.authMethod === 'device-flow'
+        ? 'Sesión autorizada desde este equipo'
+        : 'Token de acceso personal';
+    const inbox = account.hasInbox
+      ? ' · avisos detallados'
+      : ' · sin buzón: los avisos no distinguen el motivo';
+    return how + inbox;
+  }
+  if (provider === 'jira') return `API token de Atlassian · ${account.site ?? ''}`;
+  return 'API token de Atlassian';
+}
+
+function useStatus(provider: IntegrationProviderId) {
+  return useIntegrationsStore((s) => s.statuses[provider]);
+}
+
+function ConnectedView({ provider }: { provider: IntegrationProviderId }) {
+  const status = useStatus(provider);
+  const busy = useIntegrationsStore((s) => s.busy === provider);
+  const checkNow = useIntegrationsStore((s) => s.checkNow);
+  const disconnect = useIntegrationsStore((s) => s.disconnect);
+  const setEnabled = useIntegrationsStore((s) => s.setEnabled);
+  const openPr = useIntegrationsStore((s) => s.openPr);
+
   const account = status.account;
   if (!account) return null;
 
+  const isJira = provider === 'jira';
+
   return (
-    <div className="space-y-6">
-      <section className="flex items-center justify-between rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-5">
+    <div className="space-y-5">
+      <div className="flex items-center justify-between rounded-lg border border-[var(--vela-border)] bg-[var(--vela-bg-surface)] p-5">
         <div>
           <p className="text-sm font-medium text-[var(--vela-fg)]">
             Conectado como <strong>{account.login}</strong>
           </p>
           <p className="mt-1 text-xs text-[var(--vela-fg-muted)]">
-            {account.authMethod === 'device-flow'
-              ? 'Sesión autorizada desde este equipo'
-              : 'Token de acceso personal'}
-            {account.hasInbox
-              ? ' · avisos detallados'
-              : ' · sin buzón: los avisos no distinguen el motivo'}
+            {accountSummary(provider, status)}
           </p>
         </div>
         <button
-          onClick={() => void disconnect()}
+          onClick={() => void disconnect(provider)}
           className="rounded-md border border-[var(--vela-border)] px-3 py-2 text-sm text-[var(--vela-fg)]"
         >
           Desconectar
         </button>
-      </section>
+      </div>
 
       <label className="flex items-center gap-3 text-sm text-[var(--vela-fg)]">
         <input
           type="checkbox"
           checked={status.enabled}
-          onChange={(e) => void setEnabled(e.target.checked)}
+          onChange={(e) => void setEnabled(provider, e.target.checked)}
         />
-        Avisarme de las pull requests que me afectan
+        {isJira
+          ? 'Avisarme cuando otras personas toquen mis issues'
+          : 'Avisarme de las pull requests que me afectan'}
       </label>
 
-      <section className="space-y-3">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[var(--vela-fg)]">
-            Te esperan {status.pending.length}
+            {isJira
+              ? `Con movimiento en los últimos 14 días: ${status.pending.length}`
+              : `Te esperan ${status.pending.length}`}
           </h3>
           <button
-            onClick={() => void checkNow()}
+            onClick={() => void checkNow(provider)}
             disabled={busy || status.checking}
             className="text-xs text-[var(--vela-fg-muted)] underline disabled:opacity-50"
           >
@@ -257,22 +451,20 @@ function ConnectedView() {
         )}
 
         {status.pending.length === 0 ? (
-          <p className="text-sm text-[var(--vela-fg-muted)]">
-            Nada pendiente ahora mismo.
-          </p>
+          <p className="text-sm text-[var(--vela-fg-muted)]">Nada pendiente ahora mismo.</p>
         ) : (
           <ul className="divide-y divide-[var(--vela-border)] rounded-lg border border-[var(--vela-border)]">
-            {status.pending.map((pr) => (
-              <PrRow key={pr.id} pr={pr} onOpen={() => void openPr(pr.url)} />
+            {status.pending.map((item) => (
+              <ItemRow key={item.id} item={item} onOpen={() => void openPr(item.url)} />
             ))}
           </ul>
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
-function PrRow({ pr, onOpen }: { pr: PullRequestSummary; onOpen: () => void }) {
+function ItemRow({ item, onOpen }: { item: IntegrationItem; onOpen: () => void }) {
   return (
     <li>
       <button
@@ -280,13 +472,13 @@ function PrRow({ pr, onOpen }: { pr: PullRequestSummary; onOpen: () => void }) {
         className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left hover:bg-[var(--vela-bg-surface)]"
       >
         <span className="text-sm text-[var(--vela-fg)]">
-          {pr.title}
-          {pr.isDraft && (
+          {item.title}
+          {item.isDraft && (
             <span className="ml-2 text-xs text-[var(--vela-fg-muted)]">borrador</span>
           )}
         </span>
         <span className="text-xs text-[var(--vela-fg-muted)]">
-          {pr.repo}#{pr.number} · {PULL_REQUEST_REASON_LABELS[pr.reason]}
+          {item.ref} · {INTEGRATION_REASON_LABELS[item.reason]}
         </span>
       </button>
     </li>

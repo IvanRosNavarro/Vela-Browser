@@ -372,7 +372,12 @@ export interface IntegrationsApi {
   /** Pide el código de dispositivo. El resultado final llega por `state:integrations-status-changed`. */
   startDeviceFlow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<DeviceFlowPrompt>>;
   cancelDeviceFlow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<void>>;
-  connectToken(input: { provider: IntegrationProviderId; token: string }): Promise<IpcResponse<IntegrationsStatus>>;
+  connectToken(input: {
+    provider: IntegrationProviderId;
+    token: string;
+    email?: string;
+    site?: string;
+  }): Promise<IpcResponse<IntegrationsStatus>>;
   disconnect(input: { provider: IntegrationProviderId }): Promise<IpcResponse<IntegrationsStatus>>;
   checkNow(input: { provider: IntegrationProviderId }): Promise<IpcResponse<IntegrationsStatus>>;
   setEnabled(input: { provider: IntegrationProviderId; enabled: boolean }): Promise<IpcResponse<IntegrationsStatus>>;

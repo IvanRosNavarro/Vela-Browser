@@ -18,7 +18,9 @@ export type IpcErrorCode =
   | 'NO_OPTIONS_PAGE'
   | 'NO_WORKSPACE'
   | 'NO_WINDOW'
-  | 'NO_ACTIVE_TAB';
+  | 'NO_ACTIVE_TAB'
+  /** Una plataforma integrada rechazó la petición; `details.message` dice por qué. */
+  | 'INTEGRATION_REJECTED';
 
 export type IpcResponse<T> =
   | { ok: true; data: T }
