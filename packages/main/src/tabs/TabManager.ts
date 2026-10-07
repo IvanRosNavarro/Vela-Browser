@@ -2508,24 +2508,40 @@ export class TabManager {
 
     this.wireListeners(state, tab.id, view);
 
-    void view.webContents.loadURL(tab.url).catch((err: unknown) => {
-      const msg = String((err as { message?: string }).message ?? '');
-      if (msg.includes('ERR_ABORTED')) return;
-      const code = (err as { code?: string }).code;
-      if (code === 'ERR_FAILED' && !view.webContents.isDestroyed()) {
-        setTimeout(() => {
-          if (!view.webContents.isDestroyed()) {
-            void view.webContents.loadURL(tab.url).catch((retryErr: unknown) => {
-              this.ctx.logger.warn(`[secure] loadURL inicial falló (${tab.url})`, retryErr);
-            });
-          }
-        }, 1500);
-      } else {
-        this.ctx.logger.warn(`[secure] loadURL inicial falló (${tab.url})`, err);
-      }
-    });
+    this.loadInitialUrl(view.webContents, tab.url, '[secure]');
 
     return view;
+  }
+
+  /**
+   * Primera carga de una vista recién creada, con un reintento si falla con
+   * `ERR_FAILED` (suele ser la sesión aún sin terminar de preparar).
+   *
+   * El `WebContents` se captura una sola vez: si la vista se destruye entre el
+   * fallo y el reintento —se cierra la pestaña en ese segundo y medio—,
+   * `view.webContents` pasa a devolver `undefined` y releerlo dentro del
+   * `catch` o del temporizador lanzaba un `TypeError`. La referencia capturada
+   * sigue siendo un objeto válido y `isDestroyed()` responde con la verdad.
+   */
+  private loadInitialUrl(wc: WebContents, url: string, tag: string): void {
+    void wc.loadURL(url).catch((err: unknown) => {
+      const msg = String((err as { message?: string }).message ?? '');
+      // ERR_ABORTED ocurre cuando otra navegación (p.ej. vela://cert-error) cancela
+      // esta antes de que termine; no es un error real.
+      if (msg.includes('ERR_ABORTED')) return;
+      const code = (err as { code?: string }).code;
+      if (code !== 'ERR_FAILED') {
+        this.ctx.logger.warn(`${tag} loadURL inicial falló (${url})`, err);
+        return;
+      }
+      if (wc.isDestroyed()) return;
+      setTimeout(() => {
+        if (wc.isDestroyed()) return;
+        void wc.loadURL(url).catch((retryErr: unknown) => {
+          this.ctx.logger.warn(`${tag} loadURL inicial falló (${url})`, retryErr);
+        });
+      }, 1500);
+    });
   }
 
   private spawnView(state: PerWindow, tab: TabNode): WebContentsView {
@@ -2586,24 +2602,7 @@ export class TabManager {
 
     this.wireListeners(state, tab.id, view);
 
-    void view.webContents.loadURL(tab.url).catch((err: unknown) => {
-      const msg = String((err as { message?: string }).message ?? '');
-      // ERR_ABORTED ocurre cuando otra navegación (p.ej. vela://cert-error) cancela
-      // esta antes de que termine; no es un error real.
-      if (msg.includes('ERR_ABORTED')) return;
-      const code = (err as { code?: string }).code;
-      if (code === 'ERR_FAILED' && !view.webContents.isDestroyed()) {
-        setTimeout(() => {
-          if (!view.webContents.isDestroyed()) {
-            void view.webContents.loadURL(tab.url).catch((retryErr: unknown) => {
-              this.ctx.logger.warn(`[tabs] loadURL inicial falló (${tab.url})`, retryErr);
-            });
-          }
-        }, 1500);
-      } else {
-        this.ctx.logger.warn(`[tabs] loadURL inicial falló (${tab.url})`, err);
-      }
-    });
+    this.loadInitialUrl(view.webContents, tab.url, '[tabs]');
 
     if (this.ctx.onTabAttached) {
       try {
