@@ -429,6 +429,21 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       dentro del instalador. Ahora va en el código (es público; el device flow
       no usa client secret). Probado de extremo a extremo con un perfil limpio.
 
+### Cerrados en v0.3.2
+
+- [x] `TabManager`: el reintento de `loadURL` tras `ERR_FAILED` lanzaba un
+      `TypeError` si la vista se destruía entre el fallo y el reintento
+      (`view.webContents` pasa a `undefined`). `loadInitialUrl` captura el
+      `WebContents` una sola vez y sustituye los dos bloques duplicados de
+      `spawnSecureView` y `spawnView`.
+- [x] GitHub avisaba de los comentarios del propio usuario en sus PRs.
+      `GitHubProvider.explainChange`: con buzón, el cambio es ajeno solo si el
+      hilo de `/notifications` (también los leídos) se movió a la vez que la
+      PR; sin buzón, se lee la línea de tiempo. Ver ADR 0124, actualización.
+- [x] Bitbucket perdía de vista las PRs a revisar en repos sin actividad en 30
+      días. Los repos donde ya apareció una se siguen consultando mientras
+      tengan algo, y al arrancar se recuperan de los ids guardados.
+
 ### Abiertos
 
 - [ ] Borrar un workspace destruye los WCV de Anclas de otros workspaces que
@@ -466,23 +481,9 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
       `enableBlockingInSession`) o parchear el paquete. Se deja como está porque
       hoy funciona y tocarlo arriesga el bloqueo cosmético a cambio de nada.
       Comprobar en cada subida de Electron si la API ya no existe.
-- [ ] `TabManager.spawnView`: el reintento de `loadURL` tras `ERR_FAILED` lanza
-      `TypeError: Cannot read properties of undefined (reading 'isDestroyed')`
-      cuando la vista ya se destruyó entre el fallo y el reintento
-      (`view.webContents` es `undefined`). Lo recoge el manejador global de
-      promesas rechazadas, así que no rompe nada, pero ensucia el log y delata
-      que falta un guard sobre `view.webContents`.
 - [ ] Bitbucket y Jira (ADR 0124) solo se han verificado con tests que
       simulan su API. Probar con cuentas reales: conectar Bitbucket con un API
       token con los cuatro permisos de lectura; conectar Jira con un token
       clásico y con otro con ámbitos (este debe pasar por la pasarela
       `api.atlassian.com`); y comprobar que un comentario de otra persona avisa
       y uno propio no.
-- [ ] GitHub no implementa `explainChange` (ADR 0124), así que avisa también de
-      los comentarios del propio usuario en sus PRs: la búsqueda actualiza la
-      fecha sin decir quién hizo el cambio. Implementarlo con la línea de
-      tiempo de la PR (`/issues/{n}/timeline`) o, con buzón, comprobando que
-      el hilo aparece en `/notifications`, que no incluye las acciones propias.
-- [ ] Bitbucket: una PR donde eres revisor en un repo sin actividad en los
-      últimos 30 días no aparece (ADR 0124). Si se queda corto, permitir elegir
-      a mano qué repos vigilar.

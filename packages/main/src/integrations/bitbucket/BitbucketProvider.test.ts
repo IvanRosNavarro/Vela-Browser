@@ -7,7 +7,7 @@ vi.mock('electron', () => ({
   net: { fetch: (...args: unknown[]) => fetchMock(...args) },
 }));
 
-const { BitbucketProvider, latestActivity } = await import('./BitbucketProvider');
+const { BitbucketProvider, latestActivity, repoFromItemId } = await import('./BitbucketProvider');
 const { ProviderAuthError, ProviderRateLimitError } = await import('../types');
 
 const ME = '{11111111-aaaa-bbbb-cccc-000000000001}';
@@ -239,5 +239,87 @@ describe('latestActivity', () => {
 
   it('sin actividad no hay nada que explicar', () => {
     expect(latestActivity([])).toBeNull();
+  });
+});
+
+describe('BitbucketProvider — repos seguidos', () => {
+  /** Workspace `acme` sin ningún repo dentro de la ventana de actividad. */
+  const staleWorkspace = {
+    '/user/workspaces': { values: [{ workspace: { slug: 'acme' } }] },
+    '/workspaces/acme/pullrequests/': { values: [] },
+    '/repositories/acme?role=member': {
+      values: [{ full_name: 'acme/viejo', updated_on: '2025-01-01T00:00:00Z' }],
+    },
+  };
+
+  const asked = () => fetchMock.mock.calls.map((c) => String(c[0]));
+
+  it('tras reiniciar sigue vigilando un repo sin actividad donde ya había una PR', async () => {
+    routes({
+      ...staleWorkspace,
+      '/repositories/acme/viejo/pullrequests': { values: [pr(4, 'acme/viejo', OTHER)] },
+    });
+
+    const items = await new BitbucketProvider(() => NOW).listRelevant(credential, account, {
+      knownIds: ['bitbucket:acme/viejo#4'],
+    });
+
+    expect(items.map((i) => i.ref)).toEqual(['acme/viejo#4']);
+  });
+
+  it('un repo donde se encontró una PR se sigue aunque deje de estar activo', async () => {
+    const provider = new BitbucketProvider(() => NOW);
+    routes({
+      '/user/workspaces': { values: [{ workspace: { slug: 'acme' } }] },
+      '/workspaces/acme/pullrequests/': { values: [] },
+      '/repositories/acme?role=member': {
+        values: [{ full_name: 'acme/api', updated_on: '2026-09-29T00:00:00Z' }],
+      },
+      '/repositories/acme/api/pullrequests': { values: [pr(2, 'acme/api', OTHER)] },
+    });
+    await provider.listRelevant(credential, account);
+
+    // Una ronda después el repo ya no sale entre los activos.
+    fetchMock.mockReset();
+    routes({
+      '/workspaces/acme/pullrequests/': { values: [] },
+      '/repositories/acme?role=member': { values: [] },
+      '/repositories/acme/api/pullrequests': { values: [pr(2, 'acme/api', OTHER)] },
+    });
+    const items = await provider.listRelevant(credential, account);
+
+    expect(items.map((i) => i.ref)).toEqual(['acme/api#2']);
+  });
+
+  it('deja de seguir un repo en cuanto no tiene nada para ti', async () => {
+    const provider = new BitbucketProvider(() => NOW);
+    routes({ ...staleWorkspace, '/repositories/acme/viejo/pullrequests': { values: [] } });
+
+    await provider.listRelevant(credential, account, { knownIds: ['bitbucket:acme/viejo#4'] });
+    fetchMock.mockClear();
+    await provider.listRelevant(credential, account, { knownIds: ['bitbucket:acme/viejo#4'] });
+
+    // La siembra es una vez por sesión: no vuelve a meterlo.
+    expect(asked().some((u) => u.includes('acme/viejo/pullrequests'))).toBe(false);
+  });
+});
+
+describe('repoFromItemId', () => {
+  it('saca el repo del id', () => {
+    expect(repoFromItemId('bitbucket:acme/web#7')).toBe('acme/web');
+    expect(repoFromItemId('bitbucket:acme/mi.repo-2#12')).toBe('acme/mi.repo-2');
+  });
+
+  // El nombre acaba en una URL de la API: nada que no tenga forma de repo.
+  it.each([
+    ['github:acme/web#7'],
+    ['bitbucket:acme/web'],
+    ['bitbucket:../../user#1'],
+    ['bitbucket:../x#1'],
+    ['bitbucket:acme/..#1'],
+    ['bitbucket:acme/web/../x#1'],
+    ['bitbucket:acme/web?q=1#1'],
+  ])('rechaza %s', (id) => {
+    expect(repoFromItemId(id)).toBeNull();
   });
 });

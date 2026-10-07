@@ -85,3 +85,25 @@ fatal.
   comentarios del propio usuario en sus PRs. Anotado en `docs/pending.md`.
 - Bitbucket y Jira se han verificado con tests que simulan su API, no contra
   cuentas reales. Anotado en `docs/pending.md`.
+
+## Actualización v0.3.2
+
+- **GitHub ya implementa `explainChange`** y deja de avisar de los cambios del
+  propio usuario. Con buzón se le pregunta al buzón: GitHub no te notifica de tus
+  propias acciones, así que si el hilo de la PR en `/notifications?all=true` no
+  se movió a la vez que ella (margen de dos minutos), el cambio fue tuyo; de paso
+  da el motivo bueno. Sin buzón (token fine-grained) se lee la última página de
+  la línea de tiempo de la PR. Los `committed` no cuentan: traen el autor de
+  git, no la cuenta de GitHub. Una cabecera `Link` que no apunte a la API no se
+  sigue.
+- **Bitbucket sigue los repos donde hay algo para ti.** La consecuencia anterior
+  —que una PR a revisar en un repo sin actividad en 30 días no aparecía— queda
+  resuelta: el repo donde aparece una PR a revisar pasa a un conjunto de
+  «seguidos» que se consulta antes que los activos, dentro del mismo tope, y
+  sale cuando la consulta da cero. Ese conjunto vive en memoria, así que al
+  arrancar se siembra con los repos de los ids ya vistos, que el servicio pasa
+  a `listRelevant` en `context.knownIds`. El nombre del repo sale del perfil y
+  acaba en una URL de la API: `repoFromItemId` solo acepta `workspace/slug` y
+  rechaza los segmentos `.` y `..`.
+- Sigue sin cubrirse un caso: que te añadan como revisor a una PR antigua de un
+  repo sin actividad, si nunca antes habías tenido nada en él.
