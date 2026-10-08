@@ -32,8 +32,12 @@ export const useTitleBarIconStore = create<TitleBarIconState>((set, get) => ({
     const next = get().iconConfig.map((c) =>
       c.id === id ? { ...c, visible } : c,
     );
+    const prev = get().iconConfig;
     set({ iconConfig: next });
-    await window.api.titleBarConfig.setConfig({ config: next });
+    const res = await window.api.titleBarConfig.setConfig({ config: next });
+    // Si main lo rechaza no se ha guardado nada: no dejar el interruptor
+    // mostrando un estado que se perderá al recargar.
+    if (!res.ok) set({ iconConfig: prev });
   },
 
   isVisible: (id) => {

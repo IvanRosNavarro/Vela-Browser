@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   DEFAULT_TITLEBAR_CONFIG,
+  TITLEBAR_ICON_IDS,
   type TitleBarIconConfig,
   type IpcResponse,
 } from '@vela/shared';
@@ -33,7 +34,7 @@ function broadcastConfig(config: TitleBarIconConfig[], windowId: number): void {
 }
 
 const titleBarIconConfigSchema = z.object({
-  id: z.enum(['media', 'windows', 'sync', 'split-view', 'device-mode']),
+  id: z.enum(TITLEBAR_ICON_IDS),
   visible: z.boolean(),
 });
 
