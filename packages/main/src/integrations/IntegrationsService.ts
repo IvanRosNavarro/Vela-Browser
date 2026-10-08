@@ -287,7 +287,12 @@ export class IntegrationsService {
     this.patch(profileId, provider, { checking: true });
 
     try {
-      const pending = await this.providerOrThrow(provider).listRelevant(credential, account);
+      const knownIds = Object.keys(
+        this.ctx.tokenStore.readSeen(this.settingsFor(profileId), provider),
+      );
+      const pending = await this.providerOrThrow(provider).listRelevant(credential, account, {
+        knownIds,
+      });
       if (opts.notify) await this.notifyNew(profileId, provider, pending, credential, account);
       else this.rememberSeen(profileId, provider, pending);
 

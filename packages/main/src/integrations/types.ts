@@ -15,6 +15,11 @@ export interface ProviderCredential {
   site?: string;
 }
 
+/** Lo que el servicio sabe de rondas anteriores y puede servir al proveedor. */
+export interface ListContext {
+  knownIds: readonly string[];
+}
+
 export interface DeviceAuthorization {
   userCode: string;
   verificationUri: string;
@@ -72,10 +77,15 @@ export interface PrProvider {
   /**
    * Lo que concierne al usuario ahora mismo. El servicio compara el resultado
    * con lo ya visto para decidir qué notificar.
+   *
+   * `context.knownIds` son los ids ya vistos en rondas anteriores, guardados en
+   * el perfil. Un proveedor que no pueda listarlo todo de una vez los usa para
+   * no perder de vista lo que ya encontró (Bitbucket, con los repos).
    */
   listRelevant(
     credential: ProviderCredential,
     account: IntegrationAccount,
+    context?: ListContext,
   ): Promise<IntegrationItem[]>;
 
   /** Página de la plataforma con todo lo pendiente, para el aviso resumen. */

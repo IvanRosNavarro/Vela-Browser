@@ -51,6 +51,89 @@ interface GhNotification {
   repository: { full_name: string };
 }
 
+interface GhLogin {
+  login?: string;
+}
+
+interface GhTimelineEvent {
+  event?: string;
+  created_at?: string;
+  submitted_at?: string;
+  actor?: GhLogin | null;
+  user?: GhLogin | null;
+  requested_reviewer?: GhLogin | null;
+  assignee?: GhLogin | null;
+  comments?: Array<{ created_at?: string; user?: GhLogin | null }>;
+}
+
+/**
+ * La búsqueda y el buzón fechan el mismo cambio con segundos de diferencia; este
+ * margen evita tomar por ajeno un hilo que en realidad es el mismo movimiento.
+ */
+const SAME_CHANGE_TOLERANCE_MS = 2 * 60 * 1000;
+
+/** Acontecimientos de la línea de tiempo que mueven la PR y que hizo alguien. */
+const UPDATE_EVENTS = new Set([
+  'head_ref_force_pushed',
+  'ready_for_review',
+  'convert_to_draft',
+  'closed',
+  'reopened',
+  'merged',
+  'renamed',
+]);
+
+/**
+ * El último acontecimiento atribuible de la línea de tiempo de una PR: quién y
+ * qué supone para el usuario. Los `committed` no cuentan: traen el autor de git
+ * (nombre y email), no la cuenta de GitHub, y no hay forma fiable de saber si
+ * es el propio usuario.
+ */
+export function latestTimelineEvent(
+  events: GhTimelineEvent[],
+  me: string,
+): { at: number; login: string; reason: IntegrationReason } | null {
+  let best: { at: number; login: string; reason: IntegrationReason } | null = null;
+  const consider = (date: string | undefined, who: GhLogin | null | undefined, reason: IntegrationReason) => {
+    const at = Date.parse(date ?? '');
+    const login = who?.login;
+    if (!Number.isFinite(at) || !login) return;
+    if (!best || at > best.at) best = { at, login, reason };
+  };
+  const isMe = (who: GhLogin | null | undefined) => who?.login?.toLowerCase() === me.toLowerCase();
+
+  for (const e of events) {
+    switch (e.event) {
+      case 'commented':
+        consider(e.created_at, e.user ?? e.actor, 'comment');
+        break;
+      case 'reviewed':
+        consider(e.submitted_at, e.user, 'reviewed');
+        break;
+      case 'line-commented':
+        for (const c of e.comments ?? []) consider(c.created_at, c.user, 'comment');
+        break;
+      case 'review_requested':
+        consider(e.created_at, e.actor, isMe(e.requested_reviewer) ? 'review_requested' : 'updated');
+        break;
+      case 'assigned':
+        consider(e.created_at, e.actor, isMe(e.assignee) ? 'assign' : 'updated');
+        break;
+      default:
+        if (e.event && UPDATE_EVENTS.has(e.event)) consider(e.created_at, e.actor, 'updated');
+    }
+  }
+  return best;
+}
+
+/** URL de la última página según la cabecera `Link`, solo si es de la API. */
+function lastPageUrl(headers: Headers): string | null {
+  const link = headers.get('link') ?? '';
+  const match = /<([^>]+)>;\s*rel="last"/.exec(link);
+  const url = match?.[1];
+  return url && url.startsWith(`${API}/`) ? url : null;
+}
+
 function authHeaders(credential: ProviderCredential): Record<string, string> {
   return {
     Authorization: `Bearer ${credential.token}`,
@@ -280,6 +363,86 @@ export class GitHubProvider implements PrProvider {
 
   overviewUrl(): string {
     return 'https://github.com/pulls';
+  }
+
+  /**
+   * La búsqueda actualiza la fecha de una PR sin decir quién la movió, así que
+   * sin esto un comentario tuyo en tu propia PR te avisaba a ti mismo.
+   *
+   * Con buzón se le pregunta al buzón: GitHub no te notifica de tus propias
+   * acciones, así que si el hilo de la PR no se ha movido a la vez que ella, el
+   * cambio fue tuyo. Además el motivo que da es el bueno. Sin buzón (token
+   * fine-grained) se lee la línea de tiempo de la PR.
+   *
+   * Una PR que aparece por primera vez sí avisa aunque la hayas abierto tú.
+   */
+  async explainChange(
+    credential: ProviderCredential,
+    account: IntegrationAccount,
+    item: IntegrationItem,
+    isNew: boolean,
+  ): Promise<{ reason: IntegrationReason } | null> {
+    if (isNew) return { reason: item.reason };
+    return account.hasInbox
+      ? this.explainFromInbox(credential, item)
+      : this.explainFromTimeline(credential, account, item);
+  }
+
+  private async explainFromInbox(
+    credential: ProviderCredential,
+    item: IntegrationItem,
+  ): Promise<{ reason: IntegrationReason } | null> {
+    const since = new Date(item.updatedAt - SAME_CHANGE_TOLERANCE_MS).toISOString();
+    const res = await fetchJson<GhNotification[]>(
+      `${API}/notifications?all=true&since=${encodeURIComponent(since)}&per_page=50`,
+      { headers: authHeaders(credential) },
+    );
+    if (res.status === 401) throw new ProviderAuthError('El token no es válido o ha caducado.');
+    if (res.status === 403) throw this.rateLimitOrAuth(res.headers);
+    if (res.status !== 200 || !Array.isArray(res.body)) return { reason: item.reason };
+
+    const thread = res.body.find(
+      (n) =>
+        n.subject?.type === 'PullRequest' &&
+        n.repository?.full_name === item.repo &&
+        numberFromSubjectUrl(n.subject.url) === item.number,
+    );
+    // Sin hilo, o con un hilo anterior al cambio: nadie más ha hecho nada que
+    // GitHub considere digno de avisarte, así que el movimiento fue tuyo.
+    if (!thread) return null;
+    if (Date.parse(thread.updated_at) < item.updatedAt - SAME_CHANGE_TOLERANCE_MS) return null;
+
+    const reason = mapNotificationReason(thread.reason);
+    return { reason: reason === 'involved' ? item.reason : reason };
+  }
+
+  private async explainFromTimeline(
+    credential: ProviderCredential,
+    account: IntegrationAccount,
+    item: IntegrationItem,
+  ): Promise<{ reason: IntegrationReason } | null> {
+    const first = await fetchJson<GhTimelineEvent[]>(
+      `${API}/repos/${item.repo}/issues/${item.number}/timeline?per_page=100`,
+      { headers: authHeaders(credential) },
+    );
+    if (first.status === 401) throw new ProviderAuthError('El token no es válido o ha caducado.');
+    // Un token fine-grained sin permiso de lectura sobre issues da 403 aquí: no
+    // invalida la cuenta, simplemente no se puede saber quién fue.
+    if (first.status !== 200 || !Array.isArray(first.body)) return { reason: item.reason };
+
+    // La línea de tiempo va de más antiguo a más reciente: lo último está en la
+    // última página.
+    let events = first.body;
+    const last = lastPageUrl(first.headers);
+    if (last) {
+      const page = await fetchJson<GhTimelineEvent[]>(last, { headers: authHeaders(credential) });
+      if (page.status === 200 && Array.isArray(page.body)) events = page.body;
+    }
+
+    const latest = latestTimelineEvent(events, account.login);
+    if (!latest) return { reason: item.reason };
+    if (latest.login.toLowerCase() === account.login.toLowerCase()) return null;
+    return { reason: latest.reason };
   }
 
   private rateLimitOrAuth(headers: Headers): Error {

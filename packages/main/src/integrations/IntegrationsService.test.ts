@@ -79,8 +79,15 @@ class FakeProvider implements PrProvider {
     return { ...account, provider: this.id, site: credential.site };
   }
 
-  async listRelevant(): Promise<IntegrationItem[]> {
+  lastKnownIds: readonly string[] | null = null;
+
+  async listRelevant(
+    _credential: unknown,
+    _account: unknown,
+    context?: { knownIds: readonly string[] },
+  ): Promise<IntegrationItem[]> {
     this.calls++;
+    this.lastKnownIds = context?.knownIds ?? null;
     if (this.nextError) {
       const err = this.nextError;
       this.nextError = null;
@@ -315,6 +322,20 @@ describe('IntegrationsService — cambios propios', () => {
     await service.checkNow(PROFILE, 'jira');
 
     expect(notifications).toHaveLength(0);
+  });
+});
+
+describe('IntegrationsService — memoria entre rondas', () => {
+  it('entrega al proveedor los ids ya vistos, que sobreviven al reinicio', async () => {
+    const { service, provider } = setup('bitbucket');
+    provider.pending = [pr({ id: 'bitbucket:acme/viejo#4' })];
+    await service.connectWithToken(PROFILE, 'bitbucket', 'token-de-prueba', {
+      email: 'yo@acme.com',
+    });
+
+    await service.checkNow(PROFILE, 'bitbucket');
+
+    expect(provider.lastKnownIds).toEqual(['bitbucket:acme/viejo#4']);
   });
 });
 

@@ -4,6 +4,7 @@ import { basicAuthHeaders, rateLimitFrom } from '../atlassian/common';
 import {
   ProviderAuthError,
   type DeviceAuthorization,
+  type ListContext,
   type PrProvider,
   type ProviderCredential,
 } from '../types';
@@ -21,8 +22,9 @@ export const BITBUCKET_SCOPES = [
 /**
  * Bitbucket no tiene un endpoint que liste entre workspaces las PRs donde eres
  * revisor (el que había se retiró en febrero de 2025), así que hay que recorrer
- * repos. Para no fundir el límite de 1000 peticiones por hora se mira solo lo
- * que ha tenido actividad reciente, con topes, y se sondea más espaciado.
+ * repos. Para no fundir el límite de 1000 peticiones por hora se mira lo que ha
+ * tenido actividad reciente más los repos donde ya hay algo para ti (ver
+ * `tracked`), con topes, y se sondea más espaciado.
  */
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const WORKSPACES_TTL_MS = 60 * 60 * 1000;
@@ -79,6 +81,16 @@ export class BitbucketProvider implements PrProvider {
   /** Workspaces por usuario: cambian rara vez y no merece pedirlos en cada ronda. */
   private readonly workspaces = new Map<string, { at: number; slugs: string[] }>();
 
+  /**
+   * Repos «seguidos» por usuario: donde ya apareció una PR que te toca revisar.
+   * Se siguen consultando aunque salgan de la ventana de actividad —una PR
+   * abierta hace semanas en un repo sin pushes nuevos sigue esperándote— y
+   * salen en cuanto la consulta no devuelve nada.
+   */
+  private readonly tracked = new Map<string, Set<string>>();
+  /** Usuarios cuyo conjunto ya se sembró con los ids guardados en esta sesión. */
+  private readonly seeded = new Set<string>();
+
   constructor(private readonly now: () => number = Date.now) {}
 
   startDeviceAuthorization(): Promise<DeviceAuthorization> {
@@ -105,10 +117,12 @@ export class BitbucketProvider implements PrProvider {
   async listRelevant(
     credential: ProviderCredential,
     account: IntegrationAccount,
+    context?: ListContext,
   ): Promise<IntegrationItem[]> {
     const me = account.accountId;
     if (!me) throw new ProviderAuthError('Falta el identificador de la cuenta de Bitbucket.');
 
+    const tracked = this.trackedFor(me, context?.knownIds ?? []);
     const byId = new Map<string, IntegrationItem>();
     const workspaces = await this.workspacesFor(credential, me);
     const user = encodeURIComponent(me);
@@ -122,8 +136,9 @@ export class BitbucketProvider implements PrProvider {
       for (const pr of page?.values ?? []) this.add(byId, pr, 'author', me);
     }
 
-    // Las que te toca revisar: solo en los repos con actividad reciente.
-    const repos: Array<{ fullName: string; updatedAt: number }> = [];
+    // Las que te toca revisar: en los repos seguidos y en los que han tenido
+    // actividad reciente.
+    const active: Array<{ fullName: string; updatedAt: number }> = [];
     const since = this.now() - ACTIVE_WINDOW_MS;
     for (const ws of workspaces) {
       const page = await this.get<BbPage<BbRepo>>(
@@ -133,19 +148,28 @@ export class BitbucketProvider implements PrProvider {
       for (const repo of page?.values ?? []) {
         const updatedAt = Date.parse(repo.updated_on ?? '');
         if (repo.full_name && updatedAt >= since) {
-          repos.push({ fullName: repo.full_name, updatedAt });
+          active.push({ fullName: repo.full_name, updatedAt });
         }
       }
     }
-    repos.sort((a, b) => b.updatedAt - a.updatedAt);
+    active.sort((a, b) => b.updatedAt - a.updatedAt);
+
+    // Los seguidos van primero: ahí se sabe que hay algo esperándote.
+    const repos = [
+      ...tracked,
+      ...active.map((r) => r.fullName).filter((name) => !tracked.has(name)),
+    ].slice(0, MAX_REVIEW_REPOS);
 
     const reviewerQuery = encodeURIComponent(`reviewers.uuid="${me}" AND state="OPEN"`);
-    for (const repo of repos.slice(0, MAX_REVIEW_REPOS)) {
+    for (const repo of repos) {
       const page = await this.get<BbPage<BbPr>>(
-        `${API}/repositories/${repo.fullName}/pullrequests?pagelen=50&q=${reviewerQuery}`,
+        `${API}/repositories/${repo}/pullrequests?pagelen=50&q=${reviewerQuery}`,
         credential,
       );
-      for (const pr of page?.values ?? []) this.add(byId, pr, 'review_requested', me);
+      const found = page?.values ?? [];
+      for (const pr of found) this.add(byId, pr, 'review_requested', me);
+      if (found.length > 0) tracked.add(repo);
+      else tracked.delete(repo);
     }
 
     return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -205,6 +229,29 @@ export class BitbucketProvider implements PrProvider {
     });
   }
 
+  /**
+   * El conjunto de repos seguidos del usuario. Vive en memoria, así que la
+   * primera vez en cada sesión se siembra con los repos de los ids ya vistos
+   * (que el servicio guarda en el perfil): sin eso, tras reiniciar Vela, una PR
+   * en un repo sin actividad desaparecería hasta que alguien hiciera un push.
+   * Los que no tengan nada se caen en la primera ronda.
+   */
+  private trackedFor(me: string, knownIds: readonly string[]): Set<string> {
+    let set = this.tracked.get(me);
+    if (!set) {
+      set = new Set();
+      this.tracked.set(me, set);
+    }
+    if (!this.seeded.has(me)) {
+      this.seeded.add(me);
+      for (const id of knownIds) {
+        const repo = repoFromItemId(id);
+        if (repo) set.add(repo);
+      }
+    }
+    return set;
+  }
+
   private async workspacesFor(credential: ProviderCredential, me: string): Promise<string[]> {
     const cached = this.workspaces.get(me);
     if (cached && this.now() - cached.at < WORKSPACES_TTL_MS) return cached.slugs;
@@ -251,6 +298,23 @@ export class BitbucketProvider implements PrProvider {
     }
     return res.body;
   }
+}
+
+/** Un repo de Bitbucket es `workspace/slug`, ambos con caracteres de URL seguros. */
+const REPO_NAME = /^[\w.-]+\/[\w.-]+$/;
+
+/**
+ * `bitbucket:acme/web#7` → `acme/web`. El id sale del perfil y el nombre acaba
+ * en una URL de la API, así que solo se acepta con forma de repo.
+ */
+export function repoFromItemId(id: string): string | null {
+  if (!id.startsWith('bitbucket:')) return null;
+  const hash = id.lastIndexOf('#');
+  if (hash < 0) return null;
+  const repo = id.slice('bitbucket:'.length, hash);
+  if (!REPO_NAME.test(repo)) return null;
+  // `.` y `..` encajan en la expresión pero recolocarían la ruta de la API.
+  return repo.split('/').some((segment) => /^\.+$/.test(segment)) ? null : repo;
 }
 
 /** La entrada más reciente del historial de actividad, con su autor y su tipo. */
