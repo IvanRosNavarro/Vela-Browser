@@ -1,10 +1,18 @@
-export type TitleBarIconId =
-  | 'media'
-  | 'windows'
-  | 'sync'
-  | 'split-view'
-  | 'device-mode'
-  | 'pull-requests';
+/**
+ * Iconos configurables de la barra de título. Fuente única: el schema zod
+ * del handler IPC se construye a partir de esta lista, así que un icono
+ * nuevo solo se añade aquí.
+ */
+export const TITLEBAR_ICON_IDS = [
+  'media',
+  'windows',
+  'sync',
+  'split-view',
+  'device-mode',
+  'pull-requests',
+] as const;
+
+export type TitleBarIconId = (typeof TITLEBAR_ICON_IDS)[number];
 
 export interface TitleBarIconConfig {
   id: TitleBarIconId;
