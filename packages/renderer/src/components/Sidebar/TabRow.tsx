@@ -378,29 +378,10 @@ export function TabRow({
             />
           </span>
           <style>{MEDIA_PULSE_STYLE}</style>
-          {renaming ? (
-            <div className="ml-2 flex flex-1 items-center pr-7">
-              <InlineRename
-                initial={title}
-                onCommit={(next) => {
-                  setRenaming(false);
-                  void renameNode({ id: node.id, name: next });
-                }}
-                onCancel={() => setRenaming(false)}
-              />
-            </div>
-          ) : (
-            <span
-              className="ml-2 flex-1 overflow-hidden whitespace-nowrap text-[13px]"
-              style={{
-                ...titleStyle,
-                maskImage: 'linear-gradient(to right, black calc(100% - 2rem), transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 2rem), transparent 100%)',
-              }}
-            >
-              {node.isSecure ? `[Fantasma] ${title}` : title}
-            </span>
-          )}
+          {/*
+            Junto al favicon y no en el borde derecho: allí lo desplazaba la ×
+            al pasar el ratón y el botón se movía justo cuando ibas a pulsarlo.
+          */}
           {showSpeaker && (
             <button
               type="button"
@@ -409,7 +390,7 @@ export function TabRow({
               onClick={handleToggleMute}
               onPointerDown={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded hover:bg-[var(--vela-border-strong)] group-hover:right-7"
+              className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-[var(--vela-border-strong)]"
               style={{
                 border: 'none',
                 padding: 0,
@@ -427,6 +408,29 @@ export function TabRow({
             >
               {isMuted ? <VolumeOff size={13} /> : <Volume2 size={13} />}
             </button>
+          )}
+          {renaming ? (
+            <div className={`${showSpeaker ? 'ml-1' : 'ml-2'} flex flex-1 items-center pr-7`}>
+              <InlineRename
+                initial={title}
+                onCommit={(next) => {
+                  setRenaming(false);
+                  void renameNode({ id: node.id, name: next });
+                }}
+                onCancel={() => setRenaming(false)}
+              />
+            </div>
+          ) : (
+            <span
+              className={`${showSpeaker ? 'ml-1' : 'ml-2'} flex-1 overflow-hidden whitespace-nowrap text-[13px]`}
+              style={{
+                ...titleStyle,
+                maskImage: 'linear-gradient(to right, black calc(100% - 2rem), transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 2rem), transparent 100%)',
+              }}
+            >
+              {node.isSecure ? `[Fantasma] ${title}` : title}
+            </span>
           )}
           <button
             type="button"
