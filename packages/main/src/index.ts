@@ -43,6 +43,7 @@ import { GestureRecognizer } from './gestures/GestureRecognizer';
 import { buildJumpList, parseJumpListArgs } from './jumplist';
 import { isBlindedProfile } from './profiles/blindedProfileUtils';
 import { registerWindowsCapabilities } from './platform/windowsBrowserRegistration';
+import { resolveLaunchTarget } from './platform/launchTarget';
 import { clearWindowsToastHistory } from './platform/windowsToastHistory';
 
 // Debe llamarse antes de app.whenReady — protocol.handle no funciona si el
@@ -107,6 +108,24 @@ app.on('second-instance', (_event, argv) => {
   } else {
     void openStartupWindow({ profileId: args.profileId });
   }
+});
+
+// En macOS el fichero asociado (PDF…) no llega por argv sino por `open-file`,
+// que puede dispararse antes de `ready` si el doble clic es lo que arranca
+// Vela: entonces se guarda y lo abre la ventana inicial.
+let startupWindowOpened = false;
+const pendingLaunchUrls: string[] = [];
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  const url = resolveLaunchTarget(filePath);
+  if (!url) return;
+  if (!startupWindowOpened) {
+    pendingLaunchUrls.push(url);
+    return;
+  }
+  void openUrlInLastActiveWindow(url).catch((err: unknown) => {
+    logger.warn('[app] openUrlInLastActiveWindow (open-file) falló', err);
+  });
 });
 
 const LAST_ACTIVE_PROFILE_KEY = 'last-active-profile';
@@ -817,7 +836,15 @@ app.whenReady().then(async () => {
   if (startupArgs.privateWindow) {
     await ipcCtx.profileWindowManager.openBlindedWindow(startupArgs.url ?? undefined);
   } else {
-    await openStartupWindow({ profileId: startupArgs.profileId, url: startupArgs.url ?? undefined });
+    const url = startupArgs.url ?? pendingLaunchUrls.shift();
+    await openStartupWindow({ profileId: startupArgs.profileId, url });
+  }
+  startupWindowOpened = true;
+  // Ficheros que macOS entregó con `open-file` antes de tener ventana.
+  for (const url of pendingLaunchUrls.splice(0)) {
+    await openUrlInLastActiveWindow(url).catch((err: unknown) => {
+      logger.warn('[app] openUrlInLastActiveWindow (open-file pendiente) falló', err);
+    });
   }
 
   // Jump list de Windows: categoría de perfiles + tareas rápidas.

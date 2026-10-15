@@ -49,6 +49,13 @@ export function registerWindowsCapabilities(): void {
   regAdd('HKCU\\Software\\Classes\\VelaBrowserHTML\\DefaultIcon', null, iconValue);
   regAdd('HKCU\\Software\\Classes\\VelaBrowserHTML\\shell\\open\\command', null, commandValue);
 
+  // ProgID para PDF. Además de la asociación en Capabilities se anota en
+  // OpenWithProgids para que Vela salga en «Abrir con» del explorador.
+  regAdd('HKCU\\Software\\Classes\\VelaBrowserPDF', null, 'Documento PDF de Vela');
+  regAdd('HKCU\\Software\\Classes\\VelaBrowserPDF\\DefaultIcon', null, iconValue);
+  regAdd('HKCU\\Software\\Classes\\VelaBrowserPDF\\shell\\open\\command', null, commandValue);
+  regAdd('HKCU\\Software\\Classes\\.pdf\\OpenWithProgids', 'VelaBrowserPDF', '');
+
   // Capabilities — bloque que Windows 11 lee para construir la lista de "Aplicaciones predeterminadas"
   regAdd('HKCU\\Software\\Vela\\Capabilities', 'ApplicationName', 'Vela');
   regAdd(
@@ -65,6 +72,7 @@ export function registerWindowsCapabilities(): void {
   regAdd('HKCU\\Software\\Vela\\Capabilities\\FileAssociations', '.xhtml', 'VelaBrowserHTML');
   regAdd('HKCU\\Software\\Vela\\Capabilities\\FileAssociations', '.svg', 'VelaBrowserHTML');
   regAdd('HKCU\\Software\\Vela\\Capabilities\\FileAssociations', '.webp', 'VelaBrowserHTML');
+  regAdd('HKCU\\Software\\Vela\\Capabilities\\FileAssociations', '.pdf', 'VelaBrowserPDF');
 
   // Punto de entrada — sin esto Windows 11 no muestra la app en "Aplicaciones predeterminadas"
   regAdd('HKCU\\Software\\RegisteredApplications', 'Vela', 'Software\\Vela\\Capabilities');
