@@ -15,6 +15,20 @@ if (slashIndex <= 0 || slashIndex === repoSlug.length - 1) {
 const owner = repoSlug.slice(0, slashIndex);
 const repo = repoSlug.slice(slashIndex + 1);
 
+// Vela como visor de PDF. Solo en macOS (Info.plist) y Linux (.desktop): en
+// Windows el NSIS de electron-builder se apropiaría de la extensión al
+// instalar; allí se ofrece vía Capabilities (build/installer.nsh) y la
+// elige el usuario en «Aplicaciones predeterminadas».
+/** @type {import('electron-builder').FileAssociation} */
+const PDF_ASSOCIATION = {
+  ext: 'pdf',
+  name: 'PDF',
+  description: 'Documento PDF',
+  mimeType: 'application/pdf',
+  role: 'Viewer',
+  rank: 'Alternate',
+};
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: 'com.vela.browser',
@@ -85,6 +99,7 @@ module.exports = {
       { target: 'dmg', arch: ['x64', 'arm64'] },
     ],
     category: 'public.app-category.productivity',
+    fileAssociations: [PDF_ASSOCIATION],
     // Para firma y notarización: ver docs/distribution/macos-signing.md
     // Activar cuando se tenga Apple Developer Program (~€99/año).
     identity: process.env.APPLE_IDENTITY || null,
@@ -127,6 +142,7 @@ module.exports = {
       { target: 'deb', arch: ['x64'] },
     ],
     category: 'Network',
+    fileAssociations: [PDF_ASSOCIATION],
     artifactName: '${productName}-${version}-${arch}.${ext}',
   },
 
