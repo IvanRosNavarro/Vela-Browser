@@ -31,7 +31,8 @@ export function TitleBarLeft() {
         display: 'flex',
         alignItems: 'center',
         flexShrink: 0,
-        WebkitAppRegion: 'no-drag',
+        // Sin no-drag en el contenedor: cada botón ya lo declara y así el
+        // espaciador (el hueco sobre la sidebar) arrastra la ventana.
         paddingLeft: PLATFORM === 'darwin' ? DARWIN_TRAFFIC_LIGHT_CLEARANCE : 0,
       } as CSSProperties}
     >
