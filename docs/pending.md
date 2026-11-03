@@ -145,9 +145,13 @@ Cosas que hay que cerrar pero no bloquean la fase actual.
 
 ### Sidebar y title bar
 
-- [ ] **Arrastre de ventana desde el sidebar**. El sidebar debería poder usarse como zona de
-      arrastre en las áreas vacías entre pestañas. Requiere `-webkit-app-region: no-drag` en
-      cada nodo del árbol para que el DnD de reordenación siga funcionando.
+- [x] **Arrastre de ventana desde el sidebar**. Resuelto en la barra de título: el hueco
+      sobre la sidebar ya arrastra (`TitleBarLeft` no es `no-drag` entero). El hueco vacío
+      bajo el árbol de pestañas se descarta a propósito: una región `drag` en Windows deja de
+      recibir eventos de puntero y rueda, así que ahí se perderían el swipe de workspace, los
+      gestos de ratón y el menú contextual (sale el menú de sistema). Si se retoma, la vía
+      sería mover la ventana a mano por IPC (`setPosition`) en vez de `app-region`, a costa
+      de Aero Snap y el doble clic.
 
 - [ ] **Posición del botón Nueva pestaña configurable** desde Ajustes (arriba del workspace
       o abajo del perfil). Toggle en sección Pestañas de `vela://settings`.

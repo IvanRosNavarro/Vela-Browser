@@ -54,35 +54,35 @@ export async function configureSessionDefaults(
   mediaPermissionManager?: MediaPermissionManager,
 ): Promise<void> {
   // Forzar español como idioma preferido en las peticiones HTTP.
-  // El segundo parámetro establece la cabecera Accept-Language de la sesión.
-  s.setUserAgent(app.userAgentFallback, 'es-ES,es;q=0.9,en;q=0.8');
+  // El segundo parámetro es una LISTA de idiomas: Chromium añade los pesos q
+  // por su cuenta. Pasarle 'es;q=0.9' producía una cabecera mal formada
+  // ('es;q=0.9;q=0.9'), que ningún Chrome real envía.
+  s.setUserAgent(app.userAgentFallback, 'es-ES,es,en');
 
-  // Sec-CH-UA lo genera Chromium con "Electron" aunque el UA string no lo lleve.
-  // Google OAuth compara ambos: si el UA dice "Chrome" pero Sec-CH-UA dice
-  // "Electron", detecta inconsistencia y bloquea el login.
-  // Solución: para accounts.google.com restaurar Electron al UA (consistente
-  // con Sec-CH-UA, y Google lo acepta sin problemas). Para el resto eliminar
-  // Sec-CH-UA para que WhatsApp y similares solo vean el UA string limpio.
+  // Google OAuth rechaza un UA de Chrome que no viene de Chrome: para
+  // accounts.google.com se declara Electron en el UA y lo acepta.
+  //
+  // Sec-CH-UA NO se toca. En Electron 42 sus marcas son "Chromium" y
+  // "Not/A)Brand", sin "Electron" (comprobado). Borrarla, como se hacía antes,
+  // dejaba una huella imposible en un Chrome real: UA de Chrome sin Sec-CH-UA
+  // pero con Sec-CH-UA-Platform y con navigator.userAgentData intacto en JS.
+  // Las comprobaciones antibots (hCaptcha en el login de claude.ai,
+  // Cloudflare) comparan cabeceras con lo que ve el JS y esa incoherencia
+  // basta para marcar el navegador como automatizado.
   const electronVersion = process.versions.electron ?? '42.0.0';
-  s.webRequest.onBeforeSendHeaders((details, callback) => {
-    const headers = { ...details.requestHeaders };
-    if (details.url.includes('accounts.google.com')) {
+  s.webRequest.onBeforeSendHeaders(
+    { urls: ['https://accounts.google.com/*'] },
+    (details, callback) => {
+      const headers = { ...details.requestHeaders };
       for (const key of Object.keys(headers)) {
         if (key.toLowerCase() === 'user-agent') {
           headers[key] = `${headers[key] ?? ''} Electron/${electronVersion}`;
           break;
         }
       }
-    } else {
-      for (const key of Object.keys(headers)) {
-        const lower = key.toLowerCase();
-        if (lower === 'sec-ch-ua' || lower === 'sec-ch-ua-full-version-list') {
-          delete headers[key];
-        }
-      }
-    }
-    callback({ requestHeaders: headers });
-  });
+      callback({ requestHeaders: headers });
+    },
+  );
 
   // NOTA: la protección "vela:// no cargable desde contenido web" NO se hace con
   // webRequest.onBeforeRequest porque ese hook solo admite UN listener por
